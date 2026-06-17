@@ -139,7 +139,7 @@ pip install -e .
 python -m app.main
 ```
 
-后端运行在 http://localhost:8000
+后端运行在 http://localhost:8001
 
 #### 3. 启动前端
 
