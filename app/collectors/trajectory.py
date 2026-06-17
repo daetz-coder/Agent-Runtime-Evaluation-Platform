@@ -54,11 +54,9 @@ class TrajectoryCollector:
         # HTTP 客户端
         self._http: Optional[httpx.Client] = None
 
-        # 配置
-        self._api_base_url = settings.HOST.replace("0.0.0.0", "127.0.0.1")
-        if not self._api_base_url.startswith("http"):
-            self._api_base_url = f"http://{self._api_base_url}"
-        self._api_base_url = f"{self._api_base_url}:{settings.PORT}"
+        # 配置 - 硬编码评估平台地址
+        # 评估平台运行在 8001 端口
+        self._api_base_url = "http://127.0.0.1:8001"
 
         self._initialized = True
 
