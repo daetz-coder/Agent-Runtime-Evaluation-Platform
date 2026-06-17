@@ -58,7 +58,7 @@ class AgentTrajectory(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    task: Mapped["AgentTrajectory"] = relationship(back_populates="trajectory")
+    task: Mapped["AgentTask"] = relationship(back_populates="trajectory")
 
 
 class Evaluation(Base):
