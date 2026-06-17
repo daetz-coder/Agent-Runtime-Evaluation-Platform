@@ -303,18 +303,12 @@ def create_evaluation_graph(llm: Optional[BaseChatModel] = None) -> StateGraph:
     # Define edges
     workflow.set_entry_point("validate_input")
 
-    # After validation, run all evaluations in parallel
+    # After validation, run evaluations sequentially to avoid state conflicts
     workflow.add_edge("validate_input", "evaluate_planning")
-    workflow.add_edge("validate_input", "evaluate_tactical")
-    workflow.add_edge("validate_input", "evaluate_tool_use")
-    workflow.add_edge("validate_input", "evaluate_memory")
-    workflow.add_edge("validate_input", "evaluate_replan")
-
-    # After all evaluations, aggregate results
-    workflow.add_edge("evaluate_planning", "aggregate_results")
-    workflow.add_edge("evaluate_tactical", "aggregate_results")
-    workflow.add_edge("evaluate_tool_use", "aggregate_results")
-    workflow.add_edge("evaluate_memory", "aggregate_results")
+    workflow.add_edge("evaluate_planning", "evaluate_tactical")
+    workflow.add_edge("evaluate_tactical", "evaluate_tool_use")
+    workflow.add_edge("evaluate_tool_use", "evaluate_memory")
+    workflow.add_edge("evaluate_memory", "evaluate_replan")
     workflow.add_edge("evaluate_replan", "aggregate_results")
 
     # After aggregation, end

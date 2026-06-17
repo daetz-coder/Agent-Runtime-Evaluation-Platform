@@ -186,6 +186,9 @@ class EvaluationService:
             )
 
         except Exception as e:
+            import traceback
+            print(f"❌ Evaluation failed: {str(e)}")
+            print(traceback.format_exc())
             evaluation.status = EvaluationStatus.FAILED
             await self.db.flush()
             raise e
