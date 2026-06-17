@@ -14,7 +14,7 @@ from app.evaluators.base import BaseEvaluator
 from app.models.schemas import TrajectoryStep, MemoryScore
 
 
-MEMORY_EVALUATION_PROMPT = You are an expert at evaluating AI agent memory quality.
+MEMORY_EVALUATION_PROMPT = """You are an expert at evaluating AI agent memory quality.
 
 ## Goal
 {goal}
@@ -58,6 +58,7 @@ Return a JSON object:
     "forgotten_facts": ["list of important facts that were forgotten"],
     "inconsistencies": ["list of memory inconsistencies"]
 }}
+"""
 
 
 class MemoryEvaluator(BaseEvaluator):

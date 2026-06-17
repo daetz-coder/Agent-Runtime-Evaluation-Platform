@@ -15,7 +15,7 @@ from app.evaluators.base import BaseEvaluator
 from app.models.schemas import TrajectoryStep, PlanningScore
 
 
-PLANNING_EVALUATION_PROMPT = You are an expert at evaluating AI agent planning quality.
+PLANNING_EVALUATION_PROMPT = """You are an expert at evaluating AI agent planning quality.
 
 ## Goal
 {goal}
@@ -63,6 +63,7 @@ Return a JSON object with these fields:
     "missing_milestones": ["list of missing key steps"],
     "suggestions": ["list of improvement suggestions"]
 }}
+"""
 
 
 class PlanningEvaluator(BaseEvaluator):

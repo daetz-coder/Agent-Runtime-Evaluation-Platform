@@ -14,7 +14,7 @@ from app.evaluators.base import BaseEvaluator
 from app.models.schemas import TrajectoryStep, TacticalScore
 
 
-TACTICAL_EVALUATION_PROMPT = You are an expert at evaluating AI agent tactical decisions.
+TACTICAL_EVALUATION_PROMPT = """You are an expert at evaluating AI agent tactical decisions.
 
 ## Goal
 {goal}
@@ -59,6 +59,7 @@ Return a JSON object:
         {{"step": <step_number>, "issue": "<description>", "suggestion": "<improvement>"}}
     ]
 }}
+"""
 
 
 class TacticalEvaluator(BaseEvaluator):

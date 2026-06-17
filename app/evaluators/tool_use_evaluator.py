@@ -14,7 +14,7 @@ from app.evaluators.base import BaseEvaluator
 from app.models.schemas import TrajectoryStep, ToolUseScore
 
 
-TOOL_USE_EVALUATION_PROMPT = You are an expert at evaluating AI agent tool usage.
+TOOL_USE_EVALUATION_PROMPT = """You are an expert at evaluating AI agent tool usage.
 
 ## Goal
 {goal}
@@ -56,6 +56,7 @@ Return a JSON object:
         {{"tool": "<name>", "issue": "<description>", "suggestion": "<improvement>"}}
     ]
 }}
+"""
 
 
 class ToolUseEvaluator(BaseEvaluator):

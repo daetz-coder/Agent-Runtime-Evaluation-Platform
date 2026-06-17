@@ -14,7 +14,7 @@ from app.evaluators.base import BaseEvaluator
 from app.models.schemas import TrajectoryStep, ReplanScore
 
 
-REPLAN_EVALUATION_PROMPT = You are an expert at evaluating AI agent replanning decisions.
+REPLAN_EVALUATION_PROMPT = """You are an expert at evaluating AI agent replanning decisions.
 
 ## Goal
 {goal}
@@ -65,6 +65,7 @@ Return a JSON object:
         {{"step": <step_number>, "reason": "<why replan was unnecessary>"}}
     ]
 }}
+"""
 
 
 class ReplanEvaluator(BaseEvaluator):
