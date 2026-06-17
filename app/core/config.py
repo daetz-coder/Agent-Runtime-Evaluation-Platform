@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
 
+    # Evaluation Adapter
+    EVAL_ENABLED: bool = True
+    EVAL_AUTO_COLLECT: bool = True
+    EVAL_BATCH_SIZE: int = 10
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
