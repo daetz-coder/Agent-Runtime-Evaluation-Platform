@@ -17,6 +17,12 @@
 2. **Memory Retention Score** - Long-running Agent 的核心问题
 3. **Replan Evaluation** - 最有意思的评估维度
 
+### 💰 成本优势
+
+使用 **DeepSeek API**，成本仅为 OpenAI 的 1/30：
+- DeepSeek: ¥1/百万tokens
+- OpenAI GPT-4: $30/百万tokens (约 ¥210)
+
 ## 🏗️ 系统架构
 
 ```
@@ -79,36 +85,56 @@ Agent Runtime Evaluation Platform/
 
 ## 🚀 快速开始
 
-### 后端启动
+### 方式一：一键启动 (Windows)
 
 ```bash
-# 1. 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# 双击运行 start.bat
+start.bat
+```
 
-# 2. 安装依赖
+### 方式二：手动启动
+
+#### 1. 配置 DeepSeek API
+
+```bash
+# 复制环境变量配置
+cp .env.example .env
+
+# 编辑 .env 文件，添加 DeepSeek API Key
+DEEPSEEK_API_KEY="sk-your-api-key-here"
+DEFAULT_LLM_PROVIDER="deepseek"
+```
+
+> 📖 详细配置指南：[DEEPSEEK_SETUP.md](DEEPSEEK_SETUP.md)
+
+#### 2. 启动后端
+
+```bash
+# 创建虚拟环境
+python -m venv venv
+
+# 激活虚拟环境 (Windows)
+venv\Scripts\Activate.ps1
+
+# 安装依赖
 pip install -e .
 
-# 3. 配置环境变量
-cp .env.example .env
-# 编辑 .env 添加 API 密钥
-
-# 4. 启动后端
+# 启动后端
 python -m app.main
 ```
 
 后端运行在 http://localhost:8000
 
-### 前端启动
+#### 3. 启动前端
 
 ```bash
-# 1. 进入前端目录
+# 进入前端目录
 cd frontend
 
-# 2. 安装依赖
+# 安装依赖
 npm install
 
-# 3. 启动开发服务器
+# 启动开发服务器
 npm run dev
 ```
 
@@ -251,6 +277,7 @@ GET    /api/v1/reports/dimensions/{dim}   # 维度统计
 - [快速开始指南](docs/getting_started.md)
 - [前端开发文档](frontend/README.md)
 - [项目总结文档](PROJECT_SUMMARY.md)
+- [DeepSeek 配置指南](DEEPSEEK_SETUP.md)
 
 ## 🤝 贡献指南
 

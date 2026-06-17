@@ -21,17 +21,28 @@ class BaseEvaluator(ABC):
 
     def _get_default_llm(self) -> BaseChatModel:
         """Get default LLM based on configuration."""
-        if settings.DEFAULT_LLM_PROVIDER == "anthropic":
+        provider = settings.DEFAULT_LLM_PROVIDER.lower()
+
+        if provider == "anthropic":
             return ChatAnthropic(
                 model=settings.DEFAULT_LLM_MODEL,
                 anthropic_api_key=settings.ANTHROPIC_API_KEY,
                 temperature=0,
             )
-        return ChatOpenAI(
-            model=settings.DEFAULT_LLM_MODEL,
-            openai_api_key=settings.OPENAI_API_KEY,
-            temperature=0,
-        )
+        elif provider == "deepseek":
+            # DeepSeek API is compatible with OpenAI API format
+            return ChatOpenAI(
+                model=settings.DEEPSEEK_MODEL,
+                openai_api_key=settings.DEEPSEEK_API_KEY,
+                openai_api_base=settings.DEEPSEEK_BASE_URL,
+                temperature=0,
+            )
+        else:  # openai
+            return ChatOpenAI(
+                model=settings.DEFAULT_LLM_MODEL,
+                openai_api_key=settings.OPENAI_API_KEY,
+                temperature=0,
+            )
 
     @abstractmethod
     async def evaluate(

@@ -4,7 +4,6 @@ Application configuration using pydantic-settings.
 
 from typing import List
 from pydantic_settings import BaseSettings
-from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -21,7 +20,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/agent_eval"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./agent_eval.db"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -29,10 +28,15 @@ class Settings(BaseSettings):
     # LLM Providers
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    DEEPSEEK_API_KEY: str = ""
+
+    # DeepSeek Configuration
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+    DEEPSEEK_MODEL: str = "deepseek-v4-flash"
 
     # Default LLM Configuration
-    DEFAULT_LLM_PROVIDER: str = "openai"
-    DEFAULT_LLM_MODEL: str = "gpt-4-turbo-preview"
+    DEFAULT_LLM_PROVIDER: str = "deepseek"
+    DEFAULT_LLM_MODEL: str = "deepseek-v4-flash"
 
     # Observability
     OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
