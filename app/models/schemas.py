@@ -37,7 +37,7 @@ class TrajectoryStep(BaseModel):
     action_type: str = Field(..., description="Type: plan, tool_call, think, replan")
     action_detail: Dict[str, Any]
     observation: Optional[str] = None
-    timestamp: datetime
+    timestamp: Optional[datetime] = None
 
 
 class TrajectoryCreate(BaseModel):
