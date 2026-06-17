@@ -51,7 +51,15 @@
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                 Database (PostgreSQL)                        │
+│                 Database (SQLite/PostgreSQL)                 │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                    Adapters (可插拔集成)                      │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐│
+│  │  LLM Proxy     │  │  LangGraph     │  │  Callback      ││
+│  │  (任何框架)     │  │  Adapter       │  │  Handler       ││
+│  └────────────────┘  └────────────────┘  └────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -60,6 +68,13 @@
 ```
 Agent Runtime Evaluation Platform/
 ├── app/                          # 后端代码
+│   ├── adapters/                 # 可插拔适配器 ⭐
+│   │   ├── __init__.py           # 适配器入口
+│   │   ├── llm_proxy.py          # LLM Proxy（任何框架）
+│   │   ├── langgraph.py          # LangGraph Adapter
+│   │   └── callback.py           # LangChain Callback
+│   ├── collectors/               # 数据收集器
+│   │   └── trajectory.py         # 轨迹收集
 │   ├── api/v1/endpoints/         # API 端点
 │   ├── core/                     # 配置管理
 │   ├── db/                       # 数据库层
@@ -80,6 +95,7 @@ Agent Runtime Evaluation Platform/
 ├── tests/                        # 测试代码
 ├── docs/                         # 项目文档
 ├── pyproject.toml                # Python 配置
+├── ADAPTERS.md                   # 适配器使用指南 ⭐
 └── README.md                     # 项目说明
 ```
 
@@ -139,6 +155,47 @@ npm run dev
 ```
 
 前端运行在 http://localhost:3000
+
+## 🔌 集成到你的 Agent（一行代码）
+
+### 方式 1: LangGraph Adapter（推荐）
+
+```python
+# 原来的代码
+graph = build_graph()
+
+# 替换为 ↓
+from app.adapters.langgraph import instrument_langgraph
+graph = instrument_langgraph(build_graph())
+
+# 后续使用完全相同
+result = await graph.ainvoke(initial_state)
+```
+
+### 方式 2: LLM Proxy
+
+```python
+# 原来的代码
+llm = ChatZhipuAI(...)
+
+# 替换为 ↓
+from app.adapters.llm_proxy import create_proxy_llm
+llm = create_proxy_llm(ChatZhipuAI(...))
+
+# 后续使用完全相同
+response = llm.invoke("Hello")
+```
+
+### 方式 3: LangChain Callback
+
+```python
+from app.adapters.callback import create_callback_handler
+
+handler = create_callback_handler()
+llm = ChatZhipuAI(callbacks=[handler])
+```
+
+> 📖 详细使用指南：[ADAPTERS.md](ADAPTERS.md)
 
 ## 🎨 前端功能
 
