@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+httpx
+langchain
+langgraph
+langgraph-checkpoint-sqlite
+langchain-openai
+chromadb
+sentence-transformers
+gitpython
+python-dotenv
+sse-starlette
+pyyaml
+jieba
+rank_bm25
