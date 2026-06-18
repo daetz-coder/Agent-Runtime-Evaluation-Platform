@@ -426,9 +426,32 @@ const handleEvaluate = async (task: any) => {
       { type: 'info' }
     )
 
+    // 发起异步评估，立即返回 evaluation ID（status=in_progress）
     const result = await evaluationApi.run({ task_id: task.id })
-    ElMessage.success('评估完成')
-    router.push(`/evaluations/${result.id}`)
+    ElMessage.info('评估已启动，正在等待结果...')
+
+    // 轮询直到评估完成
+    const evalId = result.id
+    const maxAttempts = 60
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      try {
+        const detail = await evaluationApi.getById(evalId, { silent: true } as any)
+        if (detail.status === 'completed') {
+          ElMessage.success('评估完成')
+          router.push(`/evaluations/${evalId}`)
+          return
+        }
+        if (detail.status === 'failed') {
+          ElMessage.error('评估失败')
+          return
+        }
+      } catch {
+        // 忽略轮询中的临时错误
+      }
+    }
+    ElMessage.warning('评估超时，请稍后在评估列表中查看结果')
+    router.push(`/evaluations/${evalId}`)
   } catch (error) {
     if (error !== 'cancel') {
       console.error('Failed to run evaluation:', error)
