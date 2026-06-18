@@ -190,7 +190,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, VideoPlay, Plus } from '@element-plus/icons-vue'
-import { taskApi, evaluationApi, reportApi } from '@/api'
+import { taskApi, evaluationApi, reportApi, withSilent } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 
@@ -297,47 +297,20 @@ const fetchData = async () => {
 
   loading.value = true
   try {
-    // Fetch task
-    const taskData = await taskApi.getById(taskId)
+    const [taskData, history, trajData] = await Promise.all([
+      taskApi.getById(taskId),
+      reportApi.getTaskHistory(taskId, withSilent()).catch(() => ({ evaluations: [] })),
+      taskApi.getTrajectory(taskId, withSilent()).catch(() => ({ steps: [] })),
+    ])
     task.value = taskData
-
-    // Fetch evaluation history
-    try {
-      const history = await reportApi.getTaskHistory(taskId)
-      evaluations.value = history.evaluations || []
-    } catch {
-      evaluations.value = []
-    }
-
-    // Mock trajectory data (in real app, this would come from API)
-    trajectory.value = [
-      {
-        step_number: 1,
-        action_type: 'plan',
-        action_detail: {
-          goal: task.value.goal,
-          steps: [
-            { description: '搜索相关代码' },
-            { description: '分析问题' },
-            { description: '实现修复' },
-            { description: '运行测试' },
-          ],
-        },
-        timestamp: dayjs().subtract(5, 'minute').toISOString(),
-      },
-      {
-        step_number: 2,
-        action_type: 'tool_call',
-        action_detail: {
-          tool_name: 'search_code',
-          input: { query: 'authentication' },
-        },
-        observation: 'Found: auth.py, login.py, jwt_handler.py',
-        timestamp: dayjs().subtract(4, 'minute').toISOString(),
-      },
-    ]
+    evaluations.value = history.evaluations || []
+    trajectory.value = trajData.steps || []
   } catch (error) {
     console.error('Failed to fetch task:', error)
+    if ((error as any)?.response?.status === 404) {
+      ElMessage.warning('任务不存在或已被删除')
+      router.push('/tasks')
+    }
   } finally {
     loading.value = false
   }

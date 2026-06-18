@@ -160,6 +160,7 @@ let gaugeInstances: echarts.ECharts[] = []
 // Data
 const trendPeriod = ref('week')
 const summaryData = ref<any>(null)
+const dashboardData = ref<any>(null)
 const recentTasks = ref<any[]>([])
 
 // Dimensions config
@@ -189,7 +190,7 @@ const statsCards = computed(() => [
   },
   {
     title: '任务总数',
-    value: recentTasks.value.length,
+    value: dashboardData.value?.total_tasks ?? 0,
     icon: 'Document',
     color: '#e6a23c',
     bgColor: 'rgba(230, 162, 60, 0.1)',
@@ -498,21 +499,20 @@ const initGaugeCharts = () => {
 // Fetch data
 const fetchData = async () => {
   try {
-    // Fetch summary
-    const summary = await reportApi.getSummary()
+    const [summary, dashboard] = await Promise.all([
+      reportApi.getSummary(),
+      taskApi.getDashboard(),
+    ])
     summaryData.value = summary
+    dashboardData.value = dashboard
+    recentTasks.value = dashboard.recent_tasks || []
 
-    // Fetch recent tasks
-    const tasks = await taskApi.list({ limit: 5 })
-    recentTasks.value = tasks
-
-    // Initialize charts after data loaded
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       initRadarChart()
       initLineChart()
       initBarChart()
       initGaugeCharts()
-    }, 100)
+    })
   } catch (error) {
     console.error('Failed to fetch data:', error)
   }

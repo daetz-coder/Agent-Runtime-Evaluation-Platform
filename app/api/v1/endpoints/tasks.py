@@ -109,6 +109,21 @@ async def add_trajectory(
     return {"message": f"Added {len(steps)} trajectory steps", "task_id": task_id}
 
 
+@router.get("/{task_id}/trajectory")
+async def get_trajectory(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get execution trajectory for a task."""
+    service = EvaluationService(db)
+    trajectory = await service.get_trajectory(task_id)
+
+    if trajectory is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return {"task_id": task_id, "steps": trajectory}
+
+
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: str,

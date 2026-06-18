@@ -17,6 +17,7 @@ from app.models.schemas import (
     TrajectoryStep,
     EvaluationRequest,
     EvaluationResponse,
+    EvaluationListItem,
     OverallEvaluation,
 )
 from app.graphs.evaluation_graph import create_evaluation_graph, EvaluationState
@@ -237,6 +238,48 @@ class EvaluationService:
             completed_at=evaluation.completed_at,
             evaluation=overall,
         )
+
+    async def list_evaluations(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        status: Optional[str] = None,
+    ) -> List[EvaluationListItem]:
+        """List evaluations with lightweight score fields."""
+        query = select(Evaluation).order_by(Evaluation.created_at.desc())
+        if status:
+            try:
+                query = query.where(Evaluation.status == EvaluationStatus(status))
+            except ValueError:
+                pass
+        query = query.offset(skip).limit(limit)
+
+        result = await self.db.execute(query)
+        evaluations = result.scalars().all()
+
+        return [
+            EvaluationListItem(
+                id=item.id,
+                task_id=item.task_id,
+                status=item.status.value,
+                created_at=item.created_at,
+                completed_at=item.completed_at,
+                overall_score=item.overall_score,
+                planning_score=item.planning_score,
+                tactical_score=item.tactical_score,
+                tool_use_score=item.tool_use_score,
+                memory_score=item.memory_score,
+                replan_score=item.replan_score,
+            )
+            for item in evaluations
+        ]
+
+    async def get_trajectory(self, task_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Get trajectory steps for a task."""
+        task = await self._get_task_model(task_id)
+        if not task:
+            return None
+        return await self._get_trajectory(task_id)
 
     async def list_tasks(
         self,

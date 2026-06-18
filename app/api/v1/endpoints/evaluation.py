@@ -2,15 +2,27 @@
 Evaluation endpoints.
 """
 
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.models.schemas import EvaluationRequest, EvaluationResponse
+from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem
 from app.services.evaluation_service import EvaluationService
 
 router = APIRouter()
+
+
+@router.get("/", response_model=List[EvaluationListItem])
+async def list_evaluations(
+    skip: int = 0,
+    limit: int = 100,
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """List evaluations with pagination."""
+    service = EvaluationService(db)
+    return await service.list_evaluations(skip=skip, limit=limit, status=status)
 
 
 @router.post("/", response_model=EvaluationResponse, status_code=202)

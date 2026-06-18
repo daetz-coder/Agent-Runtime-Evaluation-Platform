@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Agent Evaluation Platform"
     APP_ENV: str = "development"
     DEBUG: bool = True
+    SQL_ECHO: bool = False
     SECRET_KEY: str = "change-me-in-production"
 
     # Server
