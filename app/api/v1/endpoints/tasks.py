@@ -141,3 +141,22 @@ async def get_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     return task
+
+
+@router.delete("/{task_id}")
+async def delete_task(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete a task and all its trajectory and evaluation records.
+
+    - **task_id**: UUID of the task
+    """
+    service = EvaluationService(db)
+    deleted = await service.delete_task(task_id)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return {"message": "Task deleted", "task_id": task_id}

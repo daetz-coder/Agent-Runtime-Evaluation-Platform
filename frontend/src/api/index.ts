@@ -63,6 +63,10 @@ export const taskApi = {
   addTrajectory(taskId: string, steps: any[]) {
     return api.post(`/tasks/${taskId}/trajectory`, steps)
   },
+
+  delete(id: string) {
+    return api.delete(`/tasks/${id}`)
+  },
 }
 
 // Evaluation API
@@ -77,6 +81,10 @@ export const evaluationApi = {
 
   getById(id: string, config?: ApiRequestConfig) {
     return api.get(`/evaluations/${id}`, config)
+  },
+
+  delete(id: string) {
+    return api.delete(`/evaluations/${id}`)
   },
 }
 

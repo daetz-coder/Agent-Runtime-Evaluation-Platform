@@ -64,45 +64,43 @@
       </el-card>
 
       <!-- Dimension Scores -->
-      <el-row :gutter="20" class="dimension-row" v-if="evaluation.status === 'completed'">
-        <el-col :span="8" v-for="dim in dimensions" :key="dim.key">
-          <el-card class="dimension-card" shadow="hover">
-            <div class="dimension-header">
-              <div class="dimension-icon" :style="{ background: dim.bgColor }">
-                <el-icon :size="24" :color="dim.color">
-                  <component :is="dim.icon" />
-                </el-icon>
-              </div>
-              <div class="dimension-title">
-                <h4>{{ dim.name }}</h4>
-                <span class="dimension-score" :style="{ color: dim.color }">
-                  {{ getDimensionScore(dim.key) }}
-                </span>
-              </div>
+      <div class="dimension-grid" v-if="evaluation.status === 'completed'">
+        <el-card v-for="dim in dimensions" :key="dim.key" class="dimension-card" shadow="hover">
+          <div class="dimension-header">
+            <div class="dimension-icon" :style="{ background: dim.bgColor }">
+              <el-icon :size="24" :color="dim.color">
+                <component :is="dim.icon" />
+              </el-icon>
             </div>
+            <div class="dimension-title">
+              <h4>{{ dim.name }}</h4>
+              <span class="dimension-score" :style="{ color: dim.color }">
+                {{ getDimensionScore(dim.key) }}
+              </span>
+            </div>
+          </div>
 
-            <div class="dimension-detail">
-              <div v-for="(metric, key) in dim.metrics" :key="key" class="metric-item">
-                <span class="metric-name">{{ metric }}</span>
-                <el-progress
-                  :percentage="getMetricScore(dim.key, key)"
-                  :color="getScoreColor(getMetricScore(dim.key, key))"
-                  :stroke-width="8"
-                  :show-text="false"
-                />
-                <span class="metric-value">{{ getMetricScore(dim.key, key) }}</span>
-              </div>
+          <div class="dimension-detail">
+            <div v-for="(metric, key) in dim.metrics" :key="key" class="metric-item">
+              <span class="metric-name">{{ metric }}</span>
+              <el-progress
+                :percentage="getMetricScore(dim.key, key)"
+                :color="getScoreColor(getMetricScore(dim.key, key))"
+                :stroke-width="8"
+                :show-text="false"
+              />
+              <span class="metric-value">{{ getMetricScore(dim.key, key) }}</span>
             </div>
+          </div>
 
-            <div class="dimension-feedback">
-              <p>{{ getDimensionFeedback(dim.key) }}</p>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+          <div class="dimension-feedback">
+            <p>{{ getDimensionFeedback(dim.key) }}</p>
+          </div>
+        </el-card>
+      </div>
 
       <!-- Detailed Analysis -->
-      <el-card class="analysis-card" shadow="hover">
+      <el-card class="analysis-card" shadow="hover" v-if="evaluation.status === 'completed'">
         <template #header>
           <div class="card-header">
             <span>详细分析</span>
@@ -354,7 +352,9 @@ const getStepTypeName = (type: string) => {
 }
 
 const formatTime = (time: string) => {
-  return dayjs(time).format('HH:mm:ss')
+  if (!time) return ''
+  const d = time.endsWith('Z') || time.includes('+') ? time : time + 'Z'
+  return dayjs(d).format('HH:mm:ss')
 }
 
 const formatActionDetail = (detail: any) => {
@@ -576,7 +576,10 @@ watch(selectedDimension, () => {
     }
   }
 
-  .dimension-row {
+  .dimension-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
     margin-bottom: 20px;
   }
 

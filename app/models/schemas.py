@@ -150,6 +150,7 @@ class EvaluationListItem(BaseModel):
     """Lightweight evaluation item for list views."""
     id: str
     task_id: str
+    task_goal: Optional[str] = None
     status: str
     created_at: datetime
     completed_at: Optional[datetime] = None

@@ -133,3 +133,22 @@ async def quick_evaluation(
         raise HTTPException(status_code=500, detail="Evaluation failed")
 
     return evaluation
+
+
+@router.delete("/{evaluation_id}")
+async def delete_evaluation(
+    evaluation_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete an evaluation record.
+
+    - **evaluation_id**: UUID of the evaluation
+    """
+    service = EvaluationService(db)
+    deleted = await service.delete_evaluation(evaluation_id)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+
+    return {"message": "Evaluation deleted", "evaluation_id": evaluation_id}
