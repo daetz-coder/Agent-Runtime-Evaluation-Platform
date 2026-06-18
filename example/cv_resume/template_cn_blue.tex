@@ -1,0 +1,223 @@
+%# -*- coding:utf-8 -*-
+%% start of file `template_en.tex'.
+%% Copyright 2006-1008 Xavier Danaux (xdanaux@gmail.com).
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License version 1.3c,
+% available at http://www.latex-project.org/lppl/.
+
+
+\documentclass[11pt,a4paper]{moderncv}
+
+\usepackage{fontspec,xunicode}
+\usepackage[slantfont,boldfont]{xeCJK}
+\usepackage{xcolor}  % replace by the encoding you are using
+
+\usepackage{ifplatform} % 判断平台
+
+
+% \setmainfont{Tahoma}
+\setmainfont{Times New Roman}  % 缺省英文字体.serif是有衬线字体sans serif无衬线字体
+
+\ifwindows
+  % Windows 下使用的代码
+  \setCJKmainfont[ItalicFont=KaiTi, BoldFont=SimHei]{SimSun}  % 衬线字体 缺省中文字体为
+  \setCJKsansfont{SimSun}
+  \setmonofont{FangSong}                 % 等宽字体: FangSong, Consolas
+\fi
+
+\ifmacosx
+  % macOS 下使用的代码
+  \setCJKmainfont[ItalicFont={Kai}, BoldFont={Hei}]{STSong}  % 衬线字体 缺省中文字体为
+  \setCJKsansfont{STSong}
+  \setCJKmonofont{STFangsong}  % 中文等宽字体
+\fi
+
+
+%-----------------------xeCJK下设置中文字体------------------------------%
+\setCJKfamilyfont{song}{SimSun}  % 宋体 song
+\newcommand{\song}{\CJKfamily{song}}
+\setCJKfamilyfont{fs}{FangSong_GB2312}  % 仿宋2312 fs
+\newcommand{\fs}{\CJKfamily{fs}}
+\setCJKfamilyfont{yh}{Microsoft YaHei}  % 微软雅黑 yh
+\newcommand{\yh}{\CJKfamily{yh}}
+\setCJKfamilyfont{hei}{SimHei}  % 黑体  hei
+\newcommand{\hei}{\CJKfamily{hei}}
+\setCJKfamilyfont{hwxh}{STXihei}  % 华文细黑  hwxh
+\newcommand{\hwxh}{\CJKfamily{hwxh}}
+\setCJKfamilyfont{asong}{Adobe Song Std}  % Adobe 宋体  asong
+\newcommand{\asong}{\CJKfamily{asong}}
+\setCJKfamilyfont{ahei}{Adobe Heiti Std}  % Adobe 黑体  ahei
+\newcommand{\ahei}{\CJKfamily{ahei}}
+\setCJKfamilyfont{akai}{Adobe Kaiti Std}  % Adobe 楷体  akai
+\newcommand{\akai}{\CJKfamily{akai}}
+
+
+%------------------------------设置字体大小------------------------%
+\newcommand{\chuhao}{\fontsize{42pt}{\baselineskip}\selectfont}  % 初号
+\newcommand{\xiaochuhao}{\fontsize{36pt}{\baselineskip}\selectfont}  % 小初号
+\newcommand{\yihao}{\fontsize{28pt}{\baselineskip}\selectfont}  % 一号
+\newcommand{\erhao}{\fontsize{21pt}{\baselineskip}\selectfont}  % 二号
+\newcommand{\xiaoerhao}{\fontsize{18pt}{\baselineskip}\selectfont}  % 小二号
+\newcommand{\sanhao}{\fontsize{15.75pt}{\baselineskip}\selectfont}  % 三号
+\newcommand{\sihao}{\fontsize{14pt}{\baselineskip}\selectfont}  % 四号
+\newcommand{\xiaosihao}{\fontsize{12pt}{\baselineskip}\selectfont}  % 小四号
+\newcommand{\wuhao}{\fontsize{10.5pt}{\baselineskip}\selectfont}  % 五号
+\newcommand{\subwuhao}{\fontsize{10pt}{\baselineskip}\selectfont}  % 次五号
+\newcommand{\xiaowuhao}{\fontsize{9pt}{\baselineskip}\selectfont}  % 小五号
+\newcommand{\liuhao}{\fontsize{7.875pt}{\baselineskip}\selectfont}  % 六号
+\newcommand{\qihao}{\fontsize{5.25pt}{\baselineskip}\selectfont}  % 七号
+
+
+% \usepackage{fontawesome}
+% \setCJKmainfont[BoldFont={WenQuanYi Micro Hei/Bold}]{WenQuanYi Micro Hei}
+% \defaultfontfeatures{Mapping=tex-text}
+% \XeTeXlinebreaklocale "zh"
+% \XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt
+% moderncv themes
+\moderncvtheme[blue]{classic}  % optional argument are 'blue' (default), 'orange', 'red', 'green', 'grey' and 'roman' (for roman fonts, instead of sans serif fonts)
+% \moderncvtheme[green]{classic}  % idem
+% \moderncvtheme[blue,roman]{hht}
+% character encoding
+
+
+
+% adjust the page margins
+\usepackage[scale=0.88, top=6mm, bottom=6mm]{geometry}
+\setlength{\hintscolumnwidth}{2.5cm}
+\AtBeginDocument{\setlength{\maketitlenamewidth}{5cm}}
+\AtBeginDocument{\recomputelengths}
+
+% compact itemize spacing
+\usepackage{enumitem}
+\setlist[itemize]{nosep, leftmargin=1.5em, topsep=1pt, partopsep=0pt, parsep=0pt, itemsep=1pt}
+
+% personal data
+\firstname{詹}
+\familyname{勇}
+\title{个人简历}
+\address{浙江理工大学}{}
+\mobile{18856603434}
+\email{3446914219@qq.com}
+\social[github]{daetz-coder}
+\extrainfo{WeChat: daetz\textunderscore{}zy}
+
+\photo[48pt]{avatar.png}  % '64pt' is the height the picture must be resized to and 'picture' is the name of the picture file; optional, remove the line if not wanted
+% \quote{China\TeX 您的LaTeX乐园，TeX\&\LaTeX 王国}  % optional, remove the line if not wante
+
+% \nopagenumbers{}  % uncomment to suppress automatic page numbering for CVs longer than one page
+
+
+%----------------------------------------------------------------------------------
+%            content
+%----------------------------------------------------------------------------------
+\begin{document}
+\small
+\maketitle
+\vspace*{-10mm}
+
+\section{求职意向}
+\cvline{目标岗位}{Agent 开发工程师}
+\cvline{技术方向}{LLM Agent 系统架构、RAG 检索增强生成、AI 应用全栈开发}
+\cvline{到岗时间}{随时到岗，可全职实习}
+
+\section{教育经历}
+\cventry{2024.09--至今}{硕士}{浙江理工大学}{计算机技术}{研究方向：AI Agent 与智能系统}{}
+\cvlistitem{一等优秀奖学金（1次）、二等优秀奖学金（1次）}
+\cventry{2020.09--2024.06}{本科}{嘉兴大学}{软件工程}{校级优秀毕业生}{}
+\cvlistitem{浙江省政府奖学金（1次）、二等学习优秀奖学金（1次）、三等学习优秀奖学金（5次）}
+
+\section{项目经历}
+\cventry{2025.05--至今}{Wiki-Agent：AI 驱动的智能知识库系统}{独立开发者}{}{}{%
+  基于 LangGraph 的 AI Agent 系统，以对话形式管理知识库，支持 Human-in-the-Loop 机制。\\
+  \textbf{技术栈：}Python 3.12+ / FastAPI / LangGraph / Vue 3 / ChromaDB / BM25 / BGE / Git
+  \begin{itemize}%
+    \item \textbf{Agent 架构：}LangGraph 状态图实现 search--decide--interrupt--execute 工作流，SQLite 持久化 Checkpoint 支持断点续跑
+    \item \textbf{混合检索：}BM25 关键词检索（jieba + TF-IDF）+ BGE 向量语义检索，RRF 融合排序兼顾精确匹配与语义理解
+    \item \textbf{数据同步：}Markdown + ChromaDB + BM25 + Git 四路实时同步；FastAPI SSE 流式输出
+  \end{itemize}}
+
+\cventry{2026.04--至今}{git-reporter：Claude Code 自动化工作报告生成工具}{独立开发者}{}{}{%
+  Claude Code Skill 插件，从 Git 提交历史自动生成日报/周报/月报，支持中英双语与参考文档风格学习。\\
+  \textbf{技术栈：}PowerShell / Claude Code Skill API / Git
+  \begin{itemize}%
+    \item 支持多种输出模式，中英文双语自动识别；参考文档学习（RAG）自动模仿已有报告风格
+    \item 自动提取代码片段、生成 Mermaid 架构图，一键安装跨平台支持
+  \end{itemize}}
+
+\cventry{2024.03--2024.04}{上海因致信息科技有限公司}{前端开发工程师（实习）}{}{}{%
+  将 Pisces 项目从 ASP.NET 架构重构至 YTP 框架，负责页面组件化、国际化、权限管理与数据流管理。\\
+  \textbf{技术栈：}Vue 2 / Element UI / TypeScript / Axios / i18n
+  \begin{itemize}%
+    \item 页面重构与组件化开发，实现单页面及主从表 CRUD 功能
+    \item 国际化（i18n）支持中英文切换；基于角色的路由与按钮级权限控制
+    \item 封装统一 Axios 请求层，统一错误处理与 Token 刷新机制
+  \end{itemize}}
+
+\section{技能}
+\cvline{Agent 开发}{LangGraph 状态图 Agent、Human-in-the-Loop、持久化 Checkpoint、RAG（BM25 + BGE + RRF 融合）、ChromaDB 向量数据库、SSE 流式交互}
+\cvline{LLM 集成}{GLM-4 / ZhipuAI API 调用、Claude Code Skill 开发、结构化 Prompt 设计、多轮对话管理}
+\cvline{深度学习}{PyTorch、CNN / ResNet / LSTM / Transformer、MAML 元学习、PCA / t-SNE 降维分析}
+\cvline{全栈开发}{后端：Python / FastAPI / SpringBoot；前端：Vue 3 / Vue 2 / Element UI / TypeScript；数据库：MySQL / SQLite}
+\cvline{工程工具}{Git 版本控制、LaTeX、MATLAB、AutoDL 云平台、Zotero 文献管理、CET-4}
+
+% \subsection{Vocational}
+% \cventry{year--year}{Job title}{Employer}{City}{}{Description}  % arguments 3 to 6 are optional
+% \cventry{year--year}{Job title}{Employer}{City}{}{Description}  % arguments 3 to 6 are optional
+% \subsection{Miscellaneous}
+% \cventry{year--year}{Job title}{Employer}{City}{}{Description line 1\newline{}Description line 2}% arguments 3 to 6 are optional
+
+% \section{Languages}
+% \cvlanguage{language 1}{Skill level}{Comment}
+% \cvlanguage{language 2}{Skill level}{Comment}
+% \cvlanguage{language 3}{Skill level}{Comment}
+
+% \section{Computer skills}
+% \cvcomputer{category 1}{XXX, YYY, ZZZ}{category 4}{XXX, YYY, ZZZ}
+% \cvcomputer{category 2}{XXX, YYY, ZZZ}{category 5}{XXX, YYY, ZZZ}
+% \cvcomputer{category 3}{XXX, YYY, ZZZ}{category 6}{XXX, YYY, ZZZ}
+
+% \section{Interests}
+% \cvline{篮球}{\small 体力与技巧}
+% \cvline{hobby 2}{\small Description}
+% \cvline{hobby 3}{\small Description}
+
+% \renewcommand{\listitemsymbol}{-}  % change the symbol for lists
+
+% \section{Extra 1}
+% \cvlistitem{Item 1}
+% \cvlistitem{Item 2}
+% \cvlistitem[+]{Item 3}  % optional other symbol% XeLaTeX can use any Mac OS X font. See the setromanfont command below.
+% Input to XeLaTeX is full Unicode, so Unicode characters can be typed directly into the source.
+
+% The next lines tell TeXShop to typeset with xelatex, and to open and save the source with Unicode encoding.
+
+% !TEX TS-program = xelatex
+% !TEX encoding = UTF-8 Unicode
+
+% \section{Extra 2}
+% \cvlistdoubleitem[\Neutral]{Item 1}{Item 4}
+% \cvlistdoubleitem[\Neutral]{Item 2}{Item 5}
+% \cvlistdoubleitem[\Neutral]{Item 3}{}
+
+%% Publications from a BibTeX file
+% \nocite{*}
+% \bibliographystyle{plain}
+% \bibliography{publications}  % 'publications' is the name of a BibTeX file
+
+% \begin{thebibliography}{}
+% \bibitem[]{} 移动增强现实可视化综述[C]. ChinaVis 2017.
+% \end{thebibliography}
+
+
+\end{document}
+
+
+%% end of file `template_en.tex'.
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-command-extra-options: "-shell-escape"
+%%% TeX-master: t
+%%% TeX-engine: xetex
+%%% End:
