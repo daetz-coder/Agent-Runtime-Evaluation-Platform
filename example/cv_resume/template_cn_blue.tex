@@ -128,37 +128,42 @@
 \cvlistitem{浙江省政府奖学金（1次）、二等学习优秀奖学金（1次）、三等学习优秀奖学金（5次）}
 
 \section{项目经历}
+\cventry{2025.03--至今}{Agent Runtime Evaluation Platform：AI Agent 运行时质量评估平台}{独立开发者}{}{}{%
+  专业的 AI Agent 运行时质量评估平台，用于评估 Agent 的规划、战术决策、工具使用、记忆保持和重规划能力，填补了 Agent 运行时评估的空白。\\
+  \textbf{技术栈：}Python / FastAPI / LangGraph / Vue 3 / ECharts / SQLAlchemy / DeepSeek API
+  \begin{itemize}%
+    \item \textbf{创新评估维度：}设计并实现 Planning Quality Score、Memory Retention Score、Replan Evaluation 三个原创评估维度
+    \item \textbf{可插拔架构：}设计 Adapter 模式支持 LangGraph、LLM Proxy、LangChain Callback 三种集成方式，一行代码接入
+    \item \textbf{可视化分析：}ECharts 雷达图、趋势图、热力图等多维度可视化，支持实时评估监控和历史对比分析
+    \item \textbf{成本优化：}采用 DeepSeek API，成本仅为 OpenAI 的 1/30，实现低成本大规模评估
+  \end{itemize}}
+
 \cventry{2025.05--至今}{Wiki-Agent：AI 驱动的智能知识库系统}{独立开发者}{}{}{%
-  基于 LangGraph 的 AI Agent 系统，以对话形式管理知识库，支持 Human-in-the-Loop 机制。\\
-  \textbf{技术栈：}Python 3.12+ / FastAPI / LangGraph / Vue 3 / ChromaDB / BM25 / BGE / Git
+  基于 LangGraph 的 AI Agent 系统，以对话形式管理知识库，支持 Human-in-the-Loop 机制和断点续跑。\\
+  \textbf{技术栈：}Python 3.12+ / FastAP
+  I / LangGraph / Vue 3 / ChromaDB / BM25 / BGE / Git
   \begin{itemize}%
     \item \textbf{Agent 架构：}LangGraph 状态图实现 search--decide--interrupt--execute 工作流，SQLite 持久化 Checkpoint 支持断点续跑
     \item \textbf{混合检索：}BM25 关键词检索（jieba + TF-IDF）+ BGE 向量语义检索，RRF 融合排序兼顾精确匹配与语义理解
     \item \textbf{数据同步：}Markdown + ChromaDB + BM25 + Git 四路实时同步；FastAPI SSE 流式输出
   \end{itemize}}
 
-\cventry{2026.04--至今}{git-reporter：Claude Code 自动化工作报告生成工具}{独立开发者}{}{}{%
-  Claude Code Skill 插件，从 Git 提交历史自动生成日报/周报/月报，支持中英双语与参考文档风格学习。\\
-  \textbf{技术栈：}PowerShell / Claude Code Skill API / Git
+\cventry{2026.04--至今}{git-reporter：智能工作报告分析引擎}{独立开发者}{}{}{%
+  基于 Git 历史的智能工作报告生成与分析系统，集成 Claude Code Skill 和独立分析引擎，支持多维度开发效能分析。\\
+  \textbf{技术栈：}Python / FastAPI / SQLAlchemy / Pandas / Claude Code Skill API / Git
   \begin{itemize}%
-    \item 支持多种输出模式，中英文双语自动识别；参考文档学习（RAG）自动模仿已有报告风格
-    \item 自动提取代码片段、生成 Mermaid 架构图，一键安装跨平台支持
-  \end{itemize}}
-
-\cventry{2024.03--2024.04}{上海因致信息科技有限公司}{前端开发工程师（实习）}{}{}{%
-  将 Pisces 项目从 ASP.NET 架构重构至 YTP 框架，负责页面组件化、国际化、权限管理与数据流管理。\\
-  \textbf{技术栈：}Vue 2 / Element UI / TypeScript / Axios / i18n
-  \begin{itemize}%
-    \item 页面重构与组件化开发，实现单页面及主从表 CRUD 功能
-    \item 国际化（i18n）支持中英文切换；基于角色的路由与按钮级权限控制
-    \item 封装统一 Axios 请求层，统一错误处理与 Token 刷新机制
+    \item \textbf{智能分析引擎：}实现代码质量、开发效率、团队协作、技术债务四维度深度分析，自动生成 AI 洞察和改进建议
+    \item \textbf{效能度量：}计算公交车系数、专注时间比例、上下文切换频率、返工比例等 10+ 效能指标
+    \item \textbf{技术债务量化：}自动识别 TODO/FIXME/HACK 标记，量化技术债务热点和趋势，生成清理优先级建议
+    \item \textbf{团队协作分析：}知识分布热力图、结对编程检测、代码所有权分析，识别团队协作风险
   \end{itemize}}
 
 \section{技能}
-\cvline{Agent 开发}{LangGraph 状态图 Agent、Human-in-the-Loop、持久化 Checkpoint、RAG（BM25 + BGE + RRF 融合）、ChromaDB 向量数据库、SSE 流式交互}
-\cvline{LLM 集成}{GLM-4 / ZhipuAI API 调用、Claude Code Skill 开发、结构化 Prompt 设计、多轮对话管理}
+\cvline{Agent 开发}{LangGraph 状态图 Agent、Human-in-the-Loop、持久化 Checkpoint、RAG（BM25 + BGE + RRF 融合）、ChromaDB 向量数据库、SSE 流式交互、Agent 运行时评估}
+\cvline{LLM 集成}{DeepSeek / GLM-4 / ZhipuAI API 调用、Claude Code Skill 开发、结构化 Prompt 设计、多轮对话管理、成本优化}
+\cvline{效能分析}{代码质量评估、开发效率度量、团队协作分析、技术债务量化、公交车系数、知识分布分析}
 \cvline{深度学习}{PyTorch、CNN / ResNet / LSTM / Transformer、MAML 元学习、PCA / t-SNE 降维分析}
-\cvline{全栈开发}{后端：Python / FastAPI / SpringBoot；前端：Vue 3 / Vue 2 / Element UI / TypeScript；数据库：MySQL / SQLite}
+\cvline{全栈开发}{后端：Python / FastAPI / SpringBoot；前端：Vue 3 / Vue 2 / Element UI / TypeScript；数据库：MySQL / SQLite / ChromaDB}
 \cvline{工程工具}{Git 版本控制、LaTeX、MATLAB、AutoDL 云平台、Zotero 文献管理、CET-4}
 
 % \subsection{Vocational}
