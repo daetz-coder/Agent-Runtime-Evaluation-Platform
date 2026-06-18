@@ -19,6 +19,7 @@ from langgraph.types import Command, interrupt
 from app.agent import knowledge_agent
 from app.agent.tools import crud_tools, search_tools
 from app.config import settings
+from app.evaluation import EvaluationTrace, get_eval_trace
 
 _CHECKPOINT_DB = os.path.join(os.path.dirname(settings.DB_PATH), "checkpoints.db")
 os.makedirs(os.path.dirname(_CHECKPOINT_DB), exist_ok=True)
@@ -98,16 +99,31 @@ async def _emit(queue: asyncio.Queue | None, event: dict) -> None:
 # ── 节点 ──────────────────────────────────────────────────────
 
 
-async def search(state: WikiState) -> WikiState:
+async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     """混合检索知识库"""
     print("[Wiki Agent] 搜索知识库...")
     user_message = state["user_message"]
+    trace = get_eval_trace(config)
+    started = asyncio.get_running_loop().time()
     results = search_tools.hybrid_search(user_message, limit=3)
 
     wiki_text = None
     if results:
         lines = [f"- {r['title']} ({r['path']}): {r['snippet']}" for r in results[:3]]
         wiki_text = "\n".join(lines)
+
+    if trace:
+        trace.record_tool_call(
+            "hybrid_search",
+            {"query": user_message, "limit": 3},
+            {
+                "result_count": len(results),
+                "results": results,
+                "wiki_text": wiki_text,
+            },
+            duration_ms=round((asyncio.get_running_loop().time() - started) * 1000, 2),
+            call_id=f"hybrid_search:{user_message}",
+        )
 
     return {
         **state,
@@ -123,6 +139,7 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     configurable = _get_configurable(config)
     queue: asyncio.Queue | None = configurable.get("event_queue")
     chat_history: list[BaseMessage] = configurable.get("chat_history") or []
+    trace = get_eval_trace(config)
 
     wiki_text = state.get("wiki_text")
     if wiki_text:
@@ -130,15 +147,36 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
 
     messages = _build_llm_messages(state, chat_history)
     collected = ""
+    started = asyncio.get_running_loop().time()
 
-    if queue is not None:
-        async for chunk in chat_llm.astream(messages):
-            if chunk.content:
-                collected += chunk.content
-                await _emit(queue, {"type": "content", "text": chunk.content})
-    else:
-        response = await chat_llm.ainvoke(messages)
-        collected = response.content or ""
+    try:
+        if queue is not None:
+            async for chunk in chat_llm.astream(messages):
+                if chunk.content:
+                    collected += chunk.content
+                    await _emit(queue, {"type": "content", "text": chunk.content})
+        else:
+            response = await chat_llm.ainvoke(messages)
+            collected = response.content or ""
+    finally:
+        if trace:
+            trace.record(
+                "llm_call",
+                {
+                    "model": settings.ZHIPUAI_CHAT_MODEL,
+                    "streaming": queue is not None,
+                    "messages": [
+                        {
+                            "role": getattr(message, "type", "unknown"),
+                            "content": str(getattr(message, "content", "")),
+                        }
+                        for message in messages
+                    ],
+                    "duration_ms": round((asyncio.get_running_loop().time() - started) * 1000, 2),
+                    "response_chars": len(collected),
+                },
+                observation=collected,
+            )
 
     return {**state, "ai_response": collected, "stage": "respond"}
 
@@ -148,6 +186,7 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
     print("[Wiki Agent] 分析对话...")
     configurable = _get_configurable(config)
     queue: asyncio.Queue | None = configurable.get("event_queue")
+    trace = get_eval_trace(config)
 
     user_message = state["user_message"]
     ai_response = state.get("ai_response", "")
@@ -161,6 +200,7 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
 
     await _emit(queue, {"type": "status", "message": "正在分析对话内容..."})
 
+    started = asyncio.get_running_loop().time()
     decision = await knowledge_agent.decide_action(user_message, ai_response)
     decision_dict = decision.to_dict()
 
@@ -168,15 +208,29 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
         stem = decision_dict["path"].replace(".md", "").split("/")[-1]
         decision_dict["title"] = stem
 
+    if trace:
+        trace.record(
+            "think",
+            {
+                "thought": "Knowledge update decision completed",
+                "decision": decision_dict,
+                "duration_ms": round((asyncio.get_running_loop().time() - started) * 1000, 2),
+            },
+            observation=decision_dict.get("reason"),
+        )
+
     return {**state, "decision": decision_dict, "stage": "decide"}
 
 
-async def execute(state: WikiState) -> WikiState:
+async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
     """Human-in-the-Loop：等待用户确认后执行 CRUD"""
+    trace = get_eval_trace(config)
     user_confirmed = interrupt({})
 
     if not user_confirmed:
         print("[Wiki Agent] 用户取消操作")
+        if trace:
+            trace.record("think", {"thought": "User cancelled knowledge-base action"})
         return {
             **state,
             "action_result": {"status": "cancelled", "message": "用户取消"},
@@ -190,6 +244,7 @@ async def execute(state: WikiState) -> WikiState:
     action = decision.get("action")
     print(f"[Wiki Agent] 用户确认，执行操作: {action}")
 
+    started = asyncio.get_running_loop().time()
     result = None
     if action == "create":
         result = crud_tools.create_knowledge(
@@ -208,6 +263,19 @@ async def execute(state: WikiState) -> WikiState:
         result = crud_tools.delete_knowledge(decision.get("path", ""))
 
     print(f"[Wiki Agent] 执行结果: {result}")
+    if trace:
+        trace.record_tool_call(
+            f"wiki_{action}",
+            {
+                "title": decision.get("title"),
+                "path": decision.get("path"),
+                "category": decision.get("category"),
+                "tags": decision.get("tags") or [],
+            },
+            result,
+            duration_ms=round((asyncio.get_running_loop().time() - started) * 1000, 2),
+            call_id=f"{action}:{decision.get('path') or decision.get('title')}",
+        )
     return {**state, "action_result": result, "stage": "execute"}
 
 
@@ -276,17 +344,31 @@ def _extraction_from_result(result: dict, thread_id: str) -> dict | None:
 async def run_chat_stream(
     user_message: str,
     chat_history: list[BaseMessage],
+    *,
+    session_id: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """经 LangGraph 运行完整对话流，产出 SSE 事件 dict"""
     graph = await get_wiki_graph()
     thread_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
+    trace = EvaluationTrace()
+    eval_task_id = await trace.start(
+        user_message,
+        {
+            "agent": "example/wiki-agent",
+            "mode": "stream",
+            "session_id": session_id,
+            "thread_id": thread_id,
+            "history_count": len(chat_history),
+        },
+    )
 
     config: RunnableConfig = {
         "configurable": {
             "thread_id": thread_id,
             "event_queue": queue,
             "chat_history": chat_history,
+            "eval_trace": trace,
         }
     }
 
@@ -302,12 +384,16 @@ async def run_chat_stream(
 
     async def _run_graph():
         try:
+            await queue.put({"type": "evaluation_task", "task_id": eval_task_id})
             result = await graph.ainvoke(initial_state, config)
             extraction = _extraction_from_result(result, thread_id)
             if extraction:
                 await queue.put({"type": "extraction", "data": extraction})
+            await trace.finish()
             await queue.put({"type": "_done", "result": result})
         except Exception as e:
+            trace.record("think", {"thought": "Wiki graph failed", "error_type": type(e).__name__}, str(e))
+            await trace.finish(auto_run=False)
             await queue.put({"type": "error", "message": str(e)})
         finally:
             await queue.put(None)
@@ -334,15 +420,29 @@ async def run_chat_stream(
 async def run_chat_invoke(
     user_message: str,
     chat_history: list[BaseMessage],
+    *,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """非流式：经 LangGraph 完成 search → respond → decide（至 interrupt 或结束）"""
     graph = await get_wiki_graph()
     thread_id = str(uuid.uuid4())
+    trace = EvaluationTrace()
+    eval_task_id = await trace.start(
+        user_message,
+        {
+            "agent": "example/wiki-agent",
+            "mode": "invoke",
+            "session_id": session_id,
+            "thread_id": thread_id,
+            "history_count": len(chat_history),
+        },
+    )
     config: RunnableConfig = {
         "configurable": {
             "thread_id": thread_id,
             "event_queue": None,
             "chat_history": chat_history,
+            "eval_trace": trace,
         }
     }
     initial_state: WikiState = {
@@ -354,20 +454,43 @@ async def run_chat_invoke(
         "action_result": None,
         "stage": "",
     }
-    result = await graph.ainvoke(initial_state, config)
+    try:
+        result = await graph.ainvoke(initial_state, config)
+    except Exception as exc:
+        trace.record("think", {"thought": "Wiki graph failed", "error_type": type(exc).__name__}, str(exc))
+        await trace.finish(auto_run=False)
+        raise
+    await trace.finish()
     return {
         "content": result.get("ai_response", ""),
         "wiki_text": result.get("wiki_text"),
         "extraction": _extraction_from_result(result, thread_id),
+        "evaluation_task_id": eval_task_id,
     }
 
 
 async def resume_and_execute(thread_id: str, confirm: bool) -> dict:
     """从 checkpoint 恢复，执行或取消知识库操作"""
     graph = await get_wiki_graph()
-    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    trace = EvaluationTrace()
+    eval_task_id = await trace.start(
+        f"{'Confirm' if confirm else 'Cancel'} pending wiki knowledge-base action",
+        {
+            "agent": "example/wiki-agent",
+            "mode": "resume",
+            "thread_id": thread_id,
+            "confirm": confirm,
+        },
+    )
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id, "eval_trace": trace}}
 
-    result = await graph.ainvoke(Command(resume=confirm), config)
+    try:
+        result = await graph.ainvoke(Command(resume=confirm), config)
+    except Exception as exc:
+        trace.record("think", {"thought": "Wiki resume failed", "error_type": type(exc).__name__}, str(exc))
+        await trace.finish(auto_run=False)
+        raise
+    await trace.finish()
 
     action_result = result.get("action_result")
     decision = result.get("decision", {})
@@ -377,10 +500,12 @@ async def resume_and_execute(thread_id: str, confirm: bool) -> dict:
             "status": "cancelled",
             "message": "用户取消操作",
             "decision": decision,
+            "evaluation_task_id": eval_task_id,
         }
 
     return {
         "status": "ok",
         "decision": decision,
         "result": action_result,
+        "evaluation_task_id": eval_task_id,
     }

@@ -154,9 +154,13 @@ class InstrumentedStateGraph:
                     if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls'):
                         if msg.tool_calls:
                             for tc in msg.tool_calls:
-                                self._collector.record_tool_call(
-                                    tool_name=tc.get("name", "unknown"),
-                                    tool_input=tc.get("args", {}),
+                                self._collector.record(
+                                    action_type="tool_decision",
+                                    action_detail={
+                                        "node_name": node_name,
+                                        "tool_name": tc.get("name", "unknown"),
+                                        "input": tc.get("args", {}),
+                                    },
                                 )
 
     def __getattr__(self, name: str) -> Any:

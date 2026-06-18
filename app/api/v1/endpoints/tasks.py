@@ -2,11 +2,13 @@
 Task management endpoints.
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 
 from app.db.database import get_db
+from app.db.models import AgentTask, TaskStatus
 from app.models.schemas import TaskCreate, TaskResponse, TrajectoryStep
 from app.services.evaluation_service import EvaluationService
 
@@ -28,23 +30,42 @@ async def create_task(
     return await service.create_task(task_data)
 
 
-@router.get("/{task_id}", response_model=TaskResponse)
-async def get_task(
-    task_id: str,
+@router.get("/dashboard")
+async def get_tasks_dashboard(
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get task by ID.
+    """Get task dashboard counters and recent tasks."""
+    total_result = await db.execute(select(func.count()).select_from(AgentTask))
+    total_tasks = total_result.scalar_one()
 
-    - **task_id**: UUID of the task
-    """
-    service = EvaluationService(db)
-    task = await service.get_task(task_id)
+    status_counts: Dict[str, int] = {status.value: 0 for status in TaskStatus}
+    status_result = await db.execute(
+        select(AgentTask.status, func.count(AgentTask.id)).group_by(AgentTask.status)
+    )
+    for status, count in status_result.all():
+        status_counts[status.value if hasattr(status, "value") else str(status)] = count
 
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+    recent_result = await db.execute(
+        select(AgentTask).order_by(AgentTask.created_at.desc()).limit(5)
+    )
+    recent_tasks = recent_result.scalars().all()
 
-    return task
+    return {
+        "total_tasks": total_tasks,
+        "status_counts": status_counts,
+        "recent_tasks": [
+            {
+                "id": task.id,
+                "goal": task.goal,
+                "context": task.context,
+                "status": task.status.value,
+                "created_at": task.created_at,
+                "started_at": task.started_at,
+                "completed_at": task.completed_at,
+            }
+            for task in recent_tasks
+        ],
+    }
 
 
 @router.get("/", response_model=List[TaskResponse])
@@ -86,3 +107,22 @@ async def add_trajectory(
         raise HTTPException(status_code=404, detail="Task not found")
 
     return {"message": f"Added {len(steps)} trajectory steps", "task_id": task_id}
+
+
+@router.get("/{task_id}", response_model=TaskResponse)
+async def get_task(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get task by ID.
+
+    - **task_id**: UUID of the task
+    """
+    service = EvaluationService(db)
+    task = await service.get_task(task_id)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return task

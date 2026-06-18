@@ -36,7 +36,7 @@ class TrajectoryStep(BaseModel):
     step_number: int
     action_type: str = Field(..., description="Type: plan, tool_call, think, replan")
     action_detail: Dict[str, Any]
-    observation: Optional[str] = None
+    observation: Optional[Any] = None
     timestamp: Optional[datetime] = None
 
 

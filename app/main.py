@@ -11,10 +11,14 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRoute
 
 from app.core.config import settings
 from app.db.database import init_db, close_db
-from app.api.v1 import api_router
+from app.api.v1.endpoints import evaluation, reports, tasks
+from app.wiki_agent.bootstrap import startup as wiki_agent_startup
+from app.wiki_agent.routers import chat as wiki_chat
+from app.wiki_agent.routers import wiki as wiki_router
 
 
 @asynccontextmanager
@@ -24,6 +28,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print(f"Starting {settings.APP_NAME}...")
     await init_db()
     print("Database initialized")
+
+    print("Starting Wiki Agent...")
+    await wiki_agent_startup()
+    print("Wiki Agent initialized")
 
     yield
 
@@ -70,8 +78,33 @@ Evaluate the runtime quality of AI agents across 5 dimensions:
         allow_headers=["*"],
     )
 
-    # Include API routes
-    app.include_router(api_router, prefix="/api/v1")
+    def register_routes(router, prefix: str, tags: list[str]) -> None:
+        """Register APIRouter routes eagerly for FastAPI versions with lazy includes."""
+        for route in router.routes:
+            if not isinstance(route, APIRoute):
+                continue
+            path = f"{prefix}{route.path}"
+            app.add_api_route(
+                path=path,
+                endpoint=route.endpoint,
+                methods=route.methods,
+                response_model=route.response_model,
+                status_code=route.status_code,
+                tags=tags,
+                summary=route.summary,
+                description=route.description,
+                response_description=route.response_description,
+                responses=route.responses,
+                deprecated=route.deprecated,
+                name=route.name,
+                include_in_schema=route.include_in_schema,
+            )
+
+    register_routes(tasks.router, "/api/v1/tasks", ["tasks"])
+    register_routes(evaluation.router, "/api/v1/evaluations", ["evaluations"])
+    register_routes(reports.router, "/api/v1/reports", ["reports"])
+    register_routes(wiki_router.router, "", ["wiki-agent"])
+    register_routes(wiki_chat.router, "", ["wiki-agent"])
 
     # Health check endpoint
     @app.get("/health")
@@ -94,6 +127,8 @@ Evaluate the runtime quality of AI agents across 5 dimensions:
             "docs": "/docs",
             "health": "/health",
             "api": "/api/v1",
+            "wiki_agent": "/api/wiki",
+            "wiki_chat": "/api/chat",
         }
 
     return app

@@ -50,13 +50,13 @@ class TrajectoryCollector:
         self._step_counter: int = 0
         self._steps: List[Dict[str, Any]] = []
         self._buffer_lock = threading.Lock()
+        self._flush_lock = threading.Lock()
 
         # HTTP 客户端
         self._http: Optional[httpx.Client] = None
 
-        # 配置 - 硬编码评估平台地址
-        # 评估平台运行在 8001 端口
-        self._api_base_url = "http://127.0.0.1:8001"
+        # 评估平台地址，可通过 EVAL_API_BASE_URL 覆盖
+        self._api_base_url = settings.EVAL_API_BASE_URL.rstrip("/")
 
         self._initialized = True
 
@@ -157,7 +157,7 @@ class TrajectoryCollector:
             self._steps.append(step)
 
         # 达到批量大小时上报
-        if len(self._steps) >= 10:
+        if len(self._steps) >= settings.EVAL_BATCH_SIZE:
             self._flush_async()
 
         return step
@@ -174,11 +174,11 @@ class TrajectoryCollector:
             action_type="llm_call",
             action_detail={
                 "model": model,
-                "messages": messages[:3],  # 只保留前 3 条
-                "response": response[:500],  # 截断
+                "messages": messages[:10],
+                "response": response[:4000],
                 "duration_ms": duration_ms,
             },
-            observation=response[:200],
+            observation=response[:4000],
         )
 
     def record_tool_call(
@@ -194,10 +194,10 @@ class TrajectoryCollector:
             action_detail={
                 "tool_name": tool_name,
                 "input": tool_input,
-                "output": tool_output[:500] if tool_output else None,
+                "output": tool_output[:4000] if tool_output else None,
                 "duration_ms": duration_ms,
             },
-            observation=tool_output[:200] if tool_output else None,
+            observation=tool_output[:4000] if tool_output else None,
         )
 
     def record_node_execute(
@@ -211,8 +211,8 @@ class TrajectoryCollector:
             action_type="node_execute",
             action_detail={
                 "node_name": node_name,
-                "input": str(input_data)[:200] if input_data else None,
-                "output": str(output_data)[:200] if output_data else None,
+                "input": str(input_data)[:2000] if input_data else None,
+                "output": str(output_data)[:2000] if output_data else None,
             },
         )
 
@@ -225,25 +225,32 @@ class TrajectoryCollector:
 
     def _flush(self):
         """同步刷新缓冲区"""
-        if not self._steps or not self._task_id:
+        if not self._flush_lock.acquire(blocking=False):
             return
 
-        steps_to_send = self._steps.copy()
-        self._steps = []
-
         try:
-            http = self._get_http()
-            response = http.post(
-                f"/api/v1/tasks/{self._task_id}/trajectory",
-                json=steps_to_send,
-            )
-            response.raise_for_status()
-            logger.debug(f"Sent {len(steps_to_send)} steps")
-        except Exception as e:
-            logger.warning(f"Failed to send trajectory: {e}")
-            # 把数据放回缓冲区
+            if not self._steps or not self._task_id:
+                return
+
             with self._buffer_lock:
-                self._steps = steps_to_send + self._steps
+                steps_to_send = self._steps.copy()
+                self._steps = []
+
+            try:
+                http = self._get_http()
+                response = http.post(
+                    f"/api/v1/tasks/{self._task_id}/trajectory",
+                    json=steps_to_send,
+                )
+                response.raise_for_status()
+                logger.debug(f"Sent {len(steps_to_send)} steps")
+            except Exception as e:
+                logger.warning(f"Failed to send trajectory: {e}")
+                # 把数据放回缓冲区
+                with self._buffer_lock:
+                    self._steps = steps_to_send + self._steps
+        finally:
+            self._flush_lock.release()
 
     def _flush_async(self):
         """异步刷新（在后台线程中执行）"""

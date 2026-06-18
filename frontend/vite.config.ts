@@ -5,6 +5,8 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import path from 'path'
 
+const apiTarget = process.env.VITE_EVAL_API_BASE || 'http://127.0.0.1:8000'
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -25,7 +27,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8001',
+        target: apiTarget,
         changeOrigin: true,
       },
     },

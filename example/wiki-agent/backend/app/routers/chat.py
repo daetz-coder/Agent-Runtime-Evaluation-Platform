@@ -81,7 +81,7 @@ async def stream_response(session_id: str, user_message: str) -> AsyncGenerator[
     extraction_data = None
 
     try:
-        async for event in run_chat_stream(user_message, history):
+        async for event in run_chat_stream(user_message, history, session_id=session_id):
             event_type = event.get("type")
             if event_type == "content":
                 collected += event.get("text", "")
@@ -134,7 +134,7 @@ async def chat_message(req: ChatRequest):
         await session_store.update_session_name(req.session_id, name)
 
     try:
-        result = await run_chat_invoke(req.message, history)
+        result = await run_chat_invoke(req.message, history, session_id=req.session_id)
         await session_store.add_message(
             req.session_id,
             "assistant",
@@ -146,6 +146,7 @@ async def chat_message(req: ChatRequest):
             "content": result["content"],
             "wiki_results": result.get("wiki_text"),
             "extraction": result.get("extraction"),
+            "evaluation_task_id": result.get("evaluation_task_id"),
         }
     except Exception as e:
         raise HTTPException(500, f"LLM 调用失败: {e}")

@@ -66,6 +66,14 @@ def _convert_trajectory_steps(raw_steps: List[Dict[str, Any]]) -> List[Trajector
     return steps
 
 
+def _with_defaults(score: Dict[str, Any], defaults: Dict[str, float]) -> Dict[str, Any]:
+    """Fill required score fields when an evaluator returns partial data after an error."""
+    result: Dict[str, Any] = {key: float(score.get(key, value)) for key, value in defaults.items()}
+    result["overall"] = float(score.get("overall", 0))
+    result["feedback"] = str(score.get("feedback", "Not evaluated"))
+    return result
+
+
 async def validate_input(state: EvaluationState) -> EvaluationState:
     """Validate input state."""
     if not state.get("goal"):
@@ -197,13 +205,34 @@ async def aggregate_results(state: EvaluationState) -> EvaluationState:
     # Generate recommendations
     recommendations = _generate_recommendations(planning, tactical, tool_use, memory, replan)
 
+    planning = _with_defaults(
+        planning,
+        {"coverage": 0, "ordering": 0, "granularity": 0, "completeness": 0},
+    )
+    tactical = _with_defaults(
+        tactical,
+        {"relevance": 0, "efficiency": 0, "correctness": 0},
+    )
+    tool_use = _with_defaults(
+        tool_use,
+        {"selection_quality": 0, "parameter_accuracy": 0, "result_utilization": 0},
+    )
+    memory = _with_defaults(
+        memory,
+        {"retention": 0, "relevance": 0, "consistency": 0},
+    )
+    replan = _with_defaults(
+        replan,
+        {"trigger_appropriateness": 0, "adaptation_quality": 0, "learning_from_failure": 0},
+    )
+
     # Create overall evaluation
     overall_evaluation = OverallEvaluation(
-        planning=PlanningScore(**planning) if planning else PlanningScore(overall=0, feedback="Not evaluated"),
-        tactical=TacticalScore(**tactical) if tactical else TacticalScore(overall=0, feedback="Not evaluated"),
-        tool_use=ToolUseScore(**tool_use) if tool_use else ToolUseScore(overall=0, feedback="Not evaluated"),
-        memory=MemoryScore(**memory) if memory else MemoryScore(overall=0, feedback="Not evaluated"),
-        replan=ReplanScore(**replan) if replan else ReplanScore(overall=0, feedback="Not evaluated"),
+        planning=PlanningScore(**planning),
+        tactical=TacticalScore(**tactical),
+        tool_use=ToolUseScore(**tool_use),
+        memory=MemoryScore(**memory),
+        replan=ReplanScore(**replan),
         overall_score=overall_score,
         summary=summary,
         recommendations=recommendations,

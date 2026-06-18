@@ -8,6 +8,7 @@ own ``app`` package, which would collide with this backend package name.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 import time
@@ -34,6 +35,14 @@ def _short(value: Any, limit: int = 4000) -> Any:
     if isinstance(value, (list, tuple)):
         return [_short(v, limit) for v in value[:50]]
     return _short(str(value), limit)
+
+
+def _observation_text(value: Any, limit: int = 4000) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return _short(value, limit)
+    return _short(json.dumps(value, ensure_ascii=False, default=str), limit)
 
 
 class EvaluationTrace:
@@ -112,7 +121,7 @@ class EvaluationTrace:
                 "step_number": self._step_counter,
                 "action_type": action_type,
                 "action_detail": _short(action_detail),
-                "observation": _short(observation, 4000),
+                "observation": _observation_text(observation, 4000),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self._steps.append(step)
