@@ -279,11 +279,15 @@ const getScoreColor = (score: number) => {
 }
 
 const formatDateTime = (date: string) => {
-  return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
+  if (!date) return '-'
+  const d = date.endsWith('Z') || date.includes('+') ? date : date + 'Z'
+  return dayjs(d).format('YYYY-MM-DD HH:mm:ss')
 }
 
 const formatTime = (time: string) => {
-  return dayjs(time).format('HH:mm:ss')
+  if (!time) return ''
+  const d = time.endsWith('Z') || time.includes('+') ? time : time + 'Z'
+  return dayjs(d).format('HH:mm:ss')
 }
 
 const formatActionDetail = (detail: any) => {

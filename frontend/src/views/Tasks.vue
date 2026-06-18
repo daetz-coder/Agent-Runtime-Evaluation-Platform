@@ -86,7 +86,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click.stop="handleEvaluate(row)">
               评估
@@ -97,6 +97,18 @@
             <el-button type="info" link @click.stop="router.push(`/tasks/${row.id}`)">
               详情
             </el-button>
+            <el-popconfirm
+              title="确定删除该任务及其所有轨迹和评估记录？"
+              confirm-button-text="删除"
+              cancel-button-text="取消"
+              @confirm="handleDeleteTask(row)"
+            >
+              <template #reference>
+                <el-button type="danger" link @click.stop>
+                  删除
+                </el-button>
+              </template>
+            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
@@ -307,7 +319,10 @@ const getStatusText = (status: string) => {
 }
 
 const formatDateTime = (date: string) => {
-  return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
+  if (!date) return '-'
+  // 后端存储 UTC 时间，SQLite 不保留时区信息，需追加 Z 让 dayjs 按 UTC 解析后转本地时间
+  const d = date.endsWith('Z') || date.includes('+') ? date : date + 'Z'
+  return dayjs(d).format('YYYY-MM-DD HH:mm:ss')
 }
 
 const fetchTasks = async () => {
@@ -436,6 +451,16 @@ const handleEvaluate = async (task: any) => {
     if (error !== 'cancel') {
       console.error('Failed to run evaluation:', error)
     }
+  }
+}
+
+const handleDeleteTask = async (task: any) => {
+  try {
+    await taskApi.delete(task.id)
+    ElMessage.success('任务已删除')
+    fetchTasks()
+  } catch (error) {
+    console.error('Failed to delete task:', error)
   }
 }
 

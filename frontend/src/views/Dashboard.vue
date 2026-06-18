@@ -210,7 +210,9 @@ const topIssues = computed(() => {
 
 // Methods
 const formatTime = (time: string) => {
-  return dayjs(time).fromNow()
+  if (!time) return ''
+  const d = time.endsWith('Z') || time.includes('+') ? time : time + 'Z'
+  return dayjs(d).fromNow()
 }
 
 const getStatusType = (status: string) => {

@@ -77,7 +77,11 @@ class EvaluationService:
         task_id: str,
         steps: List[Dict[str, Any]],
     ) -> bool:
-        """Add trajectory steps to a task."""
+        """Add trajectory steps to a task.
+
+        Task status stays PENDING — only transitions to RUNNING when
+        evaluation is manually triggered.
+        """
         # Verify task exists
         task = await self._get_task_model(task_id)
         if not task:
@@ -98,10 +102,6 @@ class EvaluationService:
                 timestamp=step_data.get("timestamp", datetime.now(timezone.utc)),
             )
             self.db.add(trajectory)
-
-        # Update task status
-        task.status = TaskStatus.RUNNING
-        task.started_at = datetime.now(timezone.utc)
 
         await self.db.flush()
         return True
@@ -171,6 +171,11 @@ class EvaluationService:
             )
             self.db.add(evaluation)
             await self.db.flush()
+
+        # Task transitions to RUNNING when evaluation actually starts
+        task.status = TaskStatus.RUNNING
+        task.started_at = datetime.now(timezone.utc)
+        await self.db.flush()
 
         try:
             # Prepare state for graph
@@ -286,8 +291,12 @@ class EvaluationService:
         limit: int = 100,
         status: Optional[str] = None,
     ) -> List[EvaluationListItem]:
-        """List evaluations with lightweight score fields."""
-        query = select(Evaluation).order_by(Evaluation.created_at.desc())
+        """List evaluations with lightweight score fields and task goal."""
+        query = (
+            select(Evaluation, AgentTask.goal)
+            .join(AgentTask, Evaluation.task_id == AgentTask.id)
+            .order_by(Evaluation.created_at.desc())
+        )
         if status:
             try:
                 query = query.where(Evaluation.status == EvaluationStatus(status))
@@ -296,12 +305,13 @@ class EvaluationService:
         query = query.offset(skip).limit(limit)
 
         result = await self.db.execute(query)
-        evaluations = result.scalars().all()
+        rows = result.all()
 
         return [
             EvaluationListItem(
                 id=item.id,
                 task_id=item.task_id,
+                task_goal=goal,
                 status=item.status.value,
                 created_at=item.created_at,
                 completed_at=item.completed_at,
@@ -312,7 +322,7 @@ class EvaluationService:
                 memory_score=item.memory_score,
                 replan_score=item.replan_score,
             )
-            for item in evaluations
+            for item, goal in rows
         ]
 
     async def get_trajectory(self, task_id: str) -> Optional[List[Dict[str, Any]]]:
@@ -348,6 +358,27 @@ class EvaluationService:
             )
             for task in tasks
         ]
+
+    async def delete_task(self, task_id: str) -> bool:
+        """Delete a task and all its trajectory and evaluation records (cascade)."""
+        task = await self._get_task_model(task_id)
+        if not task:
+            return False
+        await self.db.delete(task)
+        await self.db.flush()
+        return True
+
+    async def delete_evaluation(self, eval_id: str) -> bool:
+        """Delete a single evaluation record."""
+        result = await self.db.execute(
+            select(Evaluation).where(Evaluation.id == eval_id)
+        )
+        evaluation = result.scalar_one_or_none()
+        if not evaluation:
+            return False
+        await self.db.delete(evaluation)
+        await self.db.flush()
+        return True
 
     async def _get_task_model(self, task_id: str) -> Optional[AgentTask]:
         """Get task ORM model by ID."""

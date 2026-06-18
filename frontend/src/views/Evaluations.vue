@@ -97,10 +97,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column prop="task_id" label="关联任务" width="280">
+        <el-table-column prop="task_goal" label="关联任务" min-width="200">
           <template #default="{ row }">
             <el-button type="primary" link @click="router.push(`/tasks/${row.task_id}`)">
-              {{ row.task_id.substring(0, 8) }}...
+              {{ row.task_goal || row.task_id.substring(0, 8) + '...' }}
             </el-button>
           </template>
         </el-table-column>
@@ -136,11 +136,23 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="router.push(`/evaluations/${row.id}`)">
               查看详情
             </el-button>
+            <el-popconfirm
+              title="确定删除该评估记录？"
+              confirm-button-text="删除"
+              cancel-button-text="取消"
+              @confirm="handleDeleteEvaluation(row)"
+            >
+              <template #reference>
+                <el-button type="danger" link>
+                  删除
+                </el-button>
+              </template>
+            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
@@ -252,7 +264,9 @@ const getScore = (evaluation: any, dimKey: string) => {
 }
 
 const formatDateTime = (date: string) => {
-  return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
+  if (!date) return '-'
+  const d = date.endsWith('Z') || date.includes('+') ? date : date + 'Z'
+  return dayjs(d).format('YYYY-MM-DD HH:mm:ss')
 }
 
 const fetchEvaluations = async () => {
@@ -275,6 +289,16 @@ const fetchEvaluations = async () => {
 const resetFilters = () => {
   statusFilter.value = ''
   scoreRange.value = [0, 100]
+}
+
+const handleDeleteEvaluation = async (evaluation: any) => {
+  try {
+    await evaluationApi.delete(evaluation.id)
+    ElMessage.success('评估记录已删除')
+    fetchEvaluations()
+  } catch (error) {
+    console.error('Failed to delete evaluation:', error)
+  }
 }
 
 // Lifecycle

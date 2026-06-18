@@ -41,9 +41,9 @@ class AgentTask(Base):
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(SQLEnum(TaskStatus), default=TaskStatus.PENDING)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     trajectory: Mapped[List["AgentTrajectory"]] = relationship(back_populates="task", cascade="all, delete-orphan")
@@ -60,7 +60,7 @@ class AgentTrajectory(Base):
     action_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "plan", "tool_call", "think", "replan"
     action_detail: Mapped[dict] = mapped_column(JSON, nullable=False)
     observation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     # Relationships
     task: Mapped["AgentTask"] = relationship(back_populates="trajectory")
@@ -73,8 +73,8 @@ class Evaluation(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"))
     status: Mapped[EvaluationStatus] = mapped_column(SQLEnum(EvaluationStatus), default=EvaluationStatus.PENDING)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Scores
     planning_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
