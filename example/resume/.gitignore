@@ -3,6 +3,13 @@ logs
 *.log
 npm-debug.log*
 
+# LaTeX 临时文件
+*.aux
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
 # Runtime data
 pids
 *.pid
