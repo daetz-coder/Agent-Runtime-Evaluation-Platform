@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # Evaluation Adapter
     EVAL_ENABLED: bool = True
     EVAL_AUTO_COLLECT: bool = True
+    EVAL_API_BASE_URL: str = "http://127.0.0.1:8000"
     EVAL_BATCH_SIZE: int = 10
 
     class Config:

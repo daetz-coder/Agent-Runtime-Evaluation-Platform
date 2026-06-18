@@ -64,7 +64,7 @@
       </el-header>
 
       <!-- Content -->
-      <el-main class="main">
+      <el-main class="main" :class="{ 'main--full-bleed': route.meta.fullBleed }">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
             <component :is="Component" />
@@ -195,5 +195,12 @@ const openGitHub = () => {
   background: var(--bg-color);
   padding: 20px;
   overflow-y: auto;
+}
+
+.main--full-bleed {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 </style>

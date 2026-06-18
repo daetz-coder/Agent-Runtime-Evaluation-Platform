@@ -46,6 +46,12 @@ const router = createRouter({
           meta: { title: '数据分析', icon: 'TrendCharts' },
         },
         {
+          path: 'wiki-agent',
+          name: 'WikiAgent',
+          component: () => import('@/views/WikiAgent.vue'),
+          meta: { title: 'Wiki Agent', icon: 'Reading', fullBleed: true },
+        },
+        {
           path: 'settings',
           name: 'Settings',
           component: () => import('@/views/Settings.vue'),

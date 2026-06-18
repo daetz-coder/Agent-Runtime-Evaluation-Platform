@@ -3,6 +3,7 @@ Evaluation service for orchestrating agent evaluations.
 """
 
 import uuid
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -83,12 +84,16 @@ class EvaluationService:
 
         # Add trajectory steps
         for step_data in steps:
+            observation = step_data.get("observation")
+            if observation is not None and not isinstance(observation, str):
+                observation = json.dumps(observation, ensure_ascii=False, default=str)
+
             trajectory = AgentTrajectory(
                 task_id=task_id,
                 step_number=step_data.get("step_number", 0),
                 action_type=step_data.get("action_type", "unknown"),
                 action_detail=step_data.get("action_detail", {}),
-                observation=step_data.get("observation"),
+                observation=observation,
                 timestamp=step_data.get("timestamp", datetime.utcnow()),
             )
             self.db.add(trajectory)
@@ -206,15 +211,22 @@ class EvaluationService:
         # Build OverallEvaluation from stored data
         overall = None
         if evaluation.overall_score is not None:
+            feedback = {
+                "planning": evaluation.planning_feedback or {},
+                "tactical": evaluation.tactical_feedback or {},
+                "tool_use": evaluation.tool_use_feedback or {},
+                "memory": evaluation.memory_feedback or {},
+                "replan": evaluation.replan_feedback or {},
+            }
             overall = OverallEvaluation(
-                planning=evaluation.planning_feedback or {},
-                tactical=evaluation.tactical_feedback or {},
-                tool_use=evaluation.tool_use_feedback or {},
-                memory=evaluation.memory_feedback or {},
-                replan=evaluation.replan_feedback or {},
+                planning=feedback["planning"],
+                tactical=feedback["tactical"],
+                tool_use=feedback["tool_use"],
+                memory=feedback["memory"],
+                replan=feedback["replan"],
                 overall_score=evaluation.overall_score,
-                summary="",  # Could regenerate if needed
-                recommendations=[],
+                summary=self._build_summary(feedback, evaluation.overall_score),
+                recommendations=self._build_recommendations(feedback),
             )
 
         return EvaluationResponse(
@@ -279,3 +291,34 @@ class EvaluationService:
             }
             for step in steps
         ]
+
+    def _build_summary(self, feedback: Dict[str, Any], overall_score: float) -> str:
+        """Rebuild a useful summary from persisted dimension feedback."""
+        scores = {
+            name: (value or {}).get("overall", 0)
+            for name, value in feedback.items()
+        }
+        if not scores:
+            return f"Overall score: {overall_score:.1f}/100."
+        strongest = max(scores, key=scores.get)
+        weakest = min(scores, key=scores.get)
+        return (
+            f"Overall score: {overall_score:.1f}/100. "
+            f"Strongest dimension: {strongest} ({scores[strongest]:.1f}). "
+            f"Weakest dimension: {weakest} ({scores[weakest]:.1f})."
+        )
+
+    def _build_recommendations(self, feedback: Dict[str, Any]) -> List[str]:
+        """Rebuild recommendations from persisted dimension scores."""
+        recommendations: List[str] = []
+        labels = {
+            "planning": "Improve planning before execution.",
+            "tactical": "Improve next-action selection and tactical decisions.",
+            "tool_use": "Improve tool selection, parameters, and result use.",
+            "memory": "Improve retention and consistency across context.",
+            "replan": "Improve replanning when failures or new facts appear.",
+        }
+        for name, message in labels.items():
+            if (feedback.get(name) or {}).get("overall", 0) < 60:
+                recommendations.append(message)
+        return recommendations or ["Continue maintaining high performance across all evaluation dimensions."]

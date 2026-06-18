@@ -1,112 +1,66 @@
 # 端口配置说明
 
-## 📊 端口分配
+## 整合后（推荐）
+
+整合后只需启动 **2 个进程**（或运行根目录 `start.bat` 一键启动）：
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| **评估平台后端** | 8001 | FastAPI 后端 |
-| **评估平台前端** | 3000 | Vue 前端 |
-| **webRAGChat** | 8000 | Agent 服务 |
+| 统一后端 | 8000 | 评估平台 API + Wiki Agent API |
+| 统一前端 | 3000 | 评估平台 UI + Wiki Agent 页面 |
 
----
+## 常用地址
 
-## 🔧 配置文件位置
+| 服务 | 地址 |
+|------|------|
+| 评估平台前端 | http://localhost:3000 |
+| 评估平台仪表板 | http://localhost:3000/dashboard |
+| Wiki Agent | http://localhost:3000/wiki-agent |
+| 统一后端 API | http://localhost:8000 |
+| API 文档 | http://localhost:8000/docs |
+| Wiki API | http://localhost:8000/api/wiki |
+| Chat API | http://localhost:8000/api/chat |
 
-### 评估平台后端
+## 一键启动
 
-```env
-# D:\Agent Runtime Evaluation Platform\.env
-HOST="0.0.0.0"
-PORT=8001
+```bat
+start.bat
 ```
 
-### 评估平台前端
+会打开两个窗口：后端（8000）和前端（3000）。
 
-```typescript
-// D:\Agent Runtime Evaluation Platform\frontend\vite.config.ts
-server: {
-  port: 3000,
-  proxy: {
-    '/api': {
-      target: 'http://127.0.0.1:8001',  // 代理到后端
-      changeOrigin: true,
-    },
-  },
-},
-```
+## 手动启动
 
-### webRAGChat
-
-```env
-# D:\2026Agent\webRAGChat\.env
-HOST="0.0.0.0"
-PORT=8000
-```
-
----
-
-## 🚀 启动顺序
-
-```bash
-# 1. 启动评估平台后端 (端口 8001)
-cd D:\Agent\Runtime\Evaluation\Platform
+```bat
+REM 1. 启动统一后端
 python -m app.main
 
-# 2. 启动评估平台前端 (端口 3000)
-cd D:\Agent\Runtime\Evaluation\Platform\frontend
+REM 2. 启动统一前端
+cd frontend
 npm run dev
-
-# 3. 启动 webRAGChat (端口 8000)
-cd D:\2026Agent\webRAGChat
-python run_server.py
 ```
 
----
+## 可配置项
 
-## 🔗 访问地址
+根目录 `.env` 同时配置评估平台与 Wiki Agent：
 
-| 服务 | 地址 | 说明 |
-|------|------|------|
-| 评估平台前端 | http://localhost:3000 | 可视化界面 |
-| 评估平台后端 | http://localhost:8001 | API 接口 |
-| 评估平台文档 | http://localhost:8001/docs | Swagger 文档 |
-| webRAGChat | http://localhost:8000 | Agent 服务 |
-
----
-
-## 💡 为什么这样分配？
-
-- **webRAGChat 用 8000**：这是 Agent 服务的标准端口
-- **评估平台用 8001**：避免与 Agent 服务冲突
-- **前端用 3000**：这是前端开发的标准端口
-
----
-
-## ❓ 常见问题
-
-### Q: 端口被占用怎么办？
-
-A: 检查端口使用情况：
-```bash
-# Windows
-netstat -ano | findstr :8000
-netstat -ano | findstr :8001
-
-# Linux/Mac
-lsof -i :8000
-lsof -i :8001
+```env
+HOST="0.0.0.0"
+PORT=8000
+DEEPSEEK_API_KEY="sk-..."
+ZHIPUAI_API_KEY="..."
+EVAL_API_BASE_URL="http://127.0.0.1:8000"
 ```
 
-### Q: 如何修改端口？
+## 数据目录
 
-A: 修改对应的配置文件：
-- 评估平台后端：`.env` 中的 `PORT`
-- 评估平台前端：`vite.config.ts` 中的 `port` 和 `proxy.target`
-- webRAGChat：`.env` 中的 `PORT`
+| 路径 | 说明 |
+|------|------|
+| `example/wiki-agent/knowledge/` | Wiki 知识库 Markdown |
+| `example/wiki-agent/chroma_db/` | ChromaDB 向量索引 |
+| `example/wiki-agent/models/` | 本地 Embedding 模型 |
+| `data/wiki_agent/` | Wiki 会话、BM25 索引、Checkpoint |
 
-### Q: 前端无法连接后端？
+## 旧版独立启动（已弃用）
 
-A: 检查：
-1. 后端是否启动
-2. 端口是否正确（8001）
-3. 代理配置是否正确
+`example/wiki-agent/start.bat` 仍可单独启动示例，但推荐使用根目录整合后的 `start.bat`。

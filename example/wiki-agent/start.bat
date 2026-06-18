@@ -1,16 +1,10 @@
 @echo off
-echo Starting Wiki Agent...
-
+echo Wiki Agent has been integrated into the main platform.
 echo.
-echo [1/2] Starting Backend...
-start "Wiki Agent Backend" cmd /k "cd /d %~dp0backend && python run_server.py"
-
-echo [2/2] Starting Frontend...
-start "Wiki Agent Frontend" cmd /k "cd /d %~dp0frontend && npm run dev"
-
+echo Please use the root start.bat instead:
+echo   cd ..\..
+echo   start.bat
 echo.
-echo Wiki Agent is starting...
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
+echo Wiki Agent UI: http://localhost:3000/wiki-agent
 echo.
 pause

@@ -42,6 +42,11 @@ htmlcov/
 # Database
 *.db
 *.sqlite3
+data/wiki_agent/
+
+# Wiki Agent runtime data
+example/wiki-agent/chroma_db/
+example/wiki-agent/knowledge/
 
 # Logs
 *.log

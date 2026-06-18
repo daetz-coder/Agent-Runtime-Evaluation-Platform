@@ -68,6 +68,7 @@
 ```
 Agent Runtime Evaluation Platform/
 ├── app/                          # 后端代码
+│   ├── wiki_agent/               # Wiki Agent 示例（已整合）⭐
 │   ├── adapters/                 # 可插拔适配器 ⭐
 │   │   ├── __init__.py           # 适配器入口
 │   │   ├── llm_proxy.py          # LLM Proxy（任何框架）
@@ -89,9 +90,11 @@ Agent Runtime Evaluation Platform/
 │   │   ├── components/           # 公共组件
 │   │   ├── layouts/              # 布局组件
 │   │   ├── router/               # 路由配置
+│   │   ├── wiki/                 # Wiki Agent 前端组件
 │   │   ├── views/                # 页面组件
 │   │   └── main.ts               # 入口文件
 │   └── package.json              # 前端依赖
+├── example/wiki-agent/           # Wiki Agent 知识库与模型数据
 ├── tests/                        # 测试代码
 ├── docs/                         # 项目文档
 ├── pyproject.toml                # Python 配置
@@ -104,9 +107,14 @@ Agent Runtime Evaluation Platform/
 ### 方式一：一键启动 (Windows)
 
 ```bash
-# 双击运行 start.bat
+# 双击运行 start.bat — 自动启动统一后端 + 前端（2 个窗口）
 start.bat
 ```
+
+启动后访问：
+- 评估平台：http://localhost:3000
+- Wiki Agent：http://localhost:3000/wiki-agent
+- API 文档：http://localhost:8000/docs
 
 ### 方式二：手动启动
 
@@ -139,7 +147,7 @@ pip install -e .
 python -m app.main
 ```
 
-后端运行在 http://localhost:8001
+后端运行在 http://localhost:8000
 
 #### 3. 启动前端
 
