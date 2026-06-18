@@ -1,0 +1,71 @@
+% !TEX TS-program = xelatex
+% !TEX encoding = UTF-8 Unicode
+% !Mode:: "TeX:UTF-8"
+
+\documentclass{resume}
+\usepackage{zh_CN-Adobefonts_external} % Simplified Chinese Support using external fonts (./fonts/zh_CN-Adobe/)
+\usepackage{linespacing_fix} % disable extra space before next section
+\usepackage{cite}
+
+\begin{document}
+\pagenumbering{gobble} % suppress displaying page number
+
+\name{詹勇}
+
+% {E-mail}{mobilephone}{homepage}
+\contactInfo{(+86) 188-5660-3434}{3446914219@qq.com}{GitHub | CSDN @daetz-coder}{浙江-杭州}
+
+\section{个人简介}
+计算机技术硕士在读，聚焦 \textbf{AI Agent、RAG 与 LLM 应用工程化}。独立完成多个 Agent 系统项目，熟悉 LangGraph、FastAPI、Vue3 与向量检索技术栈。
+
+\section{教育背景}
+\datedsubsection{\textbf{浙江理工大学},计算机技术,\textit{在读硕士研究生}}{2024.9 - 至今}
+\ \textbf{研究方向：AI Agent 与智能系统}, 一等优秀奖学金(1次), 二等优秀奖学金(1次)
+\datedsubsection{\textbf{嘉兴大学},软件工程,\textit{工学学士}}{2020.9 - 2024.6}
+\ \textbf{校级优秀毕业生}, 浙江省政府奖学金(1次), 学习优秀奖学金(6次)
+
+\section{学术成果}
+\begin{itemize}[parsep=0.2ex]
+  \item \textbf{Yong Zhan}, Xiangyang Li, et al. ``W-MSTC: A Window Based Multi-Scale Temporal Cross Attention Method for Few-Shot Modulation Recognition,'' \textit{IEEE Communications Letters}, 2025.（\textbf{第一作者}）
+  \item Congyuan Xu, \textbf{Yong Zhan}, et al. ``Multimodal Fusion Based Few-Shot Network Intrusion Detection System,'' \textit{Scientific Reports}, 2025.（\textbf{第二作者}）
+\end{itemize}
+
+\section{技术能力}
+\begin{itemize}[parsep=0.2ex]
+  \item \textbf{AI Agent / RAG}: LangGraph、StateGraph、Human-in-the-Loop、Checkpoint、Tool Calling、BM25、BGE-M3、RRF、ChromaDB
+  \item \textbf{LLM 应用开发}: DeepSeek / GLM-4 API、多轮对话、Prompt Engineering、SSE 流式输出、Token 成本优化
+  \item \textbf{后端开发}: Python、FastAPI、SQLAlchemy、Pydantic、MySQL、SQLite；熟悉 SpringBoot
+  \item \textbf{前端开发}: Vue 3、TypeScript、Element Plus、ECharts；了解 React
+  \item \textbf{工程工具}: Git、Linux、Docker、PyTorch、ROS
+\end{itemize}
+
+\section{项目经历}
+\datedsubsection{\textbf{Wiki-Agent：AI 驱动的智能知识库系统} \quad \textit{LangGraph / FastAPI / Vue3 / ChromaDB}}{2025.5 - 至今}
+\begin{itemize}
+  \item \textbf{混合检索：}BM25 + BGE-M3 + RRF 融合排序，自建测试集 Top-1 命中率 68\%/72\% $\rightarrow$ \textbf{88\%}
+  \item \textbf{Agent 工作流：}StateGraph search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，Human-in-the-Loop 确认 CRUD
+  \item \textbf{持久化：}SQLite Checkpoint 断点续跑，恢复 $<$ 200ms；四路同步 + SSE 流式输出
+\end{itemize}
+
+\datedsubsection{\textbf{Agent Runtime Evaluation Platform：AI Agent 运行时质量评估平台} \quad \textit{Python / FastAPI / LangGraph / Vue3}}{2025.3 - 至今}
+\begin{itemize}
+  \item \textbf{评估指标：}Planning Quality Score、Memory Retention Score、Replan Evaluation，量化任务规划与上下文保持能力
+  \item \textbf{可插拔架构：}Adapter 模式支持 LangGraph / LLM Proxy / Callback 三种接入，一行代码集成
+  \item \textbf{成本优化：}采用 DeepSeek API，单次评估成本降低 \textbf{97\%}（\$0.6 $\rightarrow$ \$0.02）
+\end{itemize}
+
+\datedsubsection{\textbf{git-reporter：智能工作报告分析引擎} \quad \textit{Python / FastAPI / SQLAlchemy / Git}}{2026.4 - 至今}
+\begin{itemize}
+  \item \textbf{效能度量：}公交车系数、专注时间、上下文切换、返工比例等 10+ 指标
+  \item \textbf{债务量化：}识别 TODO/FIXME/HACK，计算债务利息，生成清理优先级
+  \item \textbf{协作分析：}知识分布熵、结对编程检测、代码所有权分析，识别单点故障风险
+\end{itemize}
+
+\section{开源贡献 / 技术博客}
+\begin{itemize}[parsep=0.2ex]
+  \item GitHub: \textit{https://github.com/daetz-coder}，主要项目包括 Wiki-Agent、Agent Runtime Evaluation Platform、git-reporter
+  \item CSDN 技术博客: \textit{https://blog.csdn.net/a\_student\_2020}，累计访问量 \textbf{20W+}，输出 AI Agent / LLM 应用开发技术文章
+  \item Google Scholar: \textit{https://scholar.google.com/citations?user=il-yFl4AAAAJ}
+\end{itemize}
+
+\end{document}
