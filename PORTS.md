@@ -48,7 +48,7 @@ npm run dev
 HOST="0.0.0.0"
 PORT=8000
 DEEPSEEK_API_KEY="sk-..."
-ZHIPUAI_API_KEY="..."
+DEEPSEEK_MODEL="deepseek-chat"
 EVAL_API_BASE_URL="http://127.0.0.1:8000"
 ```
 

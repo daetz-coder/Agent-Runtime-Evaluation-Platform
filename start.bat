@@ -30,7 +30,7 @@ if not exist "%PROJECT_ROOT%\.env" (
     echo Creating .env file from .env.example...
     copy "%PROJECT_ROOT%\.env.example" "%PROJECT_ROOT%\.env"
     echo.
-    echo Please edit .env and add your API keys (DEEPSEEK_API_KEY, ZHIPUAI_API_KEY).
+    echo Please edit .env and add your DEEPSEEK_API_KEY.
     echo.
 )
 

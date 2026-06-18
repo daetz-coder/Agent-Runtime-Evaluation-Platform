@@ -21,9 +21,9 @@ def _get_llm() -> ChatOpenAI:
     global _llm
     if _llm is None:
         _llm = ChatOpenAI(
-            model=settings.ZHIPUAI_CHAT_MODEL,
-            api_key=settings.ZHIPUAI_API_KEY or "placeholder",
-            base_url=settings.ZHIPUAI_BASE_URL,
+            model=settings.DEEPSEEK_MODEL,
+            api_key=settings.DEEPSEEK_API_KEY or "placeholder",
+            base_url=settings.DEEPSEEK_BASE_URL,
             temperature=0.3,
         )
     return _llm
@@ -63,10 +63,7 @@ AI: {ai_response}
 {format_instructions}
 """
 
-_supports_function_calling = not any(
-    keyword in settings.ZHIPUAI_CHAT_MODEL.lower()
-    for keyword in ("glm", "zhipu")
-)
+_supports_function_calling = "deepseek" in settings.DEEPSEEK_MODEL.lower()
 
 
 def _get_structured_llm():
