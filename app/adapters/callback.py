@@ -3,8 +3,14 @@ LangChain Callback Adapter - 自动收集轨迹
 
 设计原则：
 - 标准接口：实现 LangChain BaseCallbackHandler
-- 自动收集：记录 LLM 调用、工具调用
+- 自动收集：记录 LLM 调用、工具调用/返回、失败事件
 - 灵活使用：可传入 LLM 或 Agent
+
+支持的数据源：
+- LLM 调用 (llm_call)
+- 工具调用 (tool_call) — on_tool_start
+- 工具结果 (tool_result) — on_tool_end，独立记录
+- 失败事件 (failure) — LLM/Tool/Chain 错误
 
 使用方式：
     from app.adapters.callback import create_callback_handler
@@ -23,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import time
+import traceback
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
@@ -30,6 +37,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
 
 from app.collectors.trajectory import get_collector
+from app.models.action_types import ActionType
 
 logger = logging.getLogger(__name__)
 
@@ -146,11 +154,17 @@ class EvalCallbackHandler(BaseCallbackHandler):
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        """LLM 调用错误"""
+        """LLM 调用错误 — 记录 failure"""
         rid = str(run_id)
         self._pending_llm.pop(rid, None)
         self._start_times.pop(rid, None)
-        self._collector.record_think(f"LLM call failed: {error}")
+        self._collector.record_failure(
+            error_type=type(error).__name__,
+            error_message=str(error),
+            context="LLM call failed",
+            recoverable=True,
+            stack_trace=traceback.format_exc()[-1000:],
+        )
 
     # ---- 工具回调 ----
 
@@ -176,18 +190,28 @@ class EvalCallbackHandler(BaseCallbackHandler):
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        """工具调用结束"""
+        """工具调用结束 — 记录 tool_call + tool_result"""
         rid = str(run_id)
         start_time = self._start_times.pop(rid, time.time())
         duration_ms = (time.time() - start_time) * 1000
 
         pending = self._pending_tools.pop(rid, {})
+        tool_name = pending.get("name", "unknown")
 
+        # 记录工具调用（含输出）
         self._collector.record_tool_call(
-            tool_name=pending.get("name", "unknown"),
+            tool_name=tool_name,
             tool_input={"raw": pending.get("input", "")},
             tool_output=output[:500] if output else None,
             duration_ms=duration_ms,
+        )
+
+        # 独立记录工具结果
+        self._collector.record_tool_result(
+            tool_name=tool_name,
+            tool_output=output[:4000] if output else None,
+            duration_ms=duration_ms,
+            success=True,
         )
 
     def on_tool_error(
@@ -197,11 +221,28 @@ class EvalCallbackHandler(BaseCallbackHandler):
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        """工具调用错误"""
+        """工具调用错误 — 记录 failure + tool_result(failed)"""
         rid = str(run_id)
-        self._pending_tools.pop(rid, None)
+        pending = self._pending_tools.pop(rid, None)
         self._start_times.pop(rid, None)
-        self._collector.record_think(f"Tool call failed: {error}")
+
+        tool_name = pending.get("name", "unknown") if pending else "unknown"
+
+        self._collector.record_failure(
+            error_type=type(error).__name__,
+            error_message=str(error),
+            context=f"Tool '{tool_name}' call failed",
+            recoverable=True,
+            stack_trace=traceback.format_exc()[-1000:],
+        )
+
+        # 记录失败的工具结果
+        self._collector.record_tool_result(
+            tool_name=tool_name,
+            tool_output=str(error),
+            success=False,
+            error_type=type(error).__name__,
+        )
 
     # ---- 链回调 ----
 
@@ -234,9 +275,16 @@ class EvalCallbackHandler(BaseCallbackHandler):
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        """链调用错误"""
+        """链调用错误 — 记录 failure"""
         rid = str(run_id)
         self._start_times.pop(rid, None)
+        self._collector.record_failure(
+            error_type=type(error).__name__,
+            error_message=str(error),
+            context="Chain execution failed",
+            recoverable=True,
+            stack_trace=traceback.format_exc()[-1000:],
+        )
 
 
 def create_callback_handler() -> EvalCallbackHandler:

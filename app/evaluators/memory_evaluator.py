@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
+from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep, MemoryScore
 
 
@@ -101,9 +102,17 @@ class MemoryEvaluator(BaseEvaluator):
         if not key_facts:
             key_facts = self._infer_key_facts(goal, trajectory)
 
+        # Extract memory events (explicit reads/writes)
+        memory_events = self._extract_memory_events(trajectory)
+
         # Format trajectory for evaluation
         trajectory_text = self._format_trajectory(trajectory)
         key_facts_text = self._format_key_facts(key_facts)
+
+        # Append explicit memory events if available
+        if memory_events:
+            trajectory_text += "\n\n## Explicit Memory Events\n"
+            trajectory_text += self._format_memory_events(memory_events)
 
         # Create prompt
         prompt = ChatPromptTemplate.from_template(MEMORY_EVALUATION_PROMPT)
@@ -168,6 +177,34 @@ class MemoryEvaluator(BaseEvaluator):
             lines.append(f"{i}. {fact}")
 
         return "\n".join(lines)
+
+    def _format_memory_events(self, memory_events: List[Dict[str, Any]]) -> str:
+        """Format memory events into readable text."""
+        lines = []
+        for event in memory_events:
+            step = event.get("step", "?")
+            event_type = event.get("type", "unknown")
+            key = event.get("key", "")
+            value = event.get("value", "")
+            source = event.get("source", "")
+            context = event.get("context", "")
+            hit = event.get("hit", True)
+            memory_type = event.get("memory_type", "")
+
+            if event_type == "memory_write":
+                lines.append(f"Step {step}: WRITE [{memory_type}] {key} = {str(value)[:200]}")
+                if source:
+                    lines.append(f"  Source: {source}")
+            elif event_type == "memory_read":
+                status = "HIT" if hit else "MISS"
+                lines.append(f"Step {step}: READ [{status}] {key}")
+                if value:
+                    lines.append(f"  Value: {str(value)[:200]}")
+                if context:
+                    lines.append(f"  Context: {context}")
+            lines.append("")
+
+        return "\n".join(lines) if lines else "No memory events recorded"
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
         """Parse LLM response into scores dictionary."""

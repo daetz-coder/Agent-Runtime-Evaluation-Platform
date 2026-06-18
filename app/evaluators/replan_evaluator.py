@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
+from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep, ReplanScore
 
 
@@ -94,14 +95,18 @@ class ReplanEvaluator(BaseEvaluator):
         Returns:
             ReplanScore with detailed evaluation
         """
-        # Extract replan events
+        # Extract replan events and failures
         replan_events = self._extract_replans(trajectory)
+        failures = self._extract_failures(trajectory)
 
         # Detect potential replan opportunities
         missed_opportunities = self._detect_missed_replans(trajectory)
 
-        # Format trajectory for evaluation
+        # Format trajectory for evaluation (including failure events)
         trajectory_text = self._format_trajectory_for_replan(trajectory)
+        if failures:
+            trajectory_text += "\n\n## Failure Events (Independent Records)\n"
+            trajectory_text += self._format_failure_events(failures)
         replan_events_text = self._format_replan_events(replan_events)
 
         # If no replans and no missed opportunities, return default score
@@ -147,13 +152,17 @@ class ReplanEvaluator(BaseEvaluator):
         replan_count = 0
 
         for i, step in enumerate(trajectory):
-            # Track consecutive failures
+            # Track consecutive failures from tool_call observations
             if step.action_type == "tool_call":
                 obs = (step.observation or "").lower()
                 if any(keyword in obs for keyword in ["error", "failed", "not found", "exception"]):
                     consecutive_failures += 1
                 else:
                     consecutive_failures = 0
+
+            # Track failures from dedicated failure events
+            if step.action_type == "failure":
+                consecutive_failures += 1
 
             # Track replans
             if step.action_type == "replan":
@@ -189,7 +198,15 @@ class ReplanEvaluator(BaseEvaluator):
                     lines.append(f"Step {step.step_number}: TOOL CALL - Success")
                     lines.append(f"  Tool: {step.action_detail.get('tool_name')}")
 
+            elif step.action_type == "failure":
+                consecutive_failures += 1
+                lines.append(f"Step {step.step_number}: FAILURE (consecutive failures: {consecutive_failures})")
+                lines.append(f"  Error: {step.action_detail.get('error_type', '')}: {step.action_detail.get('error_message', '')[:200]}")
+                lines.append(f"  Context: {step.action_detail.get('context', '')}")
+                lines.append(f"  Recoverable: {step.action_detail.get('recoverable', True)}")
+
             elif step.action_type == "replan":
+                consecutive_failures = 0
                 lines.append(f"Step {step.step_number}: REPLAN TRIGGERED")
                 lines.append(f"  Reason: {step.action_detail.get('reason', 'Not specified')}")
                 if step.action_detail.get("new_plan"):
@@ -213,6 +230,32 @@ class ReplanEvaluator(BaseEvaluator):
                 lines.append(f"  New Plan: {event['new_plan'][:200]}")
 
         return "\n".join(lines)
+
+    def _format_failure_events(self, failures: List[Dict[str, Any]]) -> str:
+        """Format failure events for evaluation."""
+        if not failures:
+            return "No failure events recorded."
+
+        lines = []
+        for failure in failures:
+            step = failure.get("step", "?")
+            error_type = failure.get("error_type", "Unknown")
+            error_msg = failure.get("error_message", "")[:200]
+            context = failure.get("context", "")
+            recoverable = failure.get("recoverable", True)
+            node = failure.get("node_name", "")
+
+            lines.append(f"Step {step}: FAILURE")
+            lines.append(f"  Type: {error_type}")
+            lines.append(f"  Message: {error_msg}")
+            if context:
+                lines.append(f"  Context: {context}")
+            if node:
+                lines.append(f"  Node: {node}")
+            lines.append(f"  Recoverable: {recoverable}")
+            lines.append("")
+
+        return "\n".join(lines) if lines else "No failure events recorded"
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
         """Parse LLM response into scores dictionary."""

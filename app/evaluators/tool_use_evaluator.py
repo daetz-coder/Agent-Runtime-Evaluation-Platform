@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
+from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep, ToolUseScore
 
 
@@ -85,8 +86,9 @@ class ToolUseEvaluator(BaseEvaluator):
         Returns:
             ToolUseScore with detailed evaluation
         """
-        # Extract tool calls from trajectory
+        # Extract tool calls and tool results from trajectory
         tool_calls = self._extract_tool_calls(trajectory)
+        tool_results = self._extract_tool_results(trajectory)
 
         if not tool_calls:
             return ToolUseScore(
@@ -97,8 +99,11 @@ class ToolUseEvaluator(BaseEvaluator):
                 feedback="No tool calls found in trajectory. Agent did not use any tools.",
             )
 
-        # Format tool calls for evaluation
+        # Format tool calls for evaluation (including tool results)
         tool_calls_text = self._format_tool_calls(tool_calls)
+        if tool_results:
+            tool_calls_text += "\n\n## Tool Results (Independent Records)\n"
+            tool_calls_text += self._format_tool_results(tool_results)
 
         # Create prompt
         prompt = ChatPromptTemplate.from_template(TOOL_USE_EVALUATION_PROMPT)
@@ -141,6 +146,26 @@ class ToolUseEvaluator(BaseEvaluator):
             lines.append("")
 
         return "\n".join(lines)
+
+    def _format_tool_results(self, tool_results: List[Dict[str, Any]]) -> str:
+        """Format tool results into readable text."""
+        lines = []
+        for result in tool_results:
+            step = result.get("step", "?")
+            tool = result.get("tool_name", "unknown")
+            success = result.get("success", True)
+            duration = result.get("duration_ms")
+            error = result.get("error_type")
+            output = result.get("output", "No output")
+
+            status = "SUCCESS" if success else f"FAILED ({error})"
+            duration_str = f" ({duration:.0f}ms)" if duration else ""
+            lines.append(f"Step {step}: {tool} -> {status}{duration_str}")
+            if output:
+                lines.append(f"  Output: {str(output)[:300]}")
+            lines.append("")
+
+        return "\n".join(lines) if lines else "No tool results recorded"
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
         """Parse LLM response into scores dictionary."""

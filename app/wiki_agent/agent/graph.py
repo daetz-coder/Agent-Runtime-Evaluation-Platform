@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import traceback
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, Literal, TypedDict
@@ -111,8 +112,10 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     print("[Wiki Agent] 搜索知识库...")
     user_message = state["user_message"]
     trace = get_eval_trace(config)
+    state_before = {"stage": state.get("stage"), "wiki_results_count": len(state.get("wiki_results", []))}
     started = asyncio.get_running_loop().time()
     results = search_tools.hybrid_search(user_message, limit=3)
+    duration_ms = round((asyncio.get_running_loop().time() - started) * 1000, 2)
 
     wiki_text = None
     if results:
@@ -120,6 +123,7 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         wiki_text = "\n".join(lines)
 
     if trace:
+        # 记录工具调用
         trace.record_tool_call(
             "hybrid_search",
             {"query": user_message, "limit": 3},
@@ -128,9 +132,20 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
                 "results": results,
                 "wiki_text": wiki_text,
             },
-            duration_ms=round((asyncio.get_running_loop().time() - started) * 1000, 2),
+            duration_ms=duration_ms,
             call_id=f"hybrid_search:{user_message}",
         )
+        # 独立记录工具结果
+        trace.record_tool_result(
+            "hybrid_search",
+            {"result_count": len(results), "wiki_text": wiki_text},
+            duration_ms=duration_ms,
+            success=True,
+            call_id=f"result:hybrid_search:{user_message}",
+        )
+        # 记录状态变化
+        state_after = {"stage": "search", "wiki_results_count": len(results)}
+        trace.record_state_change(state_before, state_after, trigger="search", node_name="search")
 
     return {
         **state,
@@ -152,6 +167,15 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     if wiki_text:
         await _emit(queue, {"type": "wiki_results", "results": wiki_text})
 
+    # 记录记忆读取（读取 chat_history）
+    if trace and chat_history:
+        trace.record_memory_read(
+            key="chat_history",
+            value=f"{len(chat_history)} messages",
+            context="Building LLM messages for response generation",
+            hit=True,
+        )
+
     messages = _build_llm_messages(state, chat_history)
     collected = ""
     started = asyncio.get_running_loop().time()
@@ -167,6 +191,7 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
             collected = response.content or ""
     finally:
         if trace:
+            duration_ms = round((asyncio.get_running_loop().time() - started) * 1000, 2)
             trace.record(
                 "llm_call",
                 {
@@ -179,10 +204,17 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
                         }
                         for message in messages
                     ],
-                    "duration_ms": round((asyncio.get_running_loop().time() - started) * 1000, 2),
+                    "duration_ms": duration_ms,
                     "response_chars": len(collected),
                 },
                 observation=collected,
+            )
+            # 记录状态变化
+            trace.record_state_change(
+                state_before={"stage": "search", "has_wiki_text": wiki_text is not None},
+                state_after={"stage": "respond", "response_chars": len(collected)},
+                trigger="respond",
+                node_name="respond",
             )
 
     return {**state, "ai_response": collected, "stage": "respond"}
@@ -199,6 +231,8 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
     ai_response = state.get("ai_response", "")
 
     if not ai_response or len(ai_response) < 50:
+        if trace:
+            trace.record("think", {"thought": "Response too short, skipping knowledge update decision"})
         return {
             **state,
             "decision": {"action": "none", "reason": "回复太短"},
@@ -210,20 +244,44 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
     started = asyncio.get_running_loop().time()
     decision = await knowledge_agent.decide_action(user_message, ai_response)
     decision_dict = decision.to_dict()
+    duration_ms = round((asyncio.get_running_loop().time() - started) * 1000, 2)
 
     if not decision_dict.get("title") and decision_dict.get("path"):
         stem = decision_dict["path"].replace(".md", "").split("/")[-1]
         decision_dict["title"] = stem
 
     if trace:
+        # 记录思考过程
         trace.record(
             "think",
             {
                 "thought": "Knowledge update decision completed",
                 "decision": decision_dict,
-                "duration_ms": round((asyncio.get_running_loop().time() - started) * 1000, 2),
+                "duration_ms": duration_ms,
             },
             observation=decision_dict.get("reason"),
+        )
+
+        # 记录规划更新（决定下一步行动）
+        action = decision_dict.get("action", "none")
+        trace.record_plan_update(
+            milestone_status={
+                "search": "done",
+                "respond": "done",
+                "decide": "done",
+                "execute": "pending" if action != "none" else "skipped",
+            },
+            next_action=f"wiki_{action}" if action != "none" else "end",
+            reason=decision_dict.get("reason", ""),
+            remaining_steps=[f"wiki_{action}"] if action != "none" else [],
+        )
+
+        # 记录状态变化
+        trace.record_state_change(
+            state_before={"stage": "respond"},
+            state_after={"stage": "decide", "decision_action": action},
+            trigger="decide",
+            node_name="decide",
         )
 
     return {**state, "decision": decision_dict, "stage": "decide"}
@@ -238,6 +296,12 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
         print("[Wiki Agent] 用户取消操作")
         if trace:
             trace.record("think", {"thought": "User cancelled knowledge-base action"})
+            trace.record_state_change(
+                state_before={"stage": "decide"},
+                state_after={"stage": "execute", "result": "cancelled"},
+                trigger="user_cancel",
+                node_name="execute",
+            )
         return {
             **state,
             "action_result": {"status": "cancelled", "message": "用户取消"},
@@ -253,24 +317,39 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
 
     started = asyncio.get_running_loop().time()
     result = None
-    if action == "create":
-        result = crud_tools.create_knowledge(
-            title=decision.get("title", ""),
-            content=decision.get("content", ""),
-            category=decision.get("category", ""),
-            tags=decision.get("tags") or [],
-        )
-    elif action == "update":
-        result = crud_tools.update_knowledge(
-            path=decision.get("path", ""),
-            content=decision.get("content"),
-            tags=decision.get("tags"),
-        )
-    elif action == "delete":
-        result = crud_tools.delete_knowledge(decision.get("path", ""))
+    try:
+        if action == "create":
+            result = crud_tools.create_knowledge(
+                title=decision.get("title", ""),
+                content=decision.get("content", ""),
+                category=decision.get("category", ""),
+                tags=decision.get("tags") or [],
+            )
+        elif action == "update":
+            result = crud_tools.update_knowledge(
+                path=decision.get("path", ""),
+                content=decision.get("content"),
+                tags=decision.get("tags"),
+            )
+        elif action == "delete":
+            result = crud_tools.delete_knowledge(decision.get("path", ""))
+    except Exception as e:
+        if trace:
+            trace.record_failure(
+                error_type=type(e).__name__,
+                error_message=str(e),
+                context=f"wiki_{action} failed",
+                recoverable=False,
+                node_name="execute",
+                stack_trace=traceback.format_exc()[-1000:],
+            )
+        raise
 
+    duration_ms = round((asyncio.get_running_loop().time() - started) * 1000, 2)
     print(f"[Wiki Agent] 执行结果: {result}")
+
     if trace:
+        # 记录工具调用
         trace.record_tool_call(
             f"wiki_{action}",
             {
@@ -280,9 +359,26 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
                 "tags": decision.get("tags") or [],
             },
             result,
-            duration_ms=round((asyncio.get_running_loop().time() - started) * 1000, 2),
+            duration_ms=duration_ms,
             call_id=f"{action}:{decision.get('path') or decision.get('title')}",
         )
+        # 独立记录工具结果
+        success = result is not None and not (isinstance(result, dict) and result.get("error"))
+        trace.record_tool_result(
+            f"wiki_{action}",
+            result,
+            duration_ms=duration_ms,
+            success=success,
+            call_id=f"result:{action}:{decision.get('path') or decision.get('title')}",
+        )
+        # 记录状态变化
+        trace.record_state_change(
+            state_before={"stage": "decide", "action": action},
+            state_after={"stage": "execute", "action": action, "success": success},
+            trigger=f"wiki_{action}",
+            node_name="execute",
+        )
+
     return {**state, "action_result": result, "stage": "execute"}
 
 
@@ -400,6 +496,13 @@ async def run_chat_stream(
             await queue.put({"type": "_done", "result": result})
         except Exception as e:
             trace.record("think", {"thought": "Wiki graph failed", "error_type": type(e).__name__}, str(e))
+            trace.record_failure(
+                error_type=type(e).__name__,
+                error_message=str(e),
+                context="Wiki graph stream execution failed",
+                recoverable=False,
+                stack_trace=traceback.format_exc()[-1000:],
+            )
             await trace.finish(auto_run=False)
             await queue.put({"type": "error", "message": str(e)})
         finally:
@@ -465,6 +568,13 @@ async def run_chat_invoke(
         result = await graph.ainvoke(initial_state, config)
     except Exception as exc:
         trace.record("think", {"thought": "Wiki graph failed", "error_type": type(exc).__name__}, str(exc))
+        trace.record_failure(
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+            context="Wiki graph invoke failed",
+            recoverable=False,
+            stack_trace=traceback.format_exc()[-1000:],
+        )
         await trace.finish(auto_run=False)
         raise
     await trace.finish()
@@ -495,6 +605,13 @@ async def resume_and_execute(thread_id: str, confirm: bool) -> dict:
         result = await graph.ainvoke(Command(resume=confirm), config)
     except Exception as exc:
         trace.record("think", {"thought": "Wiki resume failed", "error_type": type(exc).__name__}, str(exc))
+        trace.record_failure(
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+            context="Wiki resume execution failed",
+            recoverable=False,
+            stack_trace=traceback.format_exc()[-1000:],
+        )
         await trace.finish(auto_run=False)
         raise
     await trace.finish()

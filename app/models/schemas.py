@@ -32,9 +32,31 @@ class TaskResponse(BaseModel):
 # ============== Trajectory Schemas ==============
 
 class TrajectoryStep(BaseModel):
-    """Schema for a single trajectory step."""
+    """Schema for a single trajectory step.
+
+    Supported action_type values (defined in app.models.action_types.ActionType):
+    - plan              — 初始规划（milestones / steps）
+    - plan_update       — 动态规划更新（milestone 完成、下一步调整）
+    - tool_call         — 工具调用（含工具名、输入参数）
+    - tool_result       — 工具返回（独立记录工具输出）
+    - memory_write      — 记忆写入（存入新信息）
+    - memory_read       — 记忆读取（检索已有信息）
+    - state_change      — 状态变化（含 before/after diff）
+    - think             — 思考过程（推理、分析）
+    - replan            — 重规划（修改原有计划）
+    - failure           — 失败/异常事件
+    - node_execute      — 节点执行（LangGraph 节点）
+    - tool_decision     — 工具选择决策（LLM 决定调用哪个工具）
+    """
     step_number: int
-    action_type: str = Field(..., description="Type: plan, tool_call, think, replan")
+    action_type: str = Field(
+        ...,
+        description=(
+            "Type of action. Supported: plan, plan_update, tool_call, tool_result, "
+            "memory_write, memory_read, state_change, think, replan, failure, "
+            "node_execute, tool_decision"
+        ),
+    )
     action_detail: Dict[str, Any]
     observation: Optional[Any] = None
     timestamp: Optional[datetime] = None

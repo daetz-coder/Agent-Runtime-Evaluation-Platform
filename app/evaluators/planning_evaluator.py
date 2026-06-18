@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
+from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep, PlanningScore
 
 
@@ -93,10 +94,11 @@ class PlanningEvaluator(BaseEvaluator):
         Returns:
             PlanningScore with detailed evaluation
         """
-        # Extract plan from trajectory
+        # Extract plan and plan_update from trajectory
         plans = self._extract_plans(trajectory)
+        plan_updates = self._extract_plan_updates(trajectory)
 
-        if not plans:
+        if not plans and not plan_updates:
             return PlanningScore(
                 coverage=0,
                 ordering=0,
@@ -106,8 +108,11 @@ class PlanningEvaluator(BaseEvaluator):
                 feedback="No planning steps found in trajectory. Agent did not create an explicit plan.",
             )
 
-        # Format plan for evaluation
+        # Format plan for evaluation (including plan updates)
         plan_text = self._format_plan(plans)
+        if plan_updates:
+            plan_text += "\n\n## Plan Updates (Dynamic Adjustments)\n"
+            plan_text += self._format_plan_updates(plan_updates)
 
         # Create prompt
         prompt = ChatPromptTemplate.from_template(PLANNING_EVALUATION_PROMPT)
@@ -156,6 +161,29 @@ class PlanningEvaluator(BaseEvaluator):
                 lines.append(f"{i}. {plan}")
 
         return "\n".join(lines) if lines else "Plan format not recognized"
+
+    def _format_plan_updates(self, plan_updates: List[Dict[str, Any]]) -> str:
+        """Format plan updates into readable text."""
+        lines = []
+        for update in plan_updates:
+            step = update.get("step", "?")
+            next_action = update.get("next_action", "")
+            reason = update.get("reason", "")
+            status = update.get("milestone_status", {})
+            remaining = update.get("remaining_steps", [])
+
+            lines.append(f"Step {step}: Plan Update")
+            lines.append(f"  Next Action: {next_action}")
+            if reason:
+                lines.append(f"  Reason: {reason}")
+            if status:
+                status_str = ", ".join(f"{k}={v}" for k, v in status.items())
+                lines.append(f"  Milestone Status: {status_str}")
+            if remaining:
+                lines.append(f"  Remaining: {', '.join(remaining)}")
+            lines.append("")
+
+        return "\n".join(lines) if lines else "No plan updates"
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
         """Parse LLM response into scores dictionary."""

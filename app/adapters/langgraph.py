@@ -4,7 +4,13 @@ LangGraph Adapter - 包装 LangGraph，自动收集轨迹
 设计原则：
 - 一行替换：graph = instrument_langgraph(build_graph())
 - 完全透明：保持原有接口
-- 自动收集：记录节点执行、状态变化、工具调用
+- 自动收集：记录节点执行、状态变化、工具调用、失败事件
+
+支持的数据源：
+- 节点执行 (node_execute)
+- 状态变化 (state_change) — 节点执行前后自动记录 diff
+- 工具调用 (tool_call) / 工具决策 (tool_decision)
+- 失败事件 (failure) — 节点异常时自动记录
 
 使用方式：
     from app.adapters.langgraph import instrument_langgraph
@@ -23,12 +29,14 @@ from __future__ import annotations
 
 import logging
 import time
+import traceback
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.graph.state import CompiledStateGraph, StateGraph
 
 from app.collectors.trajectory import get_collector
+from app.models.action_types import ActionType
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +68,15 @@ class InstrumentedStateGraph:
                 self._original.nodes[node_name] = self._wrap_node(node_name, node_func)
 
     def _wrap_node(self, node_name: str, node_func: Callable) -> Callable:
-        """包装单个节点"""
+        """包装单个节点 — 自动记录 node_execute / state_change / failure"""
         def wrapper(state: Dict[str, Any]) -> Dict[str, Any]:
             start_time = time.time()
+            state_before = self._extract_state_summary(state)
 
             # 记录节点开始
             self._collector.record_node_execute(
                 node_name=node_name,
-                input_data=self._extract_state_summary(state),
+                input_data=state_before,
             )
 
             # 执行原始节点
@@ -75,10 +84,20 @@ class InstrumentedStateGraph:
                 result = node_func(state)
                 duration_ms = (time.time() - start_time) * 1000
 
+                state_after = self._extract_result_summary(result)
+
                 # 记录节点完成
                 self._collector.record_node_execute(
                     node_name=f"{node_name}_complete",
-                    output_data=self._extract_result_summary(result),
+                    output_data=state_after,
+                )
+
+                # 记录状态变化（含 diff）
+                self._collector.record_state_change(
+                    state_before=state_before,
+                    state_after=state_after,
+                    trigger=node_name,
+                    node_name=node_name,
                 )
 
                 # 记录工具调用（如果有）
@@ -87,8 +106,15 @@ class InstrumentedStateGraph:
                 return result
 
             except Exception as e:
-                # 记录错误
-                self._collector.record_think(f"Node {node_name} failed: {e}")
+                # 记录失败事件（而非 think）
+                self._collector.record_failure(
+                    error_type=type(e).__name__,
+                    error_message=str(e),
+                    context=f"Node {node_name} execution failed",
+                    recoverable=True,
+                    node_name=node_name,
+                    stack_trace=traceback.format_exc()[-1000:],
+                )
                 raise
 
         # 保留原始函数的属性
@@ -145,23 +171,39 @@ class InstrumentedStateGraph:
         state: Dict[str, Any],
         result: Dict[str, Any],
     ):
-        """提取并记录工具调用"""
-        # 检查结果中的工具调用
-        if isinstance(result, dict) and "messages" in result:
-            messages = result["messages"]
-            if isinstance(messages, list):
-                for msg in messages:
-                    if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls'):
-                        if msg.tool_calls:
-                            for tc in msg.tool_calls:
-                                self._collector.record(
-                                    action_type="tool_decision",
-                                    action_detail={
-                                        "node_name": node_name,
-                                        "tool_name": tc.get("name", "unknown"),
-                                        "input": tc.get("args", {}),
-                                    },
-                                )
+        """提取并记录工具调用决策 + 工具结果"""
+        if not isinstance(result, dict) or "messages" not in result:
+            return
+
+        messages = result["messages"]
+        if not isinstance(messages, list):
+            return
+
+        for msg in messages:
+            if not isinstance(msg, AIMessage) or not hasattr(msg, 'tool_calls'):
+                continue
+            if not msg.tool_calls:
+                continue
+
+            for tc in msg.tool_calls:
+                tool_name = tc.get("name", "unknown")
+                tool_input = tc.get("args", {})
+
+                # 记录工具选择决策
+                self._collector.record(
+                    action_type=ActionType.TOOL_DECISION,
+                    action_detail={
+                        "node_name": node_name,
+                        "tool_name": tool_name,
+                        "input": tool_input,
+                    },
+                )
+
+                # 记录工具调用
+                self._collector.record_tool_call(
+                    tool_name=tool_name,
+                    tool_input=tool_input,
+                )
 
     def __getattr__(self, name: str) -> Any:
         """转发所有其他属性到原始图"""
@@ -189,7 +231,17 @@ class InstrumentedCompiledGraph:
         self._collector.record_think(f"Graph execution started")
 
         # 调用原始图
-        result = await self._original.ainvoke(input, config=config, **kwargs)
+        try:
+            result = await self._original.ainvoke(input, config=config, **kwargs)
+        except Exception as e:
+            self._collector.record_failure(
+                error_type=type(e).__name__,
+                error_message=str(e),
+                context="Graph ainvoke failed",
+                recoverable=False,
+                stack_trace=traceback.format_exc()[-1000:],
+            )
+            raise
 
         # 记录完成
         duration_ms = (time.time() - start_time) * 1000
@@ -207,7 +259,17 @@ class InstrumentedCompiledGraph:
         self._collector.record_think(f"Graph execution started")
 
         # 调用原始图
-        result = self._original.invoke(input, config=config, **kwargs)
+        try:
+            result = self._original.invoke(input, config=config, **kwargs)
+        except Exception as e:
+            self._collector.record_failure(
+                error_type=type(e).__name__,
+                error_message=str(e),
+                context="Graph invoke failed",
+                recoverable=False,
+                stack_trace=traceback.format_exc()[-1000:],
+            )
+            raise
 
         # 记录完成
         duration_ms = (time.time() - start_time) * 1000
