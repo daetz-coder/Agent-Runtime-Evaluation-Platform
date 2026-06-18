@@ -212,6 +212,15 @@ class ReplanEvaluator(BaseEvaluator):
                 if step.action_detail.get("new_plan"):
                     lines.append(f"  New Plan: {step.action_detail['new_plan'][:200]}")
 
+            elif step.action_type == "retrieval":
+                query = step.action_detail.get("query", "")[:100]
+                count = step.action_detail.get("result_count", 0)
+                lines.append(f"Step {step.step_number}: RETRIEVAL query='{query}' -> {count} docs")
+
+            elif step.action_type == "evidence":
+                etype = step.action_detail.get("evidence_type", "")
+                lines.append(f"Step {step.step_number}: EVIDENCE [{etype}]")
+
             elif step.action_type == "think":
                 lines.append(f"Step {step.step_number}: THINK - {step.action_detail.get('thought', '')[:150]}")
 

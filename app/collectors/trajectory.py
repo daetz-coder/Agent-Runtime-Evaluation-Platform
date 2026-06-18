@@ -500,6 +500,100 @@ class TrajectoryCollector:
             },
         )
 
+    # ── 知识检索 ─────────────────────────────────────────────
+
+    def record_retrieval(
+        self,
+        query: str,
+        retrieved_docs: List[Dict[str, Any]],
+        source: str = "",
+        top_k: int = 3,
+        duration_ms: float = 0,
+    ):
+        """
+        记录知识库检索结果（retrieved_docs）。
+
+        Args:
+            query: 检索查询
+            retrieved_docs: 检索到的文档列表，每项含 title/path/snippet/score 等
+            source: 检索来源（如 "hybrid_search", "vector_db", "keyword_search"）
+            top_k: 请求返回的文档数
+            duration_ms: 检索耗时
+        """
+        return self.record(
+            action_type=ActionType.RETRIEVAL,
+            action_detail={
+                "query": query,
+                "source": source,
+                "top_k": top_k,
+                "result_count": len(retrieved_docs),
+                "duration_ms": duration_ms,
+                "retrieved_docs": [
+                    {
+                        "title": doc.get("title", ""),
+                        "path": doc.get("path", ""),
+                        "snippet": str(doc.get("snippet", ""))[:500],
+                        "score": doc.get("score"),
+                    }
+                    for doc in retrieved_docs
+                ],
+            },
+            observation=f"Retrieved {len(retrieved_docs)} docs for query: {query[:200]}",
+        )
+
+    # ── 证据池构建 ───────────────────────────────────────────
+
+    def record_evidence(
+        self,
+        evidence_type: str,
+        sources: Dict[str, Any],
+        final_prompt_messages: Optional[List[Dict[str, str]]] = None,
+        context: str = "",
+    ):
+        """
+        记录最终送给 LLM 的证据池（evidence）。
+
+        Args:
+            evidence_type: 证据类型（如 "grounded_response", "decision", "planning"）
+            sources: 证据来源汇总
+            final_prompt_messages: 最终发给 LLM 的消息列表
+            context: 证据用途说明
+        """
+        truncated_messages = None
+        if final_prompt_messages:
+            truncated_messages = [
+                {"role": m.get("role", "unknown"), "content": str(m.get("content", ""))[:1000]}
+                for m in final_prompt_messages
+            ]
+
+        return self.record(
+            action_type=ActionType.EVIDENCE,
+            action_detail={
+                "evidence_type": evidence_type,
+                "context": context,
+                "sources": {
+                    "retrieved_docs_count": len(sources.get("retrieved_docs") or []),
+                    "tool_results_count": len(sources.get("tool_results") or []),
+                    "memory_results_count": len(sources.get("memory_results") or []),
+                    "chat_history_count": sources.get("chat_history_count", 0),
+                    "retrieved_docs_summary": [
+                        {"title": d.get("title", ""), "path": d.get("path", "")}
+                        for d in (sources.get("retrieved_docs") or [])[:10]
+                    ],
+                    "tool_results_summary": [
+                        {"tool": r.get("tool", ""), "success": r.get("success", True)}
+                        for r in (sources.get("tool_results") or [])[:10]
+                    ],
+                    "memory_results": [
+                        {"key": m.get("key", ""), "hit": m.get("hit", True)}
+                        for m in (sources.get("memory_results") or [])[:10]
+                    ],
+                },
+                "final_prompt_messages": truncated_messages,
+                "total_message_count": len(truncated_messages) if truncated_messages else 0,
+            },
+        )
+
     def _flush(self):
         """同步刷新缓冲区"""
         if not self._flush_lock.acquire(blocking=False):

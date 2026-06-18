@@ -192,6 +192,36 @@ class BaseEvaluator(ABC):
             if step.action_type == ActionType.FAILURE
         ]
 
+    def _extract_retrievals(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
+        """Extract knowledge retrieval events from trajectory."""
+        return [
+            {
+                "step": step.step_number,
+                "query": step.action_detail.get("query", ""),
+                "source": step.action_detail.get("source", ""),
+                "result_count": step.action_detail.get("result_count", 0),
+                "duration_ms": step.action_detail.get("duration_ms"),
+                "retrieved_docs": step.action_detail.get("retrieved_docs", []),
+            }
+            for step in trajectory
+            if step.action_type == ActionType.RETRIEVAL
+        ]
+
+    def _extract_evidence(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
+        """Extract evidence pool events from trajectory."""
+        return [
+            {
+                "step": step.step_number,
+                "evidence_type": step.action_detail.get("evidence_type", ""),
+                "context": step.action_detail.get("context", ""),
+                "sources": step.action_detail.get("sources", {}),
+                "final_prompt_messages": step.action_detail.get("final_prompt_messages", []),
+                "total_message_count": step.action_detail.get("total_message_count", 0),
+            }
+            for step in trajectory
+            if step.action_type == ActionType.EVIDENCE
+        ]
+
     def _calculate_weighted_score(self, scores: Dict[str, float], weights: Dict[str, float]) -> float:
         """Calculate weighted average score."""
         total_weight = sum(weights.values())

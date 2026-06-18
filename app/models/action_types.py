@@ -34,6 +34,10 @@ class ActionType:
     NODE_EXECUTE = "node_execute"      # 节点执行（LangGraph 节点）
     TOOL_DECISION = "tool_decision"    # 工具选择决策（LLM 决定调用哪个工具）
 
+    # ── 知识检索与证据构建 ──────────────────────────────────
+    RETRIEVAL = "retrieval"            # 知识库检索（retrieved_docs：检索到的文档列表）
+    EVIDENCE = "evidence"              # 证据池构建（最终送给 LLM 的完整证据）
+
     # 所有合法类型集合（用于校验）
     ALL_TYPES = {
         PLAN, PLAN_UPDATE,
@@ -43,4 +47,5 @@ class ActionType:
         THINK, REPLAN,
         FAILURE,
         NODE_EXECUTE, TOOL_DECISION,
+        RETRIEVAL, EVIDENCE,
     }
