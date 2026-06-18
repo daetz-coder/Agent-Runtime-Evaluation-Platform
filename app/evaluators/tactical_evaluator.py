@@ -173,6 +173,10 @@ class TacticalEvaluator(BaseEvaluator):
                 state_parts.append(f"Memory write: {step.action_detail.get('key', '')}")
             elif step.action_type == "memory_read":
                 state_parts.append(f"Memory read: {step.action_detail.get('key', '')}")
+            elif step.action_type == "retrieval":
+                state_parts.append(f"Retrieved {step.action_detail.get('result_count', 0)} docs")
+            elif step.action_type == "evidence":
+                state_parts.append(f"Evidence pool: {step.action_detail.get('evidence_type', '')}")
             elif step.action_type == "state_change":
                 state_parts.append(f"State changed: {step.action_detail.get('trigger', '')}")
 
@@ -217,6 +221,18 @@ class TacticalEvaluator(BaseEvaluator):
             elif action_type == "replan":
                 reason = detail.get("reason", "")[:150]
                 lines.append(f"Step {step_num}: REPLAN - {reason}")
+            elif action_type == "retrieval":
+                query = detail.get("query", "")[:100]
+                count = detail.get("result_count", 0)
+                source = detail.get("source", "")
+                lines.append(f"Step {step_num}: RETRIEVAL [{source}] query='{query}' -> {count} docs")
+            elif action_type == "evidence":
+                etype = detail.get("evidence_type", "")
+                sources = detail.get("sources", {})
+                docs_count = sources.get("retrieved_docs_count", 0)
+                tools_count = sources.get("tool_results_count", 0)
+                mem_count = sources.get("memory_results_count", 0)
+                lines.append(f"Step {step_num}: EVIDENCE [{etype}] docs={docs_count} tools={tools_count} memory={mem_count}")
             elif action_type == "state_change":
                 trigger = detail.get("trigger", "")
                 lines.append(f"Step {step_num}: State changed by '{trigger}'")

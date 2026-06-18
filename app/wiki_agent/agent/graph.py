@@ -143,6 +143,14 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
             success=True,
             call_id=f"result:hybrid_search:{user_message}",
         )
+        # 记录知识检索结果（retrieved_docs）— 完整文档内容
+        trace.record_retrieval(
+            query=user_message,
+            retrieved_docs=results,
+            source="hybrid_search",
+            top_k=3,
+            duration_ms=duration_ms,
+        )
         # 记录状态变化
         state_after = {"stage": "search", "wiki_results_count": len(results)}
         trace.record_state_change(state_before, state_after, trigger="search", node_name="search")
@@ -167,11 +175,14 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     if wiki_text:
         await _emit(queue, {"type": "wiki_results", "results": wiki_text})
 
-    # 记录记忆读取（读取 chat_history）
+    # 记录记忆读取（读取 chat_history）— 含完整内容
     if trace and chat_history:
         trace.record_memory_read(
             key="chat_history",
-            value=f"{len(chat_history)} messages",
+            value=[
+                {"role": getattr(m, "type", "unknown"), "content": str(getattr(m, "content", ""))[:300]}
+                for m in chat_history[-10:]  # 最近 10 条
+            ],
             context="Building LLM messages for response generation",
             hit=True,
         )
@@ -208,6 +219,23 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
                     "response_chars": len(collected),
                 },
                 observation=collected,
+            )
+            # 记录证据池构建（evidence）— 最终送给 LLM 的完整证据
+            trace.record_evidence(
+                evidence_type="grounded_response",
+                sources={
+                    "retrieved_docs": state.get("wiki_results") or [],
+                    "tool_results": [],
+                    "memory_results": [
+                        {"key": "chat_history", "hit": bool(chat_history), "count": len(chat_history)}
+                    ],
+                    "chat_history_count": len(chat_history),
+                },
+                final_prompt_messages=[
+                    {"role": getattr(m, "type", "unknown"), "content": str(getattr(m, "content", ""))}
+                    for m in messages
+                ],
+                context="Generate grounded response using retrieved docs + chat history",
             )
             # 记录状态变化
             trace.record_state_change(
@@ -260,6 +288,22 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
                 "duration_ms": duration_ms,
             },
             observation=decision_dict.get("reason"),
+        )
+
+        # 记录证据池构建（evidence）— 决策依据
+        trace.record_evidence(
+            evidence_type="decision",
+            sources={
+                "retrieved_docs": state.get("wiki_results") or [],
+                "tool_results": [],
+                "memory_results": [],
+                "chat_history_count": 0,
+            },
+            final_prompt_messages=[
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": ai_response[:500]},
+            ],
+            context="Decide whether to update knowledge base based on conversation",
         )
 
         # 记录规划更新（决定下一步行动）
@@ -362,7 +406,7 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
             duration_ms=duration_ms,
             call_id=f"{action}:{decision.get('path') or decision.get('title')}",
         )
-        # 独立记录工具结果
+        # 独立记录工具结果（完整内容）
         success = result is not None and not (isinstance(result, dict) and result.get("error"))
         trace.record_tool_result(
             f"wiki_{action}",
@@ -370,6 +414,17 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
             duration_ms=duration_ms,
             success=success,
             call_id=f"result:{action}:{decision.get('path') or decision.get('title')}",
+        )
+        # 记录证据池 — CRUD 操作的依据
+        trace.record_evidence(
+            evidence_type="crud_execution",
+            sources={
+                "retrieved_docs": state.get("wiki_results") or [],
+                "tool_results": [{"tool": f"wiki_{action}", "result": result, "success": success}],
+                "memory_results": [],
+                "chat_history_count": 0,
+            },
+            context=f"Execute wiki_{action} based on decision: {decision.get('reason', '')}",
         )
         # 记录状态变化
         trace.record_state_change(

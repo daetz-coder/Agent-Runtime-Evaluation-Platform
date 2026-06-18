@@ -43,6 +43,8 @@ _ACTION_THINK = "think"
 _ACTION_REPLAN = "replan"
 _ACTION_FAILURE = "failure"
 _ACTION_NODE_EXECUTE = "node_execute"
+_ACTION_RETRIEVAL = "retrieval"
+_ACTION_EVIDENCE = "evidence"
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +341,114 @@ class EvaluationTrace:
                 "recoverable": recoverable,
                 "node_name": node_name,
                 "stack_trace": (stack_trace or "")[:1000],
+            },
+        )
+
+    # ── 知识检索 ─────────────────────────────────────────────
+
+    def record_retrieval(
+        self,
+        query: str,
+        retrieved_docs: list[dict[str, Any]],
+        source: str = "",
+        top_k: int = 3,
+        duration_ms: float | None = None,
+    ) -> None:
+        """
+        记录知识库检索结果（retrieved_docs）。
+
+        Args:
+            query: 检索查询
+            retrieved_docs: 检索到的文档列表，每项含 title/path/snippet/score 等
+            source: 检索来源（如 "hybrid_search", "vector_db", "keyword_search"）
+            top_k: 请求返回的文档数
+            duration_ms: 检索耗时
+        """
+        self.record(
+            _ACTION_RETRIEVAL,
+            {
+                "query": query,
+                "source": source,
+                "top_k": top_k,
+                "result_count": len(retrieved_docs),
+                "duration_ms": duration_ms,
+                # 完整记录每个文档的内容
+                "retrieved_docs": [
+                    {
+                        "title": doc.get("title", ""),
+                        "path": doc.get("path", ""),
+                        "snippet": doc.get("snippet", "")[:500],
+                        "score": doc.get("score"),
+                        "metadata": {k: str(v)[:200] for k, v in (doc.get("metadata") or {}).items()},
+                    }
+                    for doc in retrieved_docs
+                ],
+            },
+            observation=f"Retrieved {len(retrieved_docs)} docs for query: {query[:200]}",
+        )
+
+    # ── 证据池构建 ───────────────────────────────────────────
+
+    def record_evidence(
+        self,
+        evidence_type: str,
+        sources: dict[str, Any],
+        final_prompt_messages: list[dict[str, str]] | None = None,
+        context: str = "",
+    ) -> None:
+        """
+        记录最终送给 LLM 的证据池（evidence）。
+
+        Args:
+            evidence_type: 证据类型（如 "grounded_response", "decision", "planning"）
+            sources: 证据来源汇总，如：
+                {
+                    "retrieved_docs": [...],      # 知识库检索结果
+                    "tool_results": [...],         # 工具返回结果
+                    "memory_results": [...],       # 内部记忆
+                    "chat_history_count": 5,       # 对话历史条数
+                }
+            final_prompt_messages: 最终发给 LLM 的消息列表（含 system/user/assistant）
+            context: 证据用途说明
+        """
+        # 对 final_prompt_messages 做截断处理
+        truncated_messages = None
+        if final_prompt_messages:
+            truncated_messages = []
+            for msg in final_prompt_messages:
+                truncated_messages.append({
+                    "role": msg.get("role", "unknown"),
+                    "content": str(msg.get("content", ""))[:1000],
+                })
+
+        self.record(
+            _ACTION_EVIDENCE,
+            {
+                "evidence_type": evidence_type,
+                "context": context,
+                "sources": {
+                    "retrieved_docs_count": len(sources.get("retrieved_docs") or []),
+                    "tool_results_count": len(sources.get("tool_results") or []),
+                    "memory_results_count": len(sources.get("memory_results") or []),
+                    "chat_history_count": sources.get("chat_history_count", 0),
+                    # 记录检索文档摘要
+                    "retrieved_docs_summary": [
+                        {"title": d.get("title", ""), "path": d.get("path", "")}
+                        for d in (sources.get("retrieved_docs") or [])[:10]
+                    ],
+                    # 记录工具结果摘要
+                    "tool_results_summary": [
+                        {"tool": r.get("tool", ""), "success": r.get("success", True)}
+                        for r in (sources.get("tool_results") or [])[:10]
+                    ],
+                    # 记录记忆结果
+                    "memory_results": [
+                        {"key": m.get("key", ""), "hit": m.get("hit", True)}
+                        for m in (sources.get("memory_results") or [])[:10]
+                    ],
+                },
+                "final_prompt_messages": truncated_messages,
+                "total_message_count": len(truncated_messages) if truncated_messages else 0,
             },
         )
 

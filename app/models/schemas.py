@@ -54,7 +54,7 @@ class TrajectoryStep(BaseModel):
         description=(
             "Type of action. Supported: plan, plan_update, tool_call, tool_result, "
             "memory_write, memory_read, state_change, think, replan, failure, "
-            "node_execute, tool_decision"
+            "node_execute, tool_decision, retrieval, evidence"
         ),
     )
     action_detail: Dict[str, Any]
