@@ -34,6 +34,7 @@ async def _run_evaluation_background(task_id: str, eval_id: str):
         async with async_session_factory() as db:
             service = EvaluationService(db)
             await service.run_evaluation(task_id=task_id, context=None)
+            await db.commit()
             logger.info(f"Evaluation {eval_id} completed for task {task_id}")
     except Exception as e:
         logger.error(f"Evaluation {eval_id} failed for task {task_id}: {e}")
@@ -67,6 +68,9 @@ async def run_evaluation(
 
     if not evaluation:
         raise HTTPException(status_code=500, detail="Evaluation failed to start")
+
+    # 显式 commit — 确保前端立即跳转时 GET 能查到这条记录
+    await db.commit()
 
     # Run the actual evaluation in background
     background_tasks.add_task(

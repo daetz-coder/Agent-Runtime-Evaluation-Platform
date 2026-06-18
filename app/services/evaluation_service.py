@@ -4,7 +4,7 @@ Evaluation service for orchestrating agent evaluations.
 
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +38,7 @@ class EvaluationService:
             goal=task_data.goal,
             context=task_data.context,
             status=TaskStatus.PENDING,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
 
         self.db.add(task)
@@ -95,13 +95,13 @@ class EvaluationService:
                 action_type=step_data.get("action_type", "unknown"),
                 action_detail=step_data.get("action_detail", {}),
                 observation=observation,
-                timestamp=step_data.get("timestamp", datetime.utcnow()),
+                timestamp=step_data.get("timestamp", datetime.now(timezone.utc)),
             )
             self.db.add(trajectory)
 
         # Update task status
         task.status = TaskStatus.RUNNING
-        task.started_at = datetime.utcnow()
+        task.started_at = datetime.now(timezone.utc)
 
         await self.db.flush()
         return True
@@ -121,7 +121,7 @@ class EvaluationService:
             id=eval_id,
             task_id=task_id,
             status=EvaluationStatus.IN_PROGRESS,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         self.db.add(evaluation)
         await self.db.flush()
@@ -167,7 +167,7 @@ class EvaluationService:
                 id=eval_id,
                 task_id=task_id,
                 status=EvaluationStatus.IN_PROGRESS,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             self.db.add(evaluation)
             await self.db.flush()
@@ -215,11 +215,11 @@ class EvaluationService:
             evaluation.replan_feedback = overall.get("replan")
 
             evaluation.status = EvaluationStatus.COMPLETED
-            evaluation.completed_at = datetime.utcnow()
+            evaluation.completed_at = datetime.now(timezone.utc)
 
             # Update task status
             task.status = TaskStatus.COMPLETED
-            task.completed_at = datetime.utcnow()
+            task.completed_at = datetime.now(timezone.utc)
 
             await self.db.flush()
 

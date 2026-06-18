@@ -12,8 +12,25 @@
     </div>
 
     <template v-if="evaluation">
+      <!-- In-progress banner -->
+      <el-alert
+        v-if="evaluation.status === 'in_progress'"
+        title="评估正在进行中，页面将自动刷新..."
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 20px"
+      >
+        <template #default>
+          <div style="display: flex; align-items: center; gap: 8px">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>正在运行 5 个评估器，请稍候（约 30-60 秒）</span>
+          </div>
+        </template>
+      </el-alert>
+
       <!-- Overall Score Card -->
-      <el-card class="overall-card" shadow="hover">
+      <el-card class="overall-card" shadow="hover" v-if="evaluation.status === 'completed'">
         <div class="overall-content">
           <div class="score-circle">
             <el-progress
@@ -47,7 +64,7 @@
       </el-card>
 
       <!-- Dimension Scores -->
-      <el-row :gutter="20" class="dimension-row">
+      <el-row :gutter="20" class="dimension-row" v-if="evaluation.status === 'completed'">
         <el-col :span="8" v-for="dim in dimensions" :key="dim.key">
           <el-card class="dimension-card" shadow="hover">
             <div class="dimension-header">
@@ -130,7 +147,7 @@
       </el-card>
 
       <!-- Trajectory Analysis -->
-      <el-card class="trajectory-card" shadow="hover">
+      <el-card class="trajectory-card" shadow="hover" v-if="trajectory.length > 0">
         <template #header>
           <div class="card-header">
             <span>执行轨迹分析</span>
@@ -174,7 +191,7 @@
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { ArrowLeft, Warning, CircleCheck, DataAnalysis, TrendCharts, Tools, Memory, Refresh } from '@element-plus/icons-vue'
+import { ArrowLeft, Warning, CircleCheck, DataAnalysis, TrendCharts, Tools, Memory, Refresh, Loading } from '@element-plus/icons-vue'
 import { evaluationApi, taskApi, withSilent } from '@/api'
 import dayjs from 'dayjs'
 
@@ -188,6 +205,7 @@ const trajectory = ref<any[]>([])
 const selectedDimension = ref('planning')
 const radarChart = ref<HTMLElement>()
 let radarInstance: echarts.ECharts | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // Dimensions config
 const dimensions = [
@@ -413,10 +431,48 @@ const fetchData = async () => {
     }
 
     setTimeout(initRadarChart, 100)
+
+    // 如果评估还在进行中，启动轮询
+    if (data.status === 'in_progress') {
+      startPolling(evalId)
+    }
   } catch (error) {
     console.error('Failed to fetch evaluation:', error)
   } finally {
     loading.value = false
+  }
+}
+
+/** 启动轮询：每 5 秒检查评估状态，完成后刷新数据 */
+const startPolling = (evalId: string) => {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    try {
+      const data = await evaluationApi.getById(evalId, withSilent() as any)
+      if (data.status === 'completed' || data.status === 'failed') {
+        // 评估结束，停止轮询并刷新完整数据
+        stopPolling()
+        evaluation.value = data
+        if (data.task_id) {
+          try {
+            const trajData = await taskApi.getTrajectory(data.task_id, withSilent())
+            trajectory.value = trajData.steps || []
+          } catch {
+            trajectory.value = []
+          }
+        }
+        setTimeout(initRadarChart, 100)
+      }
+    } catch {
+      // 忽略轮询中的临时错误
+    }
+  }, 5000)
+}
+
+const stopPolling = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
@@ -434,6 +490,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   radarInstance?.dispose()
+  stopPolling()
 })
 
 watch(selectedDimension, () => {

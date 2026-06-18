@@ -52,7 +52,7 @@ class EvaluationState(TypedDict):
 
 def _convert_trajectory_steps(raw_steps: List[Dict[str, Any]]) -> List[TrajectoryStep]:
     """Convert raw trajectory data to TrajectoryStep objects."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     steps = []
     for step in raw_steps:
@@ -61,7 +61,7 @@ def _convert_trajectory_steps(raw_steps: List[Dict[str, Any]]) -> List[Trajector
             action_type=step.get("action_type", "unknown"),
             action_detail=step.get("action_detail", {}),
             observation=step.get("observation"),
-            timestamp=step.get("timestamp", datetime.utcnow()),
+            timestamp=step.get("timestamp", datetime.now(timezone.utc)),
         ))
     return steps
 

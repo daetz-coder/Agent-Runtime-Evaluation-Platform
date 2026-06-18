@@ -2,13 +2,18 @@
 Database ORM models for Agent Evaluation Platform.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import String, Text, Float, Integer, DateTime, JSON, ForeignKey, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 
 from app.db.database import Base
+
+
+def _utcnow() -> datetime:
+    """返回带 UTC 时区信息的时间戳，确保 JSON 序列化后含 '+00:00' 后缀。"""
+    return datetime.now(timezone.utc)
 
 
 class TaskStatus(str, enum.Enum):
@@ -36,7 +41,7 @@ class AgentTask(Base):
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(SQLEnum(TaskStatus), default=TaskStatus.PENDING)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -55,7 +60,7 @@ class AgentTrajectory(Base):
     action_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "plan", "tool_call", "think", "replan"
     action_detail: Mapped[dict] = mapped_column(JSON, nullable=False)
     observation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     # Relationships
     task: Mapped["AgentTask"] = relationship(back_populates="trajectory")
@@ -68,7 +73,7 @@ class Evaluation(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"))
     status: Mapped[EvaluationStatus] = mapped_column(SQLEnum(EvaluationStatus), default=EvaluationStatus.PENDING)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Scores
