@@ -28,13 +28,22 @@ async def get_evaluation_summary(
     - Top issues identified
     - Recommendations
     """
-    # Get all completed evaluations
-    result = await db.execute(
-        select(Evaluation).where(Evaluation.status == EvaluationStatus.COMPLETED)
+    # Aggregate averages in SQL (avoid loading full evaluation rows)
+    stats_result = await db.execute(
+        select(
+            func.count(Evaluation.id),
+            func.avg(Evaluation.planning_score),
+            func.avg(Evaluation.tactical_score),
+            func.avg(Evaluation.tool_use_score),
+            func.avg(Evaluation.memory_score),
+            func.avg(Evaluation.replan_score),
+            func.avg(Evaluation.overall_score),
+        ).where(Evaluation.status == EvaluationStatus.COMPLETED)
     )
-    evaluations = result.scalars().all()
+    total, avg_planning, avg_tactical, avg_tool, avg_memory, avg_replan, avg_overall = stats_result.one()
+    total = total or 0
 
-    if not evaluations:
+    if total == 0:
         return EvaluationSummary(
             total_evaluations=0,
             average_scores={
@@ -57,31 +66,37 @@ async def get_evaluation_summary(
             recommendations=["Complete some evaluations to get recommendations"],
         )
 
-    # Calculate averages
-    total = len(evaluations)
+    scores_result = await db.execute(
+        select(
+            Evaluation.planning_score,
+            Evaluation.tactical_score,
+            Evaluation.tool_use_score,
+            Evaluation.memory_score,
+            Evaluation.replan_score,
+            Evaluation.overall_score,
+        ).where(Evaluation.status == EvaluationStatus.COMPLETED)
+    )
+    score_rows = scores_result.all()
+
     avg_scores = {
-        "planning": sum(e.planning_score or 0 for e in evaluations) / total,
-        "tactical": sum(e.tactical_score or 0 for e in evaluations) / total,
-        "tool_use": sum(e.tool_use_score or 0 for e in evaluations) / total,
-        "memory": sum(e.memory_score or 0 for e in evaluations) / total,
-        "replan": sum(e.replan_score or 0 for e in evaluations) / total,
-        "overall": sum(e.overall_score or 0 for e in evaluations) / total,
+        "planning": float(avg_planning or 0),
+        "tactical": float(avg_tactical or 0),
+        "tool_use": float(avg_tool or 0),
+        "memory": float(avg_memory or 0),
+        "replan": float(avg_replan or 0),
+        "overall": float(avg_overall or 0),
     }
 
-    # Calculate distributions
     distributions = {
-        "planning": [e.planning_score for e in evaluations if e.planning_score is not None],
-        "tactical": [e.tactical_score for e in evaluations if e.tactical_score is not None],
-        "tool_use": [e.tool_use_score for e in evaluations if e.tool_use_score is not None],
-        "memory": [e.memory_score for e in evaluations if e.memory_score is not None],
-        "replan": [e.replan_score for e in evaluations if e.replan_score is not None],
-        "overall": [e.overall_score for e in evaluations if e.overall_score is not None],
+        "planning": [r[0] for r in score_rows if r[0] is not None],
+        "tactical": [r[1] for r in score_rows if r[1] is not None],
+        "tool_use": [r[2] for r in score_rows if r[2] is not None],
+        "memory": [r[3] for r in score_rows if r[3] is not None],
+        "replan": [r[4] for r in score_rows if r[4] is not None],
+        "overall": [r[5] for r in score_rows if r[5] is not None],
     }
 
-    # Identify top issues
     top_issues = _identify_top_issues(avg_scores)
-
-    # Generate recommendations
     recommendations = _generate_global_recommendations(avg_scores, distributions)
 
     return EvaluationSummary(

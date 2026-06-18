@@ -165,7 +165,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Refresh, CircleCheck, Loading, TrendCharts, Warning } from '@element-plus/icons-vue'
-import { reportApi } from '@/api'
+import { reportApi, evaluationApi } from '@/api'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -258,23 +258,13 @@ const formatDateTime = (date: string) => {
 const fetchEvaluations = async () => {
   loading.value = true
   try {
-    // This would need a proper API endpoint to list evaluations
-    // For now, we'll use the summary data
-    const summary = await reportApi.getSummary()
-    // Mock data structure
-    evaluations.value = Array.from({ length: summary.total_evaluations || 0 }, (_, i) => ({
-      id: `eval-${i}`,
-      task_id: `task-${i}`,
-      status: 'completed',
-      overall_score: Math.floor(Math.random() * 40) + 60,
-      planning_score: Math.floor(Math.random() * 40) + 60,
-      tactical_score: Math.floor(Math.random() * 40) + 60,
-      tool_use_score: Math.floor(Math.random() * 40) + 60,
-      memory_score: Math.floor(Math.random() * 40) + 60,
-      replan_score: Math.floor(Math.random() * 40) + 60,
-      created_at: dayjs().subtract(i, 'day').toISOString(),
-    }))
-    totalEvaluations.value = evaluations.value.length
+    const skip = (currentPage.value - 1) * pageSize.value
+    const [summary, items] = await Promise.all([
+      reportApi.getSummary(),
+      evaluationApi.list({ skip, limit: pageSize.value }),
+    ])
+    evaluations.value = items as any[]
+    totalEvaluations.value = summary.total_evaluations || evaluations.value.length
   } catch (error) {
     console.error('Failed to fetch evaluations:', error)
   } finally {

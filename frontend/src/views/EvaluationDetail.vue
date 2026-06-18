@@ -175,7 +175,7 @@ import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { ArrowLeft, Warning, CircleCheck, DataAnalysis, TrendCharts, Tools, Memory, Refresh } from '@element-plus/icons-vue'
-import { evaluationApi, taskApi } from '@/api'
+import { evaluationApi, taskApi, withSilent } from '@/api'
 import dayjs from 'dayjs'
 
 const route = useRoute()
@@ -402,16 +402,13 @@ const fetchData = async () => {
     const data = await evaluationApi.getById(evalId)
     evaluation.value = data
 
-    // Fetch trajectory
+    // Fetch trajectory (optional — task may have been deleted)
     if (data.task_id) {
-      const task = await taskApi.getById(data.task_id)
-      if (task) {
-        // Note: This would need a separate API to get trajectory
-        // For now, we'll use mock data
-        trajectory.value = [
-          { step_number: 1, action_type: 'plan', action_detail: { steps: ['Search code', 'Analyze', 'Fix'] }, timestamp: new Date().toISOString() },
-          { step_number: 2, action_type: 'tool_call', action_detail: { tool_name: 'search_code', input: { query: 'auth' } }, observation: 'Found: auth.py', timestamp: new Date().toISOString() },
-        ]
+      try {
+        const trajData = await taskApi.getTrajectory(data.task_id, withSilent())
+        trajectory.value = trajData.steps || []
+      } catch {
+        trajectory.value = []
       }
     }
 

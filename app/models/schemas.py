@@ -124,6 +124,24 @@ class EvaluationResponse(BaseModel):
         from_attributes = True
 
 
+class EvaluationListItem(BaseModel):
+    """Lightweight evaluation item for list views."""
+    id: str
+    task_id: str
+    status: str
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    overall_score: Optional[float] = None
+    planning_score: Optional[float] = None
+    tactical_score: Optional[float] = None
+    tool_use_score: Optional[float] = None
+    memory_score: Optional[float] = None
+    replan_score: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+
 # ============== Report Schemas ==============
 
 class EvaluationSummary(BaseModel):
