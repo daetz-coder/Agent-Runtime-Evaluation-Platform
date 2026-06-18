@@ -4,7 +4,7 @@ Base agent class for example agents.
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
@@ -58,7 +58,7 @@ class BaseAgent(ABC):
             action_type=action_type,
             action_detail=action_detail,
             observation=observation,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         )
         self.trajectory.append(step)
 
