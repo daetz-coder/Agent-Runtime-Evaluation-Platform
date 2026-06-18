@@ -2,13 +2,16 @@
 Evaluation endpoints.
 """
 
+import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_db
+from app.db.database import get_db, async_session_factory
 from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem
 from app.services.evaluation_service import EvaluationService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -25,6 +28,17 @@ async def list_evaluations(
     return await service.list_evaluations(skip=skip, limit=limit, status=status)
 
 
+async def _run_evaluation_background(task_id: str, eval_id: str):
+    """Background task: run evaluation graph and persist results."""
+    try:
+        async with async_session_factory() as db:
+            service = EvaluationService(db)
+            await service.run_evaluation(task_id=task_id, context=None)
+            logger.info(f"Evaluation {eval_id} completed for task {task_id}")
+    except Exception as e:
+        logger.error(f"Evaluation {eval_id} failed for task {task_id}: {e}")
+
+
 @router.post("/", response_model=EvaluationResponse, status_code=202)
 async def run_evaluation(
     request: EvaluationRequest,
@@ -32,13 +46,14 @@ async def run_evaluation(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Run evaluation for a task.
+    Run evaluation for a task (truly async).
 
     - **task_id**: UUID of the task to evaluate
     - **include_details**: Include detailed feedback (default: true)
 
-    This endpoint starts an asynchronous evaluation process.
-    Use the returned evaluation ID to check status and get results.
+    Returns immediately with the evaluation ID (status=in_progress).
+    The evaluation runs in the background.
+    Poll GET /evaluations/{id} until status becomes 'completed' or 'failed'.
     """
     service = EvaluationService(db)
 
@@ -47,14 +62,18 @@ async def run_evaluation(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # Run evaluation
-    evaluation = await service.run_evaluation(
-        task_id=request.task_id,
-        context=None,
-    )
+    # Create evaluation record (IN_PROGRESS) and return immediately
+    evaluation = await service.create_evaluation(request.task_id)
 
     if not evaluation:
         raise HTTPException(status_code=500, detail="Evaluation failed to start")
+
+    # Run the actual evaluation in background
+    background_tasks.add_task(
+        _run_evaluation_background,
+        request.task_id,
+        evaluation.id,
+    )
 
     return evaluation
 

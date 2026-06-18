@@ -106,21 +106,16 @@ class EvaluationService:
         await self.db.flush()
         return True
 
-    async def run_evaluation(
-        self,
-        task_id: str,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> Optional[EvaluationResponse]:
-        """Run evaluation for a task."""
-        # Get task
+    async def create_evaluation(self, task_id: str) -> Optional[EvaluationResponse]:
+        """Create an evaluation record (IN_PROGRESS) without running the graph.
+
+        Used by the async endpoint to return immediately, then the background
+        task calls run_evaluation() to do the actual work.
+        """
         task = await self._get_task_model(task_id)
         if not task:
             return None
 
-        # Get trajectory
-        trajectory = await self._get_trajectory(task_id)
-
-        # Create evaluation record
         eval_id = str(uuid.uuid4())
         evaluation = Evaluation(
             id=eval_id,
@@ -130,6 +125,52 @@ class EvaluationService:
         )
         self.db.add(evaluation)
         await self.db.flush()
+
+        return EvaluationResponse(
+            id=evaluation.id,
+            task_id=evaluation.task_id,
+            status=evaluation.status.value,
+            created_at=evaluation.created_at,
+            completed_at=None,
+            evaluation=None,
+        )
+
+    async def run_evaluation(
+        self,
+        task_id: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Optional[EvaluationResponse]:
+        """Run evaluation for a task.
+
+        If an IN_PROGRESS evaluation already exists for this task, it will be
+        updated. Otherwise a new one is created.
+        """
+        # Get task
+        task = await self._get_task_model(task_id)
+        if not task:
+            return None
+
+        # Get trajectory
+        trajectory = await self._get_trajectory(task_id)
+
+        # Find existing IN_PROGRESS evaluation or create a new one
+        result = await self.db.execute(
+            select(Evaluation).where(
+                Evaluation.task_id == task_id,
+                Evaluation.status == EvaluationStatus.IN_PROGRESS,
+            )
+        )
+        evaluation = result.scalar_one_or_none()
+        if not evaluation:
+            eval_id = str(uuid.uuid4())
+            evaluation = Evaluation(
+                id=eval_id,
+                task_id=task_id,
+                status=EvaluationStatus.IN_PROGRESS,
+                created_at=datetime.utcnow(),
+            )
+            self.db.add(evaluation)
+            await self.db.flush()
 
         try:
             # Prepare state for graph
