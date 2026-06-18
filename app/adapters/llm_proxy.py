@@ -6,6 +6,11 @@ LLM Proxy Adapter - 代理 LLM 调用，自动收集轨迹
 - 自动收集：自动记录输入输出
 - 零侵入：不需要修改原有代码
 
+支持的数据源：
+- LLM 调用 (llm_call)
+- 工具决策 (think) — LLM 返回 tool_calls 时记录
+- 工具调用 (tool_call) — LLM 返回 tool_calls 时记录
+
 使用方式：
     from app.adapters import create_proxy_llm
 
@@ -30,6 +35,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 from app.collectors.trajectory import get_collector
+from app.models.action_types import ActionType
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +110,7 @@ class ProxyChatModel(BaseChatModel):
         result: ChatResult,
         duration_ms: float,
     ):
-        """记录 LLM 调用"""
+        """记录 LLM 调用 + 工具决策 + 工具调用"""
         try:
             # 提取消息内容
             msg_list = []
@@ -144,11 +150,19 @@ class ProxyChatModel(BaseChatModel):
                 duration_ms=duration_ms,
             )
 
-            # 如果有工具调用，单独记录
+            # 如果有工具调用，记录工具决策 + 工具调用
             if tool_calls:
+                tool_names = [tc['name'] for tc in tool_calls]
                 self._collector.record_think(
-                    f"LLM decided to call tools: {[tc['name'] for tc in tool_calls]}"
+                    f"LLM decided to call tools: {tool_names}"
                 )
+
+                # 为每个工具调用记录独立的 tool_call
+                for tc in tool_calls:
+                    self._collector.record_tool_call(
+                        tool_name=tc["name"],
+                        tool_input=tc["args"],
+                    )
 
         except Exception as e:
             logger.warning(f"Failed to record LLM call: {e}")

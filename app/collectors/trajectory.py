@@ -5,10 +5,20 @@ Trajectory Collector - 收集 Agent 执行轨迹
 - 线程安全：支持多线程环境
 - 低侵入：不修改原有代码
 - 异步上报：后台批量发送数据
+
+支持的 action_type（定义在 app.models.action_types）：
+- plan / plan_update       — 规划输出
+- tool_call / tool_result  — 工具调用与返回
+- memory_write / memory_read — 记忆读写
+- state_change             — 状态变化
+- think / replan           — 思考与重规划
+- failure                  — 失败/异常
+- node_execute / tool_decision — 节点执行与工具决策
 """
 
 from __future__ import annotations
 
+import json as _json
 import logging
 import threading
 import uuid
@@ -18,6 +28,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from app.core.config import settings
+from app.models.action_types import ActionType
 
 logger = logging.getLogger(__name__)
 
@@ -181,25 +192,6 @@ class TrajectoryCollector:
             observation=response[:4000],
         )
 
-    def record_tool_call(
-        self,
-        tool_name: str,
-        tool_input: Dict[str, Any],
-        tool_output: Optional[str] = None,
-        duration_ms: float = 0,
-    ):
-        """记录工具调用"""
-        return self.record(
-            action_type="tool_call",
-            action_detail={
-                "tool_name": tool_name,
-                "input": tool_input,
-                "output": tool_output[:4000] if tool_output else None,
-                "duration_ms": duration_ms,
-            },
-            observation=tool_output[:4000] if tool_output else None,
-        )
-
     def record_node_execute(
         self,
         node_name: str,
@@ -219,8 +211,293 @@ class TrajectoryCollector:
     def record_think(self, thought: str):
         """记录思考过程"""
         return self.record(
-            action_type="think",
+            action_type=ActionType.THINK,
             action_detail={"thought": thought},
+        )
+
+    # ── Planner 输出 ──────────────────────────────────────────
+
+    def record_plan(
+        self,
+        steps: List[Dict[str, Any]],
+        goal: str = "",
+        milestones: Optional[List[str]] = None,
+    ):
+        """
+        记录初始规划
+
+        Args:
+            steps: 规划步骤列表，每项含 description
+            goal: 目标描述
+            milestones: 里程碑列表
+        """
+        return self.record(
+            action_type=ActionType.PLAN,
+            action_detail={
+                "goal": goal,
+                "steps": steps,
+                "milestones": milestones or [],
+            },
+        )
+
+    def record_plan_update(
+        self,
+        milestone_status: Dict[str, str],
+        next_action: str,
+        reason: str = "",
+        remaining_steps: Optional[List[str]] = None,
+    ):
+        """
+        记录动态规划更新
+
+        Args:
+            milestone_status: 里程碑完成状态，如 {"search": "done", "respond": "in_progress"}
+            next_action: 下一步行动
+            reason: 更新原因
+            remaining_steps: 剩余步骤
+        """
+        return self.record(
+            action_type=ActionType.PLAN_UPDATE,
+            action_detail={
+                "milestone_status": milestone_status,
+                "next_action": next_action,
+                "reason": reason,
+                "remaining_steps": remaining_steps or [],
+            },
+        )
+
+    # ── 工具调用与返回 ────────────────────────────────────────
+
+    def record_tool_call(
+        self,
+        tool_name: str,
+        tool_input: Dict[str, Any],
+        tool_output: Optional[str] = None,
+        duration_ms: float = 0,
+    ):
+        """记录工具调用（含输入）"""
+        return self.record(
+            action_type="tool_call",
+            action_detail={
+                "tool_name": tool_name,
+                "input": tool_input,
+                "output": tool_output[:4000] if tool_output else None,
+                "duration_ms": duration_ms,
+            },
+            observation=tool_output[:4000] if tool_output else None,
+        )
+
+    def record_tool_result(
+        self,
+        tool_name: str,
+        tool_output: Any,
+        duration_ms: float = 0,
+        success: bool = True,
+        error_type: Optional[str] = None,
+    ):
+        """
+        记录工具返回结果（独立于 tool_call）
+
+        Args:
+            tool_name: 工具名
+            tool_output: 工具输出
+            duration_ms: 耗时
+            success: 是否成功
+            error_type: 失败时的错误类型
+        """
+        output_text = tool_output if isinstance(tool_output, str) else _json.dumps(
+            tool_output, ensure_ascii=False, default=str
+        )[:4000]
+        return self.record(
+            action_type=ActionType.TOOL_RESULT,
+            action_detail={
+                "tool_name": tool_name,
+                "success": success,
+                "error_type": error_type,
+                "duration_ms": duration_ms,
+            },
+            observation=output_text[:4000] if output_text else None,
+        )
+
+    # ── 记忆读写 ─────────────────────────────────────────────
+
+    def record_memory_write(
+        self,
+        key: str,
+        value: Any,
+        source: str = "",
+        memory_type: str = "fact",
+    ):
+        """
+        记录记忆写入
+
+        Args:
+            key: 记忆键
+            value: 记忆值
+            source: 来源（如 "user_input", "tool_output", "inference"）
+            memory_type: 记忆类型（如 "fact", "preference", "context"）
+        """
+        return self.record(
+            action_type=ActionType.MEMORY_WRITE,
+            action_detail={
+                "key": key,
+                "value": value if isinstance(value, str) else _json.dumps(
+                    value, ensure_ascii=False, default=str
+                )[:2000],
+                "source": source,
+                "memory_type": memory_type,
+            },
+        )
+
+    def record_memory_read(
+        self,
+        key: str,
+        value: Any = None,
+        context: str = "",
+        hit: bool = True,
+    ):
+        """
+        记录记忆读取
+
+        Args:
+            key: 记忆键
+            value: 读取到的值（hit=False 时为 None）
+            context: 读取上下文
+            hit: 是否命中
+        """
+        return self.record(
+            action_type=ActionType.MEMORY_READ,
+            action_detail={
+                "key": key,
+                "value": value if isinstance(value, str) else (
+                    _json.dumps(value, ensure_ascii=False, default=str)[:2000] if value else None
+                ),
+                "context": context,
+                "hit": hit,
+            },
+        )
+
+    # ── 状态变化 ─────────────────────────────────────────────
+
+    def record_state_change(
+        self,
+        state_before: Dict[str, Any],
+        state_after: Dict[str, Any],
+        trigger: str = "",
+        node_name: str = "",
+    ):
+        """
+        记录状态变化（含 diff）
+
+        Args:
+            state_before: 变化前状态快照
+            state_after: 变化后状态快照
+            trigger: 触发原因（如节点名、工具名）
+            node_name: 关联的节点名
+        """
+        # 计算 diff
+        diff = self._compute_state_diff(state_before, state_after)
+        return self.record(
+            action_type=ActionType.STATE_CHANGE,
+            action_detail={
+                "node_name": node_name,
+                "trigger": trigger,
+                "diff": diff,
+                "before_keys": list(state_before.keys()) if isinstance(state_before, dict) else [],
+                "after_keys": list(state_after.keys()) if isinstance(state_after, dict) else [],
+            },
+        )
+
+    @staticmethod
+    def _compute_state_diff(before: Dict[str, Any], after: Dict[str, Any]) -> Dict[str, Any]:
+        """比较两个状态快照，返回变化摘要。"""
+        diff: Dict[str, Any] = {}
+        all_keys = set(list(before.keys()) + list(after.keys()))
+        for key in all_keys:
+            old_val = before.get(key)
+            new_val = after.get(key)
+            if old_val != new_val:
+                # 对大对象只记录类型和长度变化
+                if isinstance(old_val, list) and isinstance(new_val, list):
+                    diff[key] = {
+                        "type": "list",
+                        "old_len": len(old_val),
+                        "new_len": len(new_val),
+                    }
+                elif isinstance(old_val, dict) and isinstance(new_val, dict):
+                    diff[key] = {
+                        "type": "dict",
+                        "changed_keys": [
+                            k for k in set(list(old_val.keys()) + list(new_val.keys()))
+                            if old_val.get(k) != new_val.get(k)
+                        ][:10],
+                    }
+                else:
+                    old_str = str(old_val)[:100] if old_val is not None else "None"
+                    new_str = str(new_val)[:100] if new_val is not None else "None"
+                    diff[key] = {"old": old_str, "new": new_str}
+        return diff
+
+    # ── 重规划 ─────────────────────────────────────────────
+
+    def record_replan(
+        self,
+        reason: str,
+        old_plan: Optional[List[str]] = None,
+        new_plan: Optional[List[str]] = None,
+        trigger_step: Optional[int] = None,
+    ):
+        """
+        记录重规划事件
+
+        Args:
+            reason: 重规划原因
+            old_plan: 原计划步骤
+            new_plan: 新计划步骤
+            trigger_step: 触发重规划的步骤号
+        """
+        return self.record(
+            action_type=ActionType.REPLAN,
+            action_detail={
+                "reason": reason,
+                "old_plan": old_plan or [],
+                "new_plan": new_plan or [],
+                "trigger_step": trigger_step,
+            },
+        )
+
+    # ── 失败/异常 ─────────────────────────────────────────
+
+    def record_failure(
+        self,
+        error_type: str,
+        error_message: str,
+        context: str = "",
+        recoverable: bool = True,
+        node_name: str = "",
+        stack_trace: Optional[str] = None,
+    ):
+        """
+        记录失败/异常事件
+
+        Args:
+            error_type: 错误类型（如 TimeoutError, ToolExecutionError）
+            error_message: 错误消息
+            context: 错误上下文
+            recoverable: 是否可恢复
+            node_name: 发生错误的节点
+            stack_trace: 堆栈摘要
+        """
+        return self.record(
+            action_type=ActionType.FAILURE,
+            action_detail={
+                "error_type": error_type,
+                "error_message": error_message[:2000],
+                "context": context,
+                "recoverable": recoverable,
+                "node_name": node_name,
+                "stack_trace": (stack_trace or "")[:1000],
+            },
         )
 
     def _flush(self):

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
+from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep, TacticalScore
 
 
@@ -156,10 +157,24 @@ class TacticalEvaluator(BaseEvaluator):
             if step.action_type == "tool_call":
                 tool_name = step.action_detail.get("tool_name", "unknown")
                 state_parts.append(f"Used tool: {tool_name}")
+            elif step.action_type == "tool_result":
+                success = step.action_detail.get("success", True)
+                tool_name = step.action_detail.get("tool_name", "unknown")
+                state_parts.append(f"Tool result: {tool_name} ({'OK' if success else 'FAIL'})")
             elif step.action_type == "think":
                 state_parts.append(f"Thinking: {step.action_detail.get('thought', '')[:100]}")
             elif step.action_type == "replan":
                 state_parts.append("Triggered replan")
+            elif step.action_type == "plan_update":
+                state_parts.append(f"Plan update: {step.action_detail.get('next_action', '')}")
+            elif step.action_type == "failure":
+                state_parts.append(f"Failure: {step.action_detail.get('error_type', '')}")
+            elif step.action_type == "memory_write":
+                state_parts.append(f"Memory write: {step.action_detail.get('key', '')}")
+            elif step.action_type == "memory_read":
+                state_parts.append(f"Memory read: {step.action_detail.get('key', '')}")
+            elif step.action_type == "state_change":
+                state_parts.append(f"State changed: {step.action_detail.get('trigger', '')}")
 
         return " -> ".join(state_parts) if state_parts else "In progress"
 
@@ -175,9 +190,36 @@ class TacticalEvaluator(BaseEvaluator):
                 tool = detail.get("tool_name", "unknown")
                 inp = detail.get("input", {})
                 lines.append(f"Step {step_num}: Call tool '{tool}' with input: {inp}")
+            elif action_type == "tool_result":
+                tool = detail.get("tool_name", "unknown")
+                success = detail.get("success", True)
+                error = detail.get("error_type")
+                status = "SUCCESS" if success else f"FAILED ({error})"
+                lines.append(f"Step {step_num}: Tool result '{tool}' -> {status}")
             elif action_type == "think":
                 thought = detail.get("thought", "")[:200]
                 lines.append(f"Step {step_num}: Think - {thought}")
+            elif action_type == "plan_update":
+                next_action = detail.get("next_action", "")
+                reason = detail.get("reason", "")
+                lines.append(f"Step {step_num}: Plan update -> {next_action} ({reason})")
+            elif action_type == "failure":
+                error_type = detail.get("error_type", "Unknown")
+                error_msg = detail.get("error_message", "")[:150]
+                lines.append(f"Step {step_num}: FAILURE [{error_type}] - {error_msg}")
+            elif action_type == "memory_write":
+                key = detail.get("key", "")
+                lines.append(f"Step {step_num}: Memory WRITE '{key}'")
+            elif action_type == "memory_read":
+                key = detail.get("key", "")
+                hit = detail.get("hit", True)
+                lines.append(f"Step {step_num}: Memory READ '{key}' ({'HIT' if hit else 'MISS'})")
+            elif action_type == "replan":
+                reason = detail.get("reason", "")[:150]
+                lines.append(f"Step {step_num}: REPLAN - {reason}")
+            elif action_type == "state_change":
+                trigger = detail.get("trigger", "")
+                lines.append(f"Step {step_num}: State changed by '{trigger}'")
             else:
                 lines.append(f"Step {step_num}: {action_type} - {detail}")
 

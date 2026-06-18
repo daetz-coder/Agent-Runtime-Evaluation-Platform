@@ -1,5 +1,14 @@
 """
 Base evaluator class for all evaluation dimensions.
+
+支持的 action_type：
+- plan / plan_update       — 规划输出
+- tool_call / tool_result  — 工具调用与返回
+- memory_write / memory_read — 记忆读写
+- state_change             — 状态变化
+- think / replan           — 思考与重规划
+- failure                  — 失败/异常
+- node_execute / tool_decision — 节点执行与工具决策
 """
 
 from abc import ABC, abstractmethod
@@ -9,6 +18,7 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
 from app.core.config import settings
+from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep
 
 
@@ -105,7 +115,81 @@ class BaseEvaluator(ABC):
                 "new_plan": step.action_detail.get("new_plan"),
             }
             for step in trajectory
-            if step.action_type == "replan"
+            if step.action_type == ActionType.REPLAN
+        ]
+
+    def _extract_plan_updates(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
+        """Extract plan update events from trajectory."""
+        return [
+            {
+                "step": step.step_number,
+                "milestone_status": step.action_detail.get("milestone_status", {}),
+                "next_action": step.action_detail.get("next_action", ""),
+                "reason": step.action_detail.get("reason", ""),
+                "remaining_steps": step.action_detail.get("remaining_steps", []),
+            }
+            for step in trajectory
+            if step.action_type == ActionType.PLAN_UPDATE
+        ]
+
+    def _extract_tool_results(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
+        """Extract tool result events from trajectory."""
+        return [
+            {
+                "step": step.step_number,
+                "tool_name": step.action_detail.get("tool_name"),
+                "success": step.action_detail.get("success", True),
+                "error_type": step.action_detail.get("error_type"),
+                "duration_ms": step.action_detail.get("duration_ms"),
+                "output": step.observation,
+            }
+            for step in trajectory
+            if step.action_type == ActionType.TOOL_RESULT
+        ]
+
+    def _extract_memory_events(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
+        """Extract memory read/write events from trajectory."""
+        return [
+            {
+                "step": step.step_number,
+                "type": step.action_type,
+                "key": step.action_detail.get("key"),
+                "value": step.action_detail.get("value"),
+                "source": step.action_detail.get("source", ""),
+                "context": step.action_detail.get("context", ""),
+                "hit": step.action_detail.get("hit", True),
+                "memory_type": step.action_detail.get("memory_type", ""),
+            }
+            for step in trajectory
+            if step.action_type in (ActionType.MEMORY_WRITE, ActionType.MEMORY_READ)
+        ]
+
+    def _extract_state_changes(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
+        """Extract state change events from trajectory."""
+        return [
+            {
+                "step": step.step_number,
+                "node_name": step.action_detail.get("node_name", ""),
+                "trigger": step.action_detail.get("trigger", ""),
+                "diff": step.action_detail.get("diff", {}),
+            }
+            for step in trajectory
+            if step.action_type == ActionType.STATE_CHANGE
+        ]
+
+    def _extract_failures(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
+        """Extract failure events from trajectory."""
+        return [
+            {
+                "step": step.step_number,
+                "error_type": step.action_detail.get("error_type", ""),
+                "error_message": step.action_detail.get("error_message", ""),
+                "context": step.action_detail.get("context", ""),
+                "recoverable": step.action_detail.get("recoverable", True),
+                "node_name": step.action_detail.get("node_name", ""),
+            }
+            for step in trajectory
+            if step.action_type == ActionType.FAILURE
         ]
 
     def _calculate_weighted_score(self, scores: Dict[str, float], weights: Dict[str, float]) -> float:
