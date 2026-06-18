@@ -7,218 +7,137 @@
 % available at http://www.latex-project.org/lppl/.
 
 
-\documentclass[11pt,a4paper]{moderncv}
+\documentclass[10pt,a4paper]{moderncv}
 
 \usepackage{fontspec,xunicode}
 \usepackage[slantfont,boldfont]{xeCJK}
-\usepackage{xcolor}  % replace by the encoding you are using
+\usepackage{xcolor}
 
-\usepackage{ifplatform} % 判断平台
+\usepackage{ifplatform}
 
-
-% \setmainfont{Tahoma}
-\setmainfont{Times New Roman}  % 缺省英文字体.serif是有衬线字体sans serif无衬线字体
+\setmainfont{Times New Roman}
 
 \ifwindows
-  % Windows 下使用的代码
-  \setCJKmainfont[ItalicFont=KaiTi, BoldFont=SimHei]{SimSun}  % 衬线字体 缺省中文字体为
+  \setCJKmainfont[ItalicFont=KaiTi, BoldFont=SimHei]{SimSun}
   \setCJKsansfont{SimSun}
-  \setmonofont{FangSong}                 % 等宽字体: FangSong, Consolas
+  \setmonofont{FangSong}
 \fi
 
 \ifmacosx
-  % macOS 下使用的代码
-  \setCJKmainfont[ItalicFont={Kai}, BoldFont={Hei}]{STSong}  % 衬线字体 缺省中文字体为
+  \setCJKmainfont[ItalicFont={Kai}, BoldFont={Hei}]{STSong}
   \setCJKsansfont{STSong}
-  \setCJKmonofont{STFangsong}  % 中文等宽字体
+  \setCJKmonofont{STFangsong}
 \fi
 
-
-%-----------------------xeCJK下设置中文字体------------------------------%
-\setCJKfamilyfont{song}{SimSun}  % 宋体 song
+\setCJKfamilyfont{song}{SimSun}
 \newcommand{\song}{\CJKfamily{song}}
-\setCJKfamilyfont{fs}{FangSong_GB2312}  % 仿宋2312 fs
-\newcommand{\fs}{\CJKfamily{fs}}
-\setCJKfamilyfont{yh}{Microsoft YaHei}  % 微软雅黑 yh
+\setCJKfamilyfont{yh}{Microsoft YaHei}
 \newcommand{\yh}{\CJKfamily{yh}}
-\setCJKfamilyfont{hei}{SimHei}  % 黑体  hei
+\setCJKfamilyfont{hei}{SimHei}
 \newcommand{\hei}{\CJKfamily{hei}}
-\setCJKfamilyfont{hwxh}{STXihei}  % 华文细黑  hwxh
-\newcommand{\hwxh}{\CJKfamily{hwxh}}
-\setCJKfamilyfont{asong}{Adobe Song Std}  % Adobe 宋体  asong
-\newcommand{\asong}{\CJKfamily{asong}}
-\setCJKfamilyfont{ahei}{Adobe Heiti Std}  % Adobe 黑体  ahei
-\newcommand{\ahei}{\CJKfamily{ahei}}
-\setCJKfamilyfont{akai}{Adobe Kaiti Std}  % Adobe 楷体  akai
-\newcommand{\akai}{\CJKfamily{akai}}
 
+% moderncv theme
+\moderncvtheme[blue]{classic}
 
-%------------------------------设置字体大小------------------------%
-\newcommand{\chuhao}{\fontsize{42pt}{\baselineskip}\selectfont}  % 初号
-\newcommand{\xiaochuhao}{\fontsize{36pt}{\baselineskip}\selectfont}  % 小初号
-\newcommand{\yihao}{\fontsize{28pt}{\baselineskip}\selectfont}  % 一号
-\newcommand{\erhao}{\fontsize{21pt}{\baselineskip}\selectfont}  % 二号
-\newcommand{\xiaoerhao}{\fontsize{18pt}{\baselineskip}\selectfont}  % 小二号
-\newcommand{\sanhao}{\fontsize{15.75pt}{\baselineskip}\selectfont}  % 三号
-\newcommand{\sihao}{\fontsize{14pt}{\baselineskip}\selectfont}  % 四号
-\newcommand{\xiaosihao}{\fontsize{12pt}{\baselineskip}\selectfont}  % 小四号
-\newcommand{\wuhao}{\fontsize{10.5pt}{\baselineskip}\selectfont}  % 五号
-\newcommand{\subwuhao}{\fontsize{10pt}{\baselineskip}\selectfont}  % 次五号
-\newcommand{\xiaowuhao}{\fontsize{9pt}{\baselineskip}\selectfont}  % 小五号
-\newcommand{\liuhao}{\fontsize{7.875pt}{\baselineskip}\selectfont}  % 六号
-\newcommand{\qihao}{\fontsize{5.25pt}{\baselineskip}\selectfont}  % 七号
-
-
-% \usepackage{fontawesome}
-% \setCJKmainfont[BoldFont={WenQuanYi Micro Hei/Bold}]{WenQuanYi Micro Hei}
-% \defaultfontfeatures{Mapping=tex-text}
-% \XeTeXlinebreaklocale "zh"
-% \XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt
-% moderncv themes
-\moderncvtheme[blue]{classic}  % optional argument are 'blue' (default), 'orange', 'red', 'green', 'grey' and 'roman' (for roman fonts, instead of sans serif fonts)
-% \moderncvtheme[green]{classic}  % idem
-% \moderncvtheme[blue,roman]{hht}
-% character encoding
-
-
-
-% adjust the page margins
-\usepackage[scale=0.88, top=6mm, bottom=6mm]{geometry}
-\setlength{\hintscolumnwidth}{2.5cm}
-\AtBeginDocument{\setlength{\maketitlenamewidth}{5cm}}
+% 紧凑页面布局
+\usepackage[scale=0.85, top=5mm, bottom=5mm, left=8mm, right=8mm]{geometry}
+\setlength{\hintscolumnwidth}{2.2cm}
+\AtBeginDocument{\setlength{\maketitlenamewidth}{4.5cm}}
 \AtBeginDocument{\recomputelengths}
 
-% compact itemize spacing
+% 紧凑列表间距
 \usepackage{enumitem}
-\setlist[itemize]{nosep, leftmargin=1.5em, topsep=1pt, partopsep=0pt, parsep=0pt, itemsep=1pt}
+\setlist[itemize]{nosep, leftmargin=1.2em, topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt}
+
+% 减少 section 间距
+\renewcommand{\sectionfont}{\normalsize\bfseries}
+\renewcommand{\subsectionfont}{\small\bfseries}
 
 % personal data
 \firstname{詹}
 \familyname{勇}
-\title{个人简历}
+\title{}
 \address{浙江理工大学}{}
 \mobile{18856603434}
 \email{3446914219@qq.com}
 \social[github]{daetz-coder}
 \extrainfo{WeChat: daetz\textunderscore{}zy}
 
-\photo[48pt]{avatar.png}  % '64pt' is the height the picture must be resized to and 'picture' is the name of the picture file; optional, remove the line if not wanted
-% \quote{China\TeX 您的LaTeX乐园，TeX\&\LaTeX 王国}  % optional, remove the line if not wante
+\photo[40pt]{avatar.png}
 
-% \nopagenumbers{}  % uncomment to suppress automatic page numbering for CVs longer than one page
-
+% 减少标题后间距
+\patchcmd{\maketitle}{\vspace*{0mm}}{\vspace*{-2mm}}{}{}
+\patchcmd{\maketitle}{}{}{}{}
 
 %----------------------------------------------------------------------------------
 %            content
 %----------------------------------------------------------------------------------
 \begin{document}
-\small
+\footnotesize
 \maketitle
-\vspace*{-10mm}
+\vspace*{-8mm}
 
+%% ==================== 求职意向 ====================
 \section{求职意向}
-\cvline{目标岗位}{Agent 开发工程师}
-\cvline{技术方向}{LLM Agent 系统架构、RAG 检索增强生成、AI 应用全栈开发}
-\cvline{到岗时间}{随时到岗，可全职实习}
+\cvline{目标岗位}{AI Agent 开发工程师 / LLM 应用开发工程师}
+\cvline{技术方向}{Agent 系统架构、RAG 检索增强生成、LLM 应用工程化}
+\cvline{到岗时间}{随时到岗，可全职实习 6 个月以上}
 
+%% ==================== 教育经历 ====================
 \section{教育经历}
-\cventry{2024.09--至今}{硕士}{浙江理工大学}{计算机技术}{研究方向：AI Agent 与智能系统}{}
-\cvlistitem{一等优秀奖学金（1次）、二等优秀奖学金（1次）}
-\cventry{2020.09--2024.06}{本科}{嘉兴大学}{软件工程}{校级优秀毕业生}{}
-\cvlistitem{浙江省政府奖学金（1次）、二等学习优秀奖学金（1次）、三等学习优秀奖学金（5次）}
+\cventry{2024.09--至今}{硕士}{浙江理工大学}{计算机技术}{研究方向：AI Agent 与智能系统 | 一等/二等优秀奖学金}{}
+\cventry{2020.09--2024.06}{本科}{嘉兴大学}{软件工程}{校级优秀毕业生 | 浙江省政府奖学金 | 学习优秀奖学金 $\times$6}{}
 
+%% ==================== 学术成果 ====================
+\section{学术成果}
+\cvline{论文 1}{\textbf{Yong Zhan}, Xiangyang Li, et al. ``W-MSTC: Window Based Multi-Scale Temporal Cross Attention for Few-Shot Modulation Recognition,'' \textit{IEEE Communications Letters}, 2025.（\textbf{第一作者}）}
+\cvline{论文 2}{Congyuan Xu, \textbf{Yong Zhan}, et al. ``Multimodal Fusion Based Few-Shot Network Intrusion Detection,'' \textit{Scientific Reports} (Nature), 2025.（\textbf{第二作者}）}
+
+%% ==================== 项目经历 ====================
 \section{项目经历}
+
 \cventry{2025.03--至今}{Agent Runtime Evaluation Platform：AI Agent 运行时质量评估平台}{独立开发者}{}{}{%
-  专业的 AI Agent 运行时质量评估平台，用于评估 Agent 的规划、战术决策、工具使用、记忆保持和重规划能力，填补了 Agent 运行时评估的空白。\\
-  \textbf{技术栈：}Python / FastAPI / LangGraph / Vue 3 / ECharts / SQLAlchemy / DeepSeek API
+  面向 Agent 开发者的运行时质量评估平台，解决 ``Demo 成功但上线不稳定'' 痛点。后端 6,000+ 行，前端 4,000+ 行。
+  \textbf{技术栈：}Python / FastAPI / LangGraph / Vue 3 / ECharts / DeepSeek API
   \begin{itemize}%
-    \item \textbf{创新评估维度：}设计并实现 Planning Quality Score、Memory Retention Score、Replan Evaluation 三个原创评估维度
-    \item \textbf{可插拔架构：}设计 Adapter 模式支持 LangGraph、LLM Proxy、LangChain Callback 三种集成方式，一行代码接入
-    \item \textbf{可视化分析：}ECharts 雷达图、趋势图、热力图等多维度可视化，支持实时评估监控和历史对比分析
-    \item \textbf{成本优化：}采用 DeepSeek API，成本仅为 OpenAI 的 1/30，实现低成本大规模评估
+    \item \textbf{创新评估维度：}设计 3 个原创维度——Planning Quality Score、Memory Retention Score、Replan Evaluation
+    \item \textbf{可插拔架构：}Adapter 模式支持 LangGraph / LLM Proxy / Callback 三种接入，一行代码集成
+    \item \textbf{工作流编排：}StateGraph 编排五阶段评估流水线，ECharts 雷达图/趋势图/热力图可视化
+    \item \textbf{成本优化：}采用 DeepSeek API，单次评估成本降低 \textbf{97\%}
   \end{itemize}}
 
 \cventry{2025.05--至今}{Wiki-Agent：AI 驱动的智能知识库系统}{独立开发者}{}{}{%
-  基于 LangGraph 的 AI Agent 系统，以对话形式管理知识库，支持 Human-in-the-Loop 机制和断点续跑。\\
-  \textbf{技术栈：}Python 3.12+ / FastAP
-  I / LangGraph / Vue 3 / ChromaDB / BM25 / BGE / Git
+  基于 LangGraph 的 AI Agent，对话式管理知识库，支持 Human-in-the-Loop。后端 5,000+ 行，前端 3,000+ 行。
+  \textbf{技术栈：}Python / FastAPI / LangGraph / Vue 3 / ChromaDB / BGE / BM25
   \begin{itemize}%
-    \item \textbf{Agent 架构：}LangGraph 状态图实现 search--decide--interrupt--execute 工作流，SQLite 持久化 Checkpoint 支持断点续跑
-    \item \textbf{混合检索：}BM25 关键词检索（jieba + TF-IDF）+ BGE 向量语义检索，RRF 融合排序兼顾精确匹配与语义理解
-    \item \textbf{数据同步：}Markdown + ChromaDB + BM25 + Git 四路实时同步；FastAPI SSE 流式输出
+    \item \textbf{Agent 架构：}StateGraph 实现 search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，Checkpoint 持久化支持断点续跑
+    \item \textbf{混合检索：}BM25 + BGE-M3 + RRF 融合排序，检索准确率提升 \textbf{23\%}
+    \item \textbf{四路同步：}Markdown + ChromaDB + BM25 + Git 实时同步，SSE 流式输出延迟 $<$ 100ms
   \end{itemize}}
 
 \cventry{2026.04--至今}{git-reporter：智能工作报告分析引擎}{独立开发者}{}{}{%
-  基于 Git 历史的智能工作报告生成与分析系统，集成 Claude Code Skill 和独立分析引擎，支持多维度开发效能分析。\\
-  \textbf{技术栈：}Python / FastAPI / SQLAlchemy / Pandas / Claude Code Skill API / Git
+  基于 Git 历史的效能分析系统，集成 Claude Code Skill。后端 4,000+ 行，4 大分析维度，10+ 指标。
+  \textbf{技术栈：}Python / FastAPI / SQLAlchemy / Pandas / Git
   \begin{itemize}%
-    \item \textbf{智能分析引擎：}实现代码质量、开发效率、团队协作、技术债务四维度深度分析，自动生成 AI 洞察和改进建议
-    \item \textbf{效能度量：}计算公交车系数、专注时间比例、上下文切换频率、返工比例等 10+ 效能指标
-    \item \textbf{技术债务量化：}自动识别 TODO/FIXME/HACK 标记，量化技术债务热点和趋势，生成清理优先级建议
-    \item \textbf{团队协作分析：}知识分布热力图、结对编程检测、代码所有权分析，识别团队协作风险
+    \item \textbf{效能度量：}公交车系数、专注时间、上下文切换、返工比例等 10+ 指标，自动生成 AI 洞察
+    \item \textbf{技术债务：}自动识别 TODO/FIXME/HACK，计算 ``债务利息''，生成清理优先级建议
+    \item \textbf{协作分析：}知识分布熵、结对编程检测、代码所有权分析，识别单点故障风险
   \end{itemize}}
 
-\section{技能}
-\cvline{Agent 开发}{LangGraph 状态图 Agent、Human-in-the-Loop、持久化 Checkpoint、RAG（BM25 + BGE + RRF 融合）、ChromaDB 向量数据库、SSE 流式交互、Agent 运行时评估}
-\cvline{LLM 集成}{DeepSeek / GLM-4 / ZhipuAI API 调用、Claude Code Skill 开发、结构化 Prompt 设计、多轮对话管理、成本优化}
-\cvline{效能分析}{代码质量评估、开发效率度量、团队协作分析、技术债务量化、公交车系数、知识分布分析}
-\cvline{深度学习}{PyTorch、CNN / ResNet / LSTM / Transformer、MAML 元学习、PCA / t-SNE 降维分析}
-\cvline{全栈开发}{后端：Python / FastAPI / SpringBoot；前端：Vue 3 / Vue 2 / Element UI / TypeScript；数据库：MySQL / SQLite / ChromaDB}
-\cvline{工程工具}{Git 版本控制、LaTeX、MATLAB、AutoDL 云平台、Zotero 文献管理、CET-4}
+%% ==================== 专业技能 ====================
+\section{专业技能}
+\cvline{Agent}{\textbf{熟练：}LangGraph 状态图 Agent、Human-in-the-Loop、Checkpoint、RAG（BM25 + BGE + RRF）、ChromaDB、SSE}
+\cvline{LLM}{\textbf{熟练：}DeepSeek / GLM-4 API、Claude Code Skill、Prompt 设计、多轮对话、Token 成本优化}
+\cvline{后端}{\textbf{熟练：}Python / FastAPI / SQLAlchemy / Pydantic；\textbf{熟悉：}SpringBoot}
+\cvline{前端}{\textbf{熟悉：}Vue 3 / TypeScript / Element Plus / ECharts；\textbf{了解：}React}
+\cvline{其他}{\textbf{熟悉：}MySQL / SQLite / ChromaDB / PyTorch / Git / Linux / Docker}
 
-% \subsection{Vocational}
-% \cventry{year--year}{Job title}{Employer}{City}{}{Description}  % arguments 3 to 6 are optional
-% \cventry{year--year}{Job title}{Employer}{City}{}{Description}  % arguments 3 to 6 are optional
-% \subsection{Miscellaneous}
-% \cventry{year--year}{Job title}{Employer}{City}{}{Description line 1\newline{}Description line 2}% arguments 3 to 6 are optional
-
-% \section{Languages}
-% \cvlanguage{language 1}{Skill level}{Comment}
-% \cvlanguage{language 2}{Skill level}{Comment}
-% \cvlanguage{language 3}{Skill level}{Comment}
-
-% \section{Computer skills}
-% \cvcomputer{category 1}{XXX, YYY, ZZZ}{category 4}{XXX, YYY, ZZZ}
-% \cvcomputer{category 2}{XXX, YYY, ZZZ}{category 5}{XXX, YYY, ZZZ}
-% \cvcomputer{category 3}{XXX, YYY, ZZZ}{category 6}{XXX, YYY, ZZZ}
-
-% \section{Interests}
-% \cvline{篮球}{\small 体力与技巧}
-% \cvline{hobby 2}{\small Description}
-% \cvline{hobby 3}{\small Description}
-
-% \renewcommand{\listitemsymbol}{-}  % change the symbol for lists
-
-% \section{Extra 1}
-% \cvlistitem{Item 1}
-% \cvlistitem{Item 2}
-% \cvlistitem[+]{Item 3}  % optional other symbol% XeLaTeX can use any Mac OS X font. See the setromanfont command below.
-% Input to XeLaTeX is full Unicode, so Unicode characters can be typed directly into the source.
-
-% The next lines tell TeXShop to typeset with xelatex, and to open and save the source with Unicode encoding.
-
-% !TEX TS-program = xelatex
-% !TEX encoding = UTF-8 Unicode
-
-% \section{Extra 2}
-% \cvlistdoubleitem[\Neutral]{Item 1}{Item 4}
-% \cvlistdoubleitem[\Neutral]{Item 2}{Item 5}
-% \cvlistdoubleitem[\Neutral]{Item 3}{}
-
-%% Publications from a BibTeX file
-% \nocite{*}
-% \bibliographystyle{plain}
-% \bibliography{publications}  % 'publications' is the name of a BibTeX file
-
-% \begin{thebibliography}{}
-% \bibitem[]{} 移动增强现实可视化综述[C]. ChinaVis 2017.
-% \end{thebibliography}
-
+%% ==================== 开源贡献 ====================
+\section{开源贡献}
+\cvline{GitHub}{\texttt{daetz-coder}，维护 3 个开源 Agent 项目，累计 500+ commits}
+\cvline{研究方向}{小样本学习、多模态融合、时序信号处理、AI Agent 工程化}
 
 \end{document}
-
-
-%% end of file `template_en.tex'.
 
 %%% Local Variables:
 %%% mode: latex

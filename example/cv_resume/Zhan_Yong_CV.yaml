@@ -1,0 +1,143 @@
+cv:
+  name: 詹勇
+  location: 浙江杭州
+  email: 3446914219@qq.com
+  phone: "+86 18856603434"
+  website: https://daetz-coder.github.io
+  social_networks:
+    - network: GitHub
+      username: daetz-coder
+    - network: Google Scholar
+      username: il-yFl4AAAAJ
+
+  sections:
+    # 求职意向
+    headline:
+      - AI Agent 开发工程师 / LLM 应用开发工程师
+      - "研究方向：Agent 系统架构、RAG 检索增强生成、LLM 应用工程化"
+      - 到岗时间：随时到岗，可全职实习 6 个月以上
+
+    # 教育经历
+    education:
+      - institution: 浙江理工大学
+        area: 计算机技术
+        degree: 硕士
+        start_date: 2024-09
+        highlights:
+          - 研究方向：AI Agent 与智能系统、Agent 运行时质量评估
+          - 奖学金：一等优秀奖学金（1次）、二等优秀奖学金（1次）
+
+      - institution: 嘉兴大学
+        area: 软件工程
+        degree: 学士
+        start_date: 2020-09
+        end_date: 2024-06
+        highlights:
+          - 校级优秀毕业生
+          - 浙江省政府奖学金（1次）、学习优秀奖学金（6次）
+
+    # 学术成果
+    publications:
+      - title: "W-MSTC: A Window Based Multi-Scale Temporal Cross Attention Method for Few-Shot Modulation Recognition"
+        authors:
+          - "**Yong Zhan**"
+          - Xiangyang Li
+          - Ao Zhan
+          - Chengyu Wu
+        journal: IEEE Communications Letters
+        date: 2025
+
+      - title: "Multimodal Fusion Based Few-Shot Network Intrusion Detection System"
+        authors:
+          - Congyuan Xu
+          - "**Yong Zhan**"
+          - Zhiqiang Wang
+          - Jun Yang
+        journal: "Scientific Reports (Nature)"
+        date: 2025
+
+    # 项目经历
+    experience:
+      - company: 独立开发者
+        position: 全栈开发
+        start_date: 2025-03
+        location: 杭州
+        summary: 独立开发 3 个 AI Agent 相关项目，涵盖 Agent 架构设计、RAG 检索、效能分析等方向
+        highlights:
+          - Agent Runtime Evaluation Platform：AI Agent 运行时质量评估平台
+          - Wiki-Agent：AI 驱动的智能知识库系统
+          - git-reporter：智能工作报告分析引擎
+
+    # 项目详情
+    projects:
+      - name: Agent Runtime Evaluation Platform
+        start_date: 2025-03
+        summary: 面向 Agent 开发者的运行时质量评估平台，解决 "Demo 成功但上线不稳定" 痛点
+        highlights:
+          - 设计 3 个原创评估维度：Planning Quality Score、Memory Retention Score、Replan Evaluation
+          - Adapter 模式支持 LangGraph / LLM Proxy / Callback 三种接入，一行代码集成
+          - StateGraph 编排五阶段评估流水线，ECharts 雷达图/趋势图/热力图可视化
+          - 采用 DeepSeek API，单次评估成本降低 97%
+
+      - name: Wiki-Agent
+        start_date: 2025-05
+        summary: 基于 LangGraph 的 AI Agent，对话式管理知识库，支持 Human-in-the-Loop
+        highlights:
+          - StateGraph 实现 search → respond → decide → execute，Checkpoint 持久化支持断点续跑
+          - BM25 + BGE-M3 + RRF 融合排序，检索准确率提升 23%
+          - Markdown + ChromaDB + BM25 + Git 四路实时同步，SSE 流式输出延迟 < 100ms
+
+      - name: git-reporter
+        start_date: 2026-04
+        summary: 基于 Git 历史的效能分析系统，集成 Claude Code Skill
+        highlights:
+          - 实现代码质量、开发效率、团队协作、技术债务四维度深度分析
+          - 公交车系数、专注时间、上下文切换、返工比例等 10+ 指标
+          - 自动识别 TODO/FIXME/HACK，计算 "债务利息"，生成清理优先级建议
+
+    # 专业技能
+    skills:
+      - label: Agent 开发
+        details: LangGraph 状态图 Agent、Human-in-the-Loop、Checkpoint、RAG（BM25 + BGE + RRF）、ChromaDB、SSE
+
+      - label: LLM 集成
+        details: DeepSeek / GLM-4 API、Claude Code Skill、Prompt 设计、多轮对话、Token 成本优化
+
+      - label: 后端开发
+        details: "Python / FastAPI / SQLAlchemy / Pydantic；熟悉：SpringBoot"
+
+      - label: 前端开发
+        details: "Vue 3 / TypeScript / Element Plus / ECharts；了解：React"
+
+      - label: 其他
+        details: MySQL / SQLite / PyTorch / Git / Linux / Docker
+
+    # 开源贡献
+    text_entries:
+      - "GitHub: daetz-coder，维护 3 个开源 Agent 项目，累计 500+ commits"
+
+design:
+  theme: classic
+  page:
+    size: a4
+    top_margin: 1cm
+    bottom_margin: 1cm
+    left_margin: 1.2cm
+    right_margin: 1.2cm
+  colors:
+    name: "rgb(0, 79, 144)"
+    section_titles: "rgb(0, 79, 144)"
+    connections: "rgb(0, 79, 144)"
+    links: "rgb(0, 79, 144)"
+  typography:
+    font_size:
+      body: 9pt
+      name: 24pt
+      section_titles: 1.2em
+    line_spacing: 0.5em
+  sections:
+    space_between_regular_entries: 0.8em
+    space_between_text_based_entries: 0.2em
+  entries:
+    date_and_location_width: 3.5cm
+    short_second_row: true
