@@ -8,10 +8,10 @@ WIKI_DATA_DIR = PROJECT_ROOT / "data" / "wiki_agent"
 
 
 class WikiAgentSettings(BaseSettings):
-    # ZhipuAI (GLM)
-    ZHIPUAI_API_KEY: str = ""
-    ZHIPUAI_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"
-    ZHIPUAI_CHAT_MODEL: str = "glm-4"
+    # LLM (DeepSeek, OpenAI-compatible API)
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+    DEEPSEEK_MODEL: str = "deepseek-chat"
 
     # Paths
     KNOWLEDGE_DIR: str = str(WIKI_AGENT_ROOT / "knowledge")

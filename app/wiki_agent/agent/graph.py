@@ -44,9 +44,9 @@ def _get_chat_llm() -> ChatOpenAI:
     global _chat_llm
     if _chat_llm is None:
         _chat_llm = ChatOpenAI(
-            model=settings.ZHIPUAI_CHAT_MODEL,
-            api_key=settings.ZHIPUAI_API_KEY or "placeholder",
-            base_url=settings.ZHIPUAI_BASE_URL,
+            model=settings.DEEPSEEK_MODEL,
+            api_key=settings.DEEPSEEK_API_KEY or "placeholder",
+            base_url=settings.DEEPSEEK_BASE_URL,
             temperature=0.7,
             streaming=True,
         )
@@ -170,7 +170,7 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
             trace.record(
                 "llm_call",
                 {
-                    "model": settings.ZHIPUAI_CHAT_MODEL,
+                    "model": settings.DEEPSEEK_MODEL,
                     "streaming": queue is not None,
                     "messages": [
                         {
