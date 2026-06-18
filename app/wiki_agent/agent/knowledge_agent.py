@@ -14,7 +14,6 @@ from app.wiki_agent.config import settings
 from app.wiki_agent.wiki import service
 
 _llm: ChatOpenAI | None = None
-_structured_llm = None
 
 
 def _get_llm() -> ChatOpenAI:
@@ -63,15 +62,6 @@ AI: {ai_response}
 {format_instructions}
 """
 
-_supports_function_calling = "deepseek" in settings.DEEPSEEK_MODEL.lower()
-
-
-def _get_structured_llm():
-    global _structured_llm
-    if _structured_llm is None and _supports_function_calling:
-        _structured_llm = _get_llm().with_structured_output(KnowledgeDecision)
-    return _structured_llm
-
 
 def _get_related_knowledge(query: str) -> str:
     """获取与查询相关的现有知识（混合检索 + 正文预览）"""
@@ -104,22 +94,8 @@ async def decide_action(user_message: str, ai_response: str) -> KnowledgeDecisio
     existing_knowledge = _get_related_knowledge(user_message)
     prompt = _build_prompt(user_message, ai_response, existing_knowledge)
 
-    structured = _get_structured_llm()
-    if structured is not None:
-        try:
-            decision = await structured.ainvoke([HumanMessage(content=prompt)])
-            if isinstance(decision, KnowledgeDecision) and decision.action in (
-                "create",
-                "update",
-                "delete",
-                "none",
-            ):
-                print(f"[Knowledge Agent] 结构化输出成功: action={decision.action}")
-                return decision
-            print("[Knowledge Agent] 结构化输出异常，fallback 到 PydanticOutputParser")
-        except Exception as e:
-            print(f"[Knowledge Agent] 结构化输出失败，fallback: {e}")
-
+    # DeepSeek 不支持 LangChain with_structured_output 的 json_schema response_format，
+    # 统一用 PydanticOutputParser 从文本中解析 JSON。
     try:
         response = await _get_llm().ainvoke([HumanMessage(content=prompt)])
         raw_text = (response.content or "").strip()
