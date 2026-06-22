@@ -1,369 +1,181 @@
 # Agent Runtime Evaluation Platform
 
-一个专业的 AI Agent 运行时质量评估平台，用于评估 Agent 的规划、战术决策、工具使用、记忆保持和重规划能力。
+AI Agent 运行时质量评估平台 — 对 Agent 的规划、战术决策、工具使用、记忆保持、重规划五个维度进行量化评估。基于 LangGraph 编排、LLM-as-Judge 评分、FastAPI + Vue3 全栈交付。
 
-## 🎯 项目亮点
-
-### 为什么选择这个方向？
+## 项目定位
 
 ```
-❌ 不要做：Prompt Evaluation Platform（市场已饱和）
-✅ 要做：Agent Runtime Evaluation Platform（蓝海市场）
+❌ 不是 Prompt Evaluation（市场饱和）
+✅ Agent Runtime Evaluation（评估 Agent 运行时的行为质量）
 ```
 
-### 核心创新点
+评估 Agent 在真实任务中每一步的决策质量，而非仅看最终结果。
 
-1. **Planning Quality Score** - 几乎没人做的评估维度
-2. **Memory Retention Score** - Long-running Agent 的核心问题
-3. **Replan Evaluation** - 最有意思的评估维度
+## 核心指标（实测）
 
-### 💰 成本优势
+| 指标 | 数值 |
+|------|------|
+| 评估维度 × 子指标 | 5 × 3~4 = **17 项** |
+| 轨迹动作类型 | **14 种** (plan / tool_call / replan / failure …) |
+| 接入模式 | **3 种** (LangGraph Instrument / LLM Proxy / Callback) |
+| 多轨迹单调性验证 | **93.1 → 92.0 → 81.0 → 54.4 → 27.8 → 20.0** |
+| 单次全评估耗时 | **71.1s** (5 评估器) |
+| 单次成本 (DeepSeek) | **¥0.012** （GPT-4o 的 1/27） |
+| 检索基准 (Wiki-Agent) | Semantic Top-1: 85%, MRR: 0.91 |
 
-使用 **DeepSeek API**，成本仅为 OpenAI 的 1/30：
-- DeepSeek: ¥1/百万tokens
-- OpenAI GPT-4: $30/百万tokens (约 ¥210)
+*数据来源: `tests/benchmark_*.py` 和 `tests/eval_*.py`，真实 LLM 调用。*
 
-## 🏗️ 系统架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Frontend (Vue 3 + ECharts)                │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐           │
-│  │  Dashboard  │  │   Tasks    │  │ Analytics  │           │
-│  └────────────┘  └────────────┘  └────────────┘           │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Backend (FastAPI)                         │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐           │
-│  │    API     │  │  Service   │  │   Graph    │           │
-│  └────────────┘  └────────────┘  └────────────┘           │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│              LangGraph Evaluation Workflow                   │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Planning → Tactical → Tool Use → Memory → Replan    │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Database (SQLite/PostgreSQL)                 │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│                    Adapters (可插拔集成)                      │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐│
-│  │  LLM Proxy     │  │  LangGraph     │  │  Callback      ││
-│  │  (任何框架)     │  │  Adapter       │  │  Handler       ││
-│  └────────────────┘  └────────────────┘  └────────────────┘│
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 📁 项目结构
+## 系统架构
 
 ```
-Agent Runtime Evaluation Platform/
-├── app/                          # 后端代码
-│   ├── wiki_agent/               # Wiki Agent 示例（已整合）⭐
-│   ├── adapters/                 # 可插拔适配器 ⭐
-│   │   ├── __init__.py           # 适配器入口
-│   │   ├── llm_proxy.py          # LLM Proxy（任何框架）
-│   │   ├── langgraph.py          # LangGraph Adapter
-│   │   └── callback.py           # LangChain Callback
-│   ├── collectors/               # 数据收集器
-│   │   └── trajectory.py         # 轨迹收集
-│   ├── api/v1/endpoints/         # API 端点
-│   ├── core/                     # 配置管理
-│   ├── db/                       # 数据库层
-│   ├── evaluators/               # 5 个评估器 ⭐
-│   ├── graphs/                   # LangGraph 工作流
-│   ├── models/                   # 数据模型
-│   ├── services/                 # 业务逻辑
-│   └── main.py                   # FastAPI 入口
-├── frontend/                     # 前端代码
-│   ├── src/
-│   │   ├── api/                  # API 接口
-│   │   ├── components/           # 公共组件
-│   │   ├── layouts/              # 布局组件
-│   │   ├── router/               # 路由配置
-│   │   ├── wiki/                 # Wiki Agent 前端组件
-│   │   ├── views/                # 页面组件
-│   │   └── main.ts               # 入口文件
-│   └── package.json              # 前端依赖
-├── example/wiki-agent/           # Wiki Agent 知识库与模型数据
-├── tests/                        # 测试代码
-├── docs/                         # 项目文档
-├── pyproject.toml                # Python 配置
-├── ADAPTERS.md                   # 适配器使用指南 ⭐
-└── README.md                     # 项目说明
+┌─────────────────────────────────────────────────────┐
+│              Frontend (Vue 3 + ECharts)              │
+│  Dashboard / Tasks / Evaluations / Analytics         │
+│  雷达图 · 趋势线 · 热力图 · 相关性矩阵               │
+└──────────────────────┬──────────────────────────────┘
+                       │ REST API
+┌──────────────────────┴──────────────────────────────┐
+│              Backend (FastAPI)                       │
+│  api/v1/endpoints/  →  services/  →  graphs/        │
+│  tasks · evaluation · reports                        │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────┴──────────────────────────────┐
+│        LangGraph Evaluation Workflow                 │
+│  validate → planning → tactical → tool_use           │
+│          → memory → replan → aggregate               │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────┴──────────────────────────────┐
+│  SQLite / PostgreSQL · TrajectoryCollector           │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│  SDK (零侵入接入)                                     │
+│  instrument_langgraph() · create_proxy_llm()         │
+│  create_callback_handler()                            │
+│  外部项目: pip install httpx && export PYTHONPATH=.  │
+└─────────────────────────────────────────────────────┘
 ```
 
-## 🚀 快速开始
+## 快速开始
 
-### 方式一：一键启动 (Windows)
+### 1. 配置
 
 ```bash
-# 双击运行 start.bat — 自动启动统一后端 + 前端（2 个窗口）
+cp .env.example .env
+# 编辑 .env: 填入 DEEPSEEK_API_KEY
+```
+
+### 2. 启动
+
+```bash
+# 安装
+pip install -e ".[dev]"
+
+# 启动后端 (端口 8000)
+python -m app.main
+
+# 另开终端，启动前端 (端口 3000)
+cd frontend && npm install && npm run dev
+
+# Windows 一键启动
 start.bat
 ```
 
-启动后访问：
-- 评估平台：http://localhost:3000
-- Wiki Agent：http://localhost:3000/wiki-agent
-- API 文档：http://localhost:8000/docs
+访问: API 文档 http://localhost:8000/docs · 前端 http://localhost:3000
 
-### 方式二：手动启动
-
-#### 1. 配置 DeepSeek API
-
-```bash
-# 复制环境变量配置
-cp .env.example .env
-
-# 编辑 .env 文件，添加 DeepSeek API Key
-DEEPSEEK_API_KEY="sk-your-api-key-here"
-DEFAULT_LLM_PROVIDER="deepseek"
-```
-
-> 📖 详细配置指南：[DEEPSEEK_SETUP.md](DEEPSEEK_SETUP.md)
-
-#### 2. 启动后端
-
-```bash
-# 创建虚拟环境
-python -m venv venv
-
-# 激活虚拟环境 (Windows)
-venv\Scripts\Activate.ps1
-
-# 安装依赖
-pip install -e .
-
-# 启动后端
-python -m app.main
-```
-
-后端运行在 http://localhost:8000
-
-#### 3. 启动前端
-
-```bash
-# 进入前端目录
-cd frontend
-
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-```
-
-前端运行在 http://localhost:3000
-
-## 🔌 集成到你的 Agent（一行代码）
-
-### 方式 1: LangGraph Adapter（推荐）
+### 3. 运行评估
 
 ```python
-# 原来的代码
-graph = build_graph()
+python example_evaluation.py
+```
 
-# 替换为 ↓
-from app.adapters.langgraph import instrument_langgraph
+### 4. 运行基准测试
+
+```bash
+python -m tests.benchmark_score_distribution   # 多轨迹评分分布
+python -m tests.benchmark_multimodel           # 多模型成本对比
+python -m tests.eval_evaluator_accuracy        # 评估器准确性
+python -m tests.eval_retrieval_standalone      # Wiki-Agent 检索评估
+```
+
+## 五维评估体系
+
+| 维度 | 子指标（权重） | 评估器 |
+|------|---------------|--------|
+| **Planning** | coverage(0.30), ordering(0.20), granularity(0.20), completeness(0.30) | `planning_evaluator.py` |
+| **Tactical** | relevance(0.35), efficiency(0.30), correctness(0.35) | `tactical_evaluator.py` |
+| **Tool Use** | selection_quality(0.40), parameter_accuracy(0.30), result_utilization(0.30) | `tool_use_evaluator.py` |
+| **Memory** | retention(0.45), relevance(0.30), consistency(0.25) | `memory_evaluator.py` |
+| **Replan** | trigger_appropriateness(0.35), adaptation_quality(0.35), learning_from_failure(0.30) | `replan_evaluator.py` |
+
+加权聚合: Planning 0.25 + Tactical 0.25 + Tool Use 0.20 + Memory 0.15 + Replan 0.15
+质量标定: 优秀 ≥80 · 良好 ≥60 · 一般 ≥40 · 较差 <40
+
+## 三种接入模式（零侵入 SDK）
+
+外部项目只需 `pip install httpx langchain-core` 即可使用：
+
+```python
+# 方式 1: LangGraph Instrument
+from sdk import instrument_langgraph
 graph = instrument_langgraph(build_graph())
 
-# 后续使用完全相同
-result = await graph.ainvoke(initial_state)
+# 方式 2: LLM Proxy
+from sdk import create_proxy_llm
+llm = create_proxy_llm(ChatOpenAI(...))
+
+# 方式 3: LangChain Callback
+from sdk import create_callback_handler
+llm = ChatOpenAI(callbacks=[create_callback_handler()])
 ```
 
-### 方式 2: LLM Proxy
+SDK 收集器特性: 线程安全 · 批量上传 · 失败回退 · 离线模式 · 14 种动作类型 · 状态 diff
 
-```python
-# 原来的代码
-llm = ChatZhipuAI(...)
+## 项目结构
 
-# 替换为 ↓
-from app.adapters.llm_proxy import create_proxy_llm
-llm = create_proxy_llm(ChatZhipuAI(...))
-
-# 后续使用完全相同
-response = llm.invoke("Hello")
+```
+├── app/
+│   ├── evaluators/       # 5 个评估器 + BaseEvaluator
+│   ├── graphs/           # LangGraph 评估工作流
+│   ├── adapters/         # SDK 重导出（兼容层）
+│   ├── collectors/       # 轨迹收集器（SDK 重导出）
+│   ├── api/v1/endpoints/ # REST API (tasks/evaluation/reports)
+│   ├── services/         # EvaluationService 业务逻辑
+│   ├── models/           # Pydantic schemas + ActionType 常量
+│   ├── db/               # SQLAlchemy ORM + async session
+│   ├── core/             # pydantic-settings 配置
+│   ├── wiki_agent/       # 集成 Wiki-Agent
+│   └── main.py           # FastAPI 入口
+├── sdk/                  # 独立 SDK 包（零 app 依赖）
+│   ├── collector.py      # 轻量级轨迹收集器
+│   └── adapters/         # 三个 Adapter
+├── frontend/             # Vue 3 + Element Plus + ECharts
+├── tests/                # 评估脚本 + 单元测试 + 集成测试
+├── example/              # 示例 + 简历
+├── pyproject.toml
+└── README.md
 ```
 
-### 方式 3: LangChain Callback
+## API 接口
 
-```python
-from app.adapters.callback import create_callback_handler
-
-handler = create_callback_handler()
-llm = ChatZhipuAI(callbacks=[handler])
-```
-
-> 📖 详细使用指南：[ADAPTERS.md](ADAPTERS.md)
-
-## 🎨 前端功能
-
-### 1. 仪表板
-- 综合统计卡片
-- 雷达图展示综合能力
-- 趋势分析折线图
-- 维度对比柱状图
-- 仪表盘详细得分
-
-![Dashboard](docs/images/dashboard.png)
-
-### 2. 任务管理
-- 任务列表展示
-- 创建新任务
-- 添加执行轨迹
-- 运行评估
-
-### 3. 评估详情
-- 综合得分展示
-- 五维度详细评分
-- 雷达图分析
-- 执行轨迹时间线
-
-### 4. 数据分析
-- 得分分布图
-- 维度趋势对比
-- 相关性分析热力图
-- 智能洞察
-- 改进建议
-
-## 📊 5 个评估维度
-
-### 1. Planning Evaluator (规划评估器)
-评估 Agent 的计划质量：
-- **Coverage**: 是否覆盖关键里程碑
-- **Ordering**: 步骤顺序是否合理
-- **Granularity**: 细节层次是否合适
-- **Completeness**: 计划是否完整
-
-### 2. Tactical Evaluator (战术评估器)
-评估下一步行动的质量：
-- **Relevance**: 行动是否相关
-- **Efficiency**: 行动是否高效
-- **Correctness**: 行动是否正确
-
-### 3. Tool Use Evaluator (工具使用评估器)
-评估工具选择和使用：
-- **Selection Quality**: 工具选择质量
-- **Parameter Accuracy**: 参数准确性
-- **Result Utilization**: 结果利用
-
-### 4. Memory Evaluator (记忆评估器)
-评估记忆质量（创新点）：
-- **Retention**: 关键事实保持
-- **Relevance**: 回忆信息相关性
-- **Consistency**: 记忆一致性
-
-### 5. Replan Evaluator (重规划评估器)
-评估重规划决策（最有意思）：
-- **Trigger Appropriateness**: 触发适当性
-- **Adaptation Quality**: 适应质量
-- **Learning from Failure**: 学习能力
-
-## 🔧 API 接口
-
-### 任务管理
 ```http
 POST   /api/v1/tasks/                     # 创建任务
-GET    /api/v1/tasks/{task_id}            # 获取任务
-GET    /api/v1/tasks/                     # 列出任务
-POST   /api/v1/tasks/{task_id}/trajectory # 添加轨迹
-```
-
-### 评估执行
-```http
-POST   /api/v1/evaluations/               # 运行评估
-GET    /api/v1/evaluations/{id}           # 获取评估
-```
-
-### 报告分析
-```http
-GET    /api/v1/reports/summary            # 评估摘要
+GET    /api/v1/tasks/{id}                 # 获取任务
+POST   /api/v1/tasks/{id}/trajectory      # 上传轨迹
+POST   /api/v1/evaluations/               # 运行评估（异步）
+GET    /api/v1/evaluations/{id}           # 获取评估结果
+GET    /api/v1/reports/summary            # 评估摘要（含 AVG/MIN/MAX）
 GET    /api/v1/reports/dimensions/{dim}   # 维度统计
 ```
 
-## 💡 面试展示要点
+## 技术栈
 
-### 1. 技术深度
-- LangGraph 工作流编排
-- 异步编程 (async/await)
-- LLM 集成和提示工程
-- Vue 3 + ECharts 数据可视化
+**后端**: Python 3.11+ · FastAPI · LangGraph · LangChain · SQLAlchemy (async) · Pydantic · httpx
 
-### 2. 创新能力
-- Planning Quality Score - 几乎没人做
-- Memory Retention Score - Long-running Agent 核心问题
-- Replan Evaluation - 最有意思的评估维度
+**前端**: Vue 3 · TypeScript · Vite · Element Plus · ECharts · Pinia
 
-### 3. 工程能力
-- 清晰的项目结构
-- 完整的测试覆盖
-- 详细的 API 文档
-- 专业的前端界面
+**LLM**: DeepSeek (默认) · OpenAI · Anthropic (可切换)
 
-### 4. 解决问题能力
-- 理解真实痛点: "Agent Demo 很成功，上线以后不稳定"
-- 提供解决方案: 运行时评估而非结果评估
-
-## 📈 扩展方向
-
-1. **添加更多评估维度**
-   - 错误恢复能力
-   - 资源使用效率
-   - 安全性评估
-
-2. **增强可视化**
-   - 实时评估监控
-   - 历史趋势分析
-   - 对比分析
-
-3. **集成更多 Agent 框架**
-   - AutoGPT
-   - BabyAGI
-   - Custom Agents
-
-4. **Benchmark 支持**
-   - GAIA
-   - SWE-bench
-   - 自定义 Benchmark
-
-## 📚 相关文档
-
-- [架构设计文档](docs/architecture.md)
-- [API 接口文档](docs/api.md)
-- [快速开始指南](docs/getting_started.md)
-- [前端开发文档](frontend/README.md)
-- [项目总结文档](PROJECT_SUMMARY.md)
-- [DeepSeek 配置指南](DEEPSEEK_SETUP.md)
-
-## 🤝 贡献指南
-
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建 Pull Request
-
-## 📄 许可证
-
-MIT License - 详见 [LICENSE](LICENSE)
-
-## 🙏 致谢
-
-- [LangGraph](https://langchain-ai.github.io/langgraph/) - 工作流编排
-- [FastAPI](https://fastapi.tiangolo.com/) - Web 框架
-- [Vue 3](https://vuejs.org/) - 前端框架
-- [Element Plus](https://element-plus.org/) - UI 组件库
-- [ECharts](https://echarts.apache.org/) - 数据可视化
-
----
-
-**这个项目展示了你对 Agent Engineering 的深入理解，不仅仅是"如何让 Agent 做事"，更是"如何知道 Agent 做得好不好"。这正是未来 Agent 落地生产环境所需的核心能力。**
+**数据库**: SQLite (开发) · PostgreSQL (生产)
