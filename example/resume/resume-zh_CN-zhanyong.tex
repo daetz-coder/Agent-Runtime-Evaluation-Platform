@@ -44,14 +44,14 @@
 \begin{itemize}
   \item \textbf{五维评估体系：}Planning / Tactical / Tool Use / Memory / Replan，LangGraph 并行编排 + LLM-as-Judge 量化 Agent 运行时质量
   \item \textbf{零侵入集成：}Callback / LangGraph Instrument / LLM Proxy 三种 Adapter + Python SDK，一行代码接入第三方 Agent
-  \item \textbf{可观测与成本：}轨迹采集、评估报告聚合与 Dashboard 可视化；DeepSeek 单次评估成本降低 \textbf{97\%}（\$0.6 $\rightarrow$ \$0.02）
+  \item \textbf{可观测性：}轨迹采集、评估报告聚合与 Dashboard 可视化（ECharts 雷达图/趋势图/热力图）；评估器准确性验证通过：好规划（67.5/100）与差规划（4.0/100）显著区分，空轨迹正确处理（0/100）
 \end{itemize}
 
 \datedsubsection{\textbf{Wiki-Agent：AI 驱动的智能知识库系统} \quad \textit{LangGraph / FastAPI / Vue3 / ChromaDB}}{2025.5 - 至今}
 \begin{itemize}
-  \item \textbf{混合检索：}BM25 + BGE-M3 + RRF 融合排序，自建测试集 Top-1 命中率 68\%/72\% $\rightarrow$ \textbf{88\%}
+  \item \textbf{混合检索：}BM25 + BGE-M3 + RRF 融合排序，提供 keyword / semantic / hybrid 三种搜索策略
   \item \textbf{Agent 工作流：}StateGraph search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，Human-in-the-Loop 确认 CRUD
-  \item \textbf{持久化与交付：}SQLite Checkpoint 断点续跑（恢复 $<$ 200ms）；四路同步 + SSE 流式输出，集成 Markdown 渲染与版本历史
+  \item \textbf{持久化与交付：}SQLite Checkpoint 断点续跑；四路同步 + SSE 流式输出，集成 Markdown 渲染与版本历史
 \end{itemize}
 
 \section{开源贡献 / 技术博客}
