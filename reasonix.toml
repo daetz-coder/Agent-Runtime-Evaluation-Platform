@@ -3,7 +3,7 @@
 # Secrets come from the environment via api_key_env; never put keys here.
 
 config_version = 3   # schema marker for diagnostics; old versions may ignore it
-default_model = "deepseek-flash"
+default_model = "deepseek-pro"
 # language      = "zh"   # ui/model language; empty = auto-detect from $LANG / $REASONIX_LANG
 
 [agent]
@@ -49,40 +49,19 @@ enabled = true   # language server tools; servers launch lazily when used
 # disabled_skills = ["review"]   # hide noisy or unwanted skills
 
 [permissions]
-mode  = "allow"
-deny = ["Bash(rm -rf*)"]   # hard-blocked in every mode
+mode = "allow"
 allow = [
-    # 写操作（文件编辑）直接允许
+    "Bash(*)",
     "Edit",
-    "Edit(src/**)",
-    "Edit(example/**)",
-    "Edit(tests/**)",
-    # Python 相关命令
-    "Bash(python *)",
-    "Bash(pip *)",
-    # Git 操作
-    "Bash(git *)",
-    # 前端构建
-    "Bash(npm *)",
-    # LaTeX 编译
-    "Bash(xelatex *)",
-    # 文件读取/搜索操作（只读）
+    "Read",
     "explore",
     "glob",
     "grep",
-    "ls",
-    "Read",
-    # curl/网络请求
-    "Bash(curl *)",
-    # 后台长时间运行任务
-    "Bash(taskkill *)",
-    "Bash(netstat *)",
-    "Bash(pkill *)",
-    # 系统操作
-    "Bash(mkdir *)",
-    "Bash(rm *)",
+    "ls"
 ]
-
+deny = [
+    "Bash(rm -rf*)"
+]
 [sandbox]
 # Confine tool blast radius. File-writers (write_file/edit_file/multi_edit/move_file)
 # may only write under workspace_root (empty = current dir) and allow_write extras.
