@@ -61,52 +61,79 @@ class InstrumentedStateGraph:
         self._instrument_existing_nodes()
 
     def _instrument_existing_nodes(self):
-        """包装已添加的节点"""
-        # StateGraph 的节点存储在 .nodes 属性中
+        """包装已添加的节点的 runnable"""
         if hasattr(self._original, 'nodes'):
-            for node_name, node_func in self._original.nodes.items():
-                self._original.nodes[node_name] = self._wrap_node(node_name, node_func)
+            for node_name, spec in self._original.nodes.items():
+                if node_name not in self._instrumented_nodes:
+                    self._wrap_spec_runnable(node_name, spec)
+                    self._instrumented_nodes[node_name] = True
+
+    def _wrap_spec_runnable(self, node_name: str, spec):
+        """替换 StateNodeSpec 中的 runnable 为包装后的版本"""
+        original = spec.runnable
+        # 提取原始 callable（可能被 langgraph 包装过）
+        inner = getattr(original, 'func', None) or original
+        wrapped = self._wrap_node(node_name, inner)
+        # 如果 original 是 RunnableCallable 类型，替换其 func
+        if hasattr(original, 'func'):
+            original.func = wrapped
+        else:
+            spec.runnable = wrapped
+
+    def add_node(self, node_name: str, node_func: Callable, **kwargs) -> "InstrumentedStateGraph":
+        """添加节点 — 先让 StateGraph 创建 Spec，再包装 runnable"""
+        self._original.add_node(node_name, node_func, **kwargs)
+        spec = self._original.nodes[node_name]
+        self._wrap_spec_runnable(node_name, spec)
+        self._instrumented_nodes[node_name] = True
+        return self
 
     def _wrap_node(self, node_name: str, node_func: Callable) -> Callable:
-        """包装单个节点 — 自动记录 node_execute / state_change / failure"""
-        def wrapper(state: Dict[str, Any]) -> Dict[str, Any]:
+        """包装单个节点 — 自动记录 node_execute / state_change / failure
+
+        自动检测原始节点是否为 async，使用对应的同步/异步包装器。
+        """
+        import asyncio
+
+        if asyncio.iscoroutinefunction(node_func):
+            return self._wrap_node_async(node_name, node_func)
+        else:
+            return self._wrap_node_sync(node_name, node_func)
+
+    def _wrap_node_sync(self, node_name: str, node_func: Callable) -> Callable:
+        """同步节点包装器"""
+        import functools
+
+        @functools.wraps(node_func)
+        def wrapper(state):
             start_time = time.time()
             state_before = self._extract_state_summary(state)
 
-            # 记录节点开始
             self._collector.record_node_execute(
                 node_name=node_name,
                 input_data=state_before,
             )
 
-            # 执行原始节点
             try:
                 result = node_func(state)
                 duration_ms = (time.time() - start_time) * 1000
 
                 state_after = self._extract_result_summary(result)
 
-                # 记录节点完成
                 self._collector.record_node_execute(
                     node_name=f"{node_name}_complete",
                     output_data=state_after,
                 )
-
-                # 记录状态变化（含 diff）
                 self._collector.record_state_change(
                     state_before=state_before,
                     state_after=state_after,
                     trigger=node_name,
                     node_name=node_name,
                 )
-
-                # 记录工具调用（如果有）
                 self._extract_tool_calls(node_name, state, result)
-
                 return result
 
             except Exception as e:
-                # 记录失败事件（而非 think）
                 self._collector.record_failure(
                     error_type=type(e).__name__,
                     error_message=str(e),
@@ -117,11 +144,55 @@ class InstrumentedStateGraph:
                 )
                 raise
 
-        # 保留原始函数的属性
-        wrapper.__name__ = getattr(node_func, '__name__', node_name)
-        wrapper.__doc__ = getattr(node_func, '__doc__', None)
-
         return wrapper
+
+    def _wrap_node_async(self, node_name: str, node_func: Callable) -> Callable:
+        """异步节点包装器"""
+        import functools
+
+        @functools.wraps(node_func)
+        async def async_wrapper(state: Dict[str, Any]) -> Dict[str, Any]:
+            start_time = time.time()
+            state_before = self._extract_state_summary(state)
+
+            self._collector.record_node_execute(
+                node_name=node_name,
+                input_data=state_before,
+            )
+
+            try:
+                result = await node_func(state)
+                duration_ms = (time.time() - start_time) * 1000
+
+                state_after = self._extract_result_summary(result)
+
+                self._collector.record_node_execute(
+                    node_name=f"{node_name}_complete",
+                    output_data=state_after,
+                )
+                self._collector.record_state_change(
+                    state_before=state_before,
+                    state_after=state_after,
+                    trigger=node_name,
+                    node_name=node_name,
+                )
+                self._extract_tool_calls(node_name, state, result)
+                return result
+
+            except Exception as e:
+                self._collector.record_failure(
+                    error_type=type(e).__name__,
+                    error_message=str(e),
+                    context=f"Node {node_name} execution failed",
+                    recoverable=True,
+                    node_name=node_name,
+                    stack_trace=traceback.format_exc()[-1000:],
+                )
+                raise
+
+        async_wrapper.__name__ = getattr(node_func, '__name__', node_name)
+        async_wrapper.__doc__ = getattr(node_func, '__doc__', None)
+        return async_wrapper
 
     def _extract_state_summary(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """提取状态摘要（避免序列化过大对象）"""

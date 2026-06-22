@@ -55,8 +55,8 @@ class ProxyChatModel(BaseChatModel):
 
     def __init__(self, original_llm: BaseChatModel, **kwargs):
         super().__init__(**kwargs)
-        self._original_llm = original_llm
-        self._collector = get_collector()
+        object.__setattr__(self, '_original_llm', original_llm)
+        object.__setattr__(self, '_collector', get_collector())
 
     @property
     def _llm_type(self) -> str:
@@ -172,7 +172,9 @@ class ProxyChatModel(BaseChatModel):
         return self._original_llm.bind_tools(tools, **kwargs)
 
     def __getattr__(self, name: str) -> Any:
-        """转发所有其他属性到原始 LLM"""
+        """转发所有其他属性到原始 LLM，避免递归"""
+        if name.startswith('_'):
+            raise AttributeError(name)
         return getattr(self._original_llm, name)
 
 
