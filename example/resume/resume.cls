@@ -72,7 +72,7 @@
 }
 
 \newcommand{\contactInfo}[4]{
-  \centerline{\sffamily\large{\ {#1} \textperiodcentered\ \ {#2}}
+  \centerline{\rmfamily\large{\ {#1} \textperiodcentered\ \ {#2}}
     \ifthenelse{\isempty{#3}}%
       { } % if {#3} is empty
       {\textperiodcentered\ \ {#3} } % homepage, no space before \text...
