@@ -3,65 +3,53 @@
 % !Mode:: "TeX:UTF-8"
 
 \documentclass{resume}
-\usepackage{zh_CN-Adobefonts_external} % Simplified Chinese Support using external fonts (./fonts/zh_CN-Adobe/)
-\usepackage{linespacing_fix} % disable extra space before next section
+\usepackage{zh_CN-Adobefonts_external}
+\usepackage{linespacing_fix}
 \usepackage{cite}
 
 \begin{document}
-\pagenumbering{gobble} % suppress displaying page number
+\pagenumbering{gobble}
 
 \name{詹勇}
 
-% {E-mail}{mobilephone}{homepage}
 \contactInfo{(+86) 188-5660-3434}{3446914219@qq.com}{GitHub | CSDN @daetz-coder}{浙江-杭州}
 
 \section{个人简介}
-计算机技术硕士在读，聚焦 \textbf{AI Agent 系统设计、RAG 与 LLM 应用工程化}。独立完成 Agent 运行时评估平台、RAG 知识库系统等项目，熟悉 LangGraph 工作流编排、混合检索增强与全栈交付（FastAPI / Vue3）。
+计算机技术硕士在读，聚焦 \textbf{AI Agent 系统设计、RAG 与 LLM 应用工程化}。独立完成 Agent 运行时评估平台、RAG 知识库系统等全栈项目，熟悉 LangGraph 工作流编排、混合检索增强与 LLM-as-Judge 评估方法。
 
 \section{教育背景}
-\datedsubsection{\textbf{浙江理工大学},计算机技术,\textit{在读硕士研究生}}{2024.9 - 至今}
-\ 一等优秀奖学金(1次), 二等优秀奖学金(1次)
-\datedsubsection{\textbf{嘉兴大学},软件工程,\textit{工学学士}}{2020.9 - 2024.6}
-\ 校级优秀毕业生, 浙江省政府奖学金(1次), 学习优秀奖学金(6次)
+\datedsubsection{\textbf{浙江理工大学}, 计算机技术硕士（在读）}{2024.9 - 至今}
+\ 一等优秀奖学金(1次)，二等优秀奖学金(1次)
+\datedsubsection{\textbf{嘉兴大学}, 软件工程学士}{2020.9 - 2024.6}
+\ 校级优秀毕业生，浙江省政府奖学金(1次)，学习优秀奖学金(6次)
 
 \section{学术成果}
-\begin{itemize}[parsep=0.2ex]
+\begin{itemize}[parsep=0.1ex,topsep=0ex]
   \item \textbf{Yong Zhan}, Xiangyang Li, et al. ``W-MSTC: A Window Based Multi-Scale Temporal Cross Attention Method for Few-Shot Modulation Recognition,'' \textit{IEEE Communications Letters}, 2025.（\textbf{第一作者}）
   \item Congyuan Xu, \textbf{Yong Zhan}, et al. ``Multimodal Fusion Based Few-Shot Network Intrusion Detection System,'' \textit{Scientific Reports}, 2025.（\textbf{第二作者}）
 \end{itemize}
 
 \section{技术能力}
-\begin{itemize}[parsep=0.2ex]
-  \item \textbf{AI Agent / RAG}: LangGraph、StateGraph、Human-in-the-Loop、Checkpoint、Tool Calling、LLM-as-Judge、BM25、BGE-M3、RRF、ChromaDB
-\item \textbf{LLM 应用开发}: Prompt Engineering、Context Engineering、Harness Engineering
-  \item \textbf{后端开发}: Python、FastAPI、Async SQLAlchemy、Pydantic、MySQL、SQLite、SpringBoot
-  \item \textbf{前端开发}: Vue 3、TypeScript、Element Plus、ECharts
-  \item \textbf{工程工具}: Git、Linux、Docker、PyTorch、ROS
+\begin{itemize}[parsep=0.1ex,topsep=0ex]
+  \item \textbf{Agent / RAG}: LangGraph、StateGraph、Human-in-the-Loop、Checkpoint、Tool Calling、LLM-as-Judge、BM25、BGE-M3、RRF、ChromaDB
+  \item \textbf{LLM 应用}: Prompt/Context/Harness Engineering、多模型评估对比、SSE 流式输出、Token 优化
+  \item \textbf{全栈工程}: Python / FastAPI / Async SQLAlchemy / Pydantic / Vue3 / TypeScript / ElementPlus / ECharts / Git / Docker
 \end{itemize}
 
 \section{项目经历}
 \datedsubsection{\textbf{Agent Runtime Evaluation Platform：AI Agent 运行时质量评估平台} \quad \textit{Python / FastAPI / LangGraph / Vue3}}{2025.3 - 至今}
-\begin{itemize}
-  \item \textbf{五维评估体系（17 项子指标）：}Planning（覆盖度/顺序/粒度/完整性）、Tactical（相关性/效率/正确性）、Tool Use（选择质量/参数准确性/结果利用）、Memory（保持力/相关性/一致性）、Replan（触发适当性/适应质量/学习能力），加权聚合 + 四档质量标定（优秀$\geq$80/良好$\geq$60/一般$\geq$40/较差），5 个评估器单次并行耗时 \textbf{71.1s}，综合成本 \textbf{¥ 0.012}（DeepSeek）
-  \item \textbf{14 种轨迹动作类型：}定义 ActionType 枚举统一管理 plan / plan\_update / tool\_call / tool\_result / memory\_write / memory\_read / state\_change / think / replan / failure / node\_execute / tool\_decision / retrieval / evidence，状态变化自动计算 before/after diff
-  \item \textbf{三种零侵入接入模式：}LangGraph Instrument（AST 级 node 函数包装 + 自动 tool\_calls 提取）、LLM Proxy（BaseChatModel 透明代理，overwrite \_generate/\_agenerate）、LangChain Callback（on\_llm\_start/end + on\_tool\_start/end/error），均需一行代码
-  \item \textbf{全链路可观测：}线程安全轨迹采集器（批量上传 + 失败回退缓冲）、AsyncSqlite Checkpoint 持久化、ECharts 可视化（雷达图/趋势线/热力图/相关性矩阵 4 种图表）、SQL 聚合分析（按维度 AVG/MIN/MAX/分布查询）
-  \item \textbf{评估准确性验证：}好规划（6 步含分析→定位→修复→刷新→测试→回归）评分 67.5 vs 差规划（"直接部署"）评分 4.0，空轨迹/残缺轨迹正确返回 0 分，重规划场景 Replan 评分 \textbf{85.2}
+\begin{itemize}[parsep=0.15ex,topsep=0ex]
+  \item \textbf{五维评估体系（17 项子指标）：}Planning（覆盖度/顺序/粒度/完整性）、Tactical（相关性/效率/正确性）、Tool Use（选择质量/参数准确性/结果利用）、Memory（保持力/相关性/一致性）、Replan（触发适当性/适应质量/学习能力），加权聚合 + 四档标定（优秀$\geq$80/良好$\geq$60/一般$\geq$40/较差），5 评估器单次耗时 \textbf{71.1s}，成本 \textbf{¥0.012}（DeepSeek，对比 GPT-4o 低 27x）
+  \item \textbf{三种零侵入接入模式：}LangGraph Instrument（node 函数包装 + 自动 tool\_calls 提取）、LLM Proxy（BaseChatModel 透明代理）、LangChain Callback（on\_llm/tool 生命周期钩子），均一行代码；14 种轨迹动作类型（plan/tool\_call/state\_change/replan 等），状态变化自动 diff 计算
+  \item \textbf{全链路可观测与验证：}线程安全轨迹采集器（批量上传 + 失败回退缓冲），ECharts 雷达图/趋势线/热力图/相关性矩阵 4 种可视化，SQL 按维度聚合分析；评估准确性验证：好规划 67.5 vs 差规划 4.0，空轨迹正确处理 0 分，Replan 场景 \textbf{85.2}
 \end{itemize}
 
 \datedsubsection{\textbf{Wiki-Agent：AI 驱动的智能知识库系统} \quad \textit{LangGraph / FastAPI / Vue3 / ChromaDB}}{2025.5 - 至今}
-\begin{itemize}
-  \item \textbf{三级混合检索架构：}ChromaDB 语义搜索（SentenceTransformer BGE-M3 向量 + cosine 距离）+ BM25 关键词搜索（jieba 分词 + 25 词停用词表 + rank\_bm25）+ RRF 倒数秩融合（k=60），单次检索覆盖 3 路并行，按文档去重保留最高分 chunk
-  \item \textbf{4-Node StateGraph Agent：}search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，条件路由（响应 $>$ 50 字符进入决策节点，否则结束），execute 节点触发 LangGraph interrupt 实现 Human-in-the-Loop CRUD 确认，AsyncSqliteSaver Checkpoint 支持中断恢复
-  \item \textbf{四路实时同步机制：}Markdown 写入 $\rightarrow$ 按标题分割 chunk（500 字符/50 重叠，句边界感知）$\rightarrow$ 逐块生成 Embedding 入库 ChromaDB $\rightarrow$ 添加 BM25 倒排索引 $\rightarrow$ Git commit 版本记录；增/改/删操作保持四路一致性，支持 commit 级回滚并自动重索引
-  \item \textbf{知识自动提取：}LLM 驱动（PydanticOutputParser + ChatOpenAI t=0.3），从对话中自动决策 create/update/delete/none，结合 hybrid\_search 检索相关文档作为决策上下文，提取结果经 Human-in-the-Loop 确认写入
-  \item \textbf{全栈交付：}FastAPI async 后端 + SSE 流式输出（7 种事件类型：content/wiki\_results/extraction/status/error/evaluation\_task/done），Vue3 + Element Plus 前端集成 Markdown 渲染与 Git 版本历史浏览，Session 持久化（SQLite 会话 + 消息 JSON 存储）
-\end{itemize}
-
-\section{开源贡献 / 技术博客}
-\begin{itemize}[parsep=0.2ex]
-  \item GitHub: \textit{https://github.com/daetz-coder}，主要项目包括 Agent Runtime Evaluation Platform、Wiki-Agent
-  \item CSDN 技术博客: \textit{https://blog.csdn.net/a\_student\_2020}，累计访问量 \textbf{20W+}，输出 AI Agent / LLM 应用开发技术文章
+\begin{itemize}[parsep=0.15ex,topsep=0ex]
+  \item \textbf{三级混合检索：}ChromaDB 语义搜索（BGE-M3 + cosine）+ BM25 关键词（jieba + rank\_bm25 + 25 词停用词表）+ RRF 倒数秩融合（k=60），三路并行按文档去重保留最高分 chunk
+  \item \textbf{4-Node StateGraph Agent：}search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，条件路由 + LangGraph interrupt 实现 Human-in-the-Loop CRUD 确认，AsyncSqliteSaver Checkpoint 中断恢复；PydanticOutputParser 驱动从对话自动提取知识（create/update/delete）
+  \item \textbf{四路实时同步：}Markdown $\rightarrow$ 句边界感知 chunk（500 字符/50 重叠）$\rightarrow$ ChromaDB Embedding $\rightarrow$ BM25 倒排索引 $\rightarrow$ Git 版本记录，增/改/删保持四路一致性，支持 commit 级回滚 + 自动重索引
+  \item \textbf{全栈交付：}FastAPI async + SSE 流式（7 种事件类型），Vue3 + Element Plus 前端集成 Markdown 渲染 + Git 版本历史浏览，Session 持久化（SQLite 会话 + 消息 JSON）
 \end{itemize}
 
 \end{document}
