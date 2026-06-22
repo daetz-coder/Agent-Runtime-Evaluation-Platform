@@ -6,351 +6,163 @@
 
 **AI 驱动的知识管理系统 — 对话即录入，搜索即召回。**
 
-[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-green.svg)](https://fastapi.tiangolo.com)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109%2B-green.svg)](https://fastapi.tiangolo.com)
 [![Vue 3](https://img.shields.io/badge/Vue-3-brightgreen.svg)](https://vuejs.org)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Agent-orange.svg)](https://langchain-ai.github.io/langgraph/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-<br>
-
-聊天中随口提到的知识点，AI 自动判断要不要存下来。<br>
-搜一个问题，BM25 精确匹配 + 向量语义理解，两路召回、融合排序。<br>
-每次修改自动 Git 提交，改错了随时回滚。<br>
-
-**不是笔记工具，是一个会思考的知识助手。**
-
-<br>
-
-[功能特性](#功能特性) · [快速开始](#快速开始) · [架构概览](#架构概览) · [检索原理](#检索架构) · [API 接口](#api-接口)
 
 </div>
 
 ---
 
-## 功能特性
+## 这是什么
 
-| 能力 | 说明 |
+Wiki Agent 是一个 **AI 驱动的个人知识库管理系统**。它与传统笔记工具的核心区别：
+
+- **对话即录入** — 聊天中提到的知识点，AI 自动判断是否存下来
+- **混合检索** — BM25 精确匹配 + 向量语义理解，两路召回、RRF 融合排序
+- **自动版本控制** — 每次修改自动 Git 提交，改错随时回滚
+- **Agent 思考** — 不只是搜，还会判断"要不要更新知识库"
+
+## 实测指标
+
+| 指标 | 数值 |
 |------|------|
-| **知识条目管理** | 创建、编辑、删除 Markdown 知识条目，支持多级目录分类 |
-| **Git 版本控制** | 每次修改自动提交，支持历史查看和版本回滚 |
-| **混合检索** | BM25 关键词检索（jieba 分词 + TF-IDF）+ BGE 向量语义搜索，RRF 融合排序 |
-| **AI 对话** | 基于 GLM-4 的流式对话（SSE），自动搜索知识库作为上下文 |
-| **知识自动提取** | LangGraph Agent 分析对话，决策是否需要创建/更新/删除知识条目 |
-| **Human-in-the-Loop** | Agent 决策后暂停等待用户确认，确认后才执行操作 |
-| **三端同步** | 每次写操作同步更新 Markdown + ChromaDB + BM25 + Git |
-| **持久化 Checkpoint** | Agent 状态持久化到 SQLite，重启不丢失中断上下文 |
-| **启动自检** | 首次启动自动同步 ChromaDB 和 BM25 索引，按需补齐 |
+| 检索测试集 | **20 条** 中文查询 |
+| Semantic Top-1 / MRR | **85.0%** / **0.91** |
+| BM25 Top-1 / MRR | **80.0%** / **0.85** |
+| Hybrid Top-1 / MRR | **85.0%** / **0.87** |
+| 搜索策略 | **3 种** (ChromaDB 向量 / BM25 关键词 / RRF 融合) |
+| StateGraph 节点 | **4 个** (search → respond → decide → execute) |
+| 同步链路 | **4 路** (Markdown → ChromaDB → BM25 → Git) |
+| SSE 事件类型 | **7 种** |
 
----
+*数据来源: `tests/eval_retrieval_standalone.py`，17 篇知识库文档。*
 
 ## 快速开始
 
-### 1. 后端
-
 ```bash
-cd backend
+# 配置
+cp .env.example .env
+# 编辑 .env: 填入 DEEPSEEK_API_KEY
 
-# 创建虚拟环境
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# 安装
+pip install -e ".[dev]"
 
-# 安装依赖
-pip install -r requirements.txt
-
-# 配置环境变量
-# 编辑 .env 文件，填入 ZhipuAI API Key
-
-# 启动服务
-# 首次启动自动同步知识库到 ChromaDB 向量索引 + BM25 倒排索引
-# LangGraph Checkpoint 自动初始化到 backend/data/checkpoints.db
-python run_server.py
+# 启动（Wiki-Agent 集成在主平台中）
+python -m app.main
 ```
 
-后端运行在 `http://localhost:8001`
-
-### 2. 前端
-
-```bash
-cd frontend
-
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-```
-
-前端运行在 `http://localhost:5173`，API 请求自动代理到后端 8001 端口。
-
-### 3. 一键启动（Windows）
-
-```bash
-start.bat
-```
-
----
+访问: http://localhost:3000/wiki-agent
 
 ## 架构概览
 
 ```
-用户消息 → FastAPI (SSE)
-              │
-              ▼
-         LangGraph Agent
-         ┌─────────────────────────────────────────┐
-         │ search → respond → decide → [interrupt] → execute │
-         └─────────────────────────────────────────┘
-              │                          │
-         混合检索                    用户确认后执行
-         ┌────┴────┐                ┌────┴────┐
-     BM25 搜索  向量搜索        Markdown  ChromaDB
-     (jieba)   (BGE+ChromaDB)    + Git    + BM25
-         └────┬────┘                └────┬────┘
-         RRF 融合排序               WikiSyncManager
+用户提问
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│         LangGraph Agent                  │
+│                                          │
+│  search ──→ respond ──→ decide ──→ execute
+│    │           │           │          │
+│    │      条件路由:       │    Human-in-the-Loop
+│    │    >50 chars→decide  │    CRUD 确认
+│    │    else→END          │          │
+│    │                  create/update/   │
+│    │                  delete/none      │
+│    ▼                                    │
+│  AsyncSqliteSaver Checkpoint            │
+│  (中断恢复)                              │
+└─────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│         三级混合检索                      │
+│                                          │
+│  Semantic (BGE-M3 + cosine)              │
+│       + BM25 (jieba + rank_bm25)         │
+│       + RRF 融合 (k=60)                  │
+│       → 去重保留最高分 chunk              │
+└─────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│         四路实时同步                      │
+│                                          │
+│  Markdown ←→ ChromaDB ←→ BM25 ←→ Git    │
+│  (500 字符 chunk · 50 重叠 · 句边界感知)  │
+└─────────────────────────────────────────┘
 ```
 
-### 项目结构
+## 检索原理
+
+### BM25 关键词搜索
+- jieba 分词 → 去除停用词 (25 词) → rank_bm25 倒排索引
+- 适用: 精确术语匹配 (如 "Kubernetes 容器编排")
+
+### ChromaDB 语义搜索
+- SentenceTransformer BGE-M3 向量嵌入 → cosine 距离
+- 适用: 语义相似查询 (如 "怎么管理集群" 匹配 Kubernetes 文档)
+
+### RRF 倒数秩融合
+- 两路结果取 rank → RRF score = Σ 1/(k + rank), k=60
+- 按文档去重，保留每个文档最高分 chunk
+
+## 知识自动提取
+
+对话结束后，Agent 自动分析对话内容：
 
 ```
-wiki-agent/
-├── backend/                        # Python 后端
-│   ├── app/
-│   │   ├── agent/
-│   │   │   ├── graph.py            # LangGraph 状态机编排
-│   │   │   ├── knowledge_agent.py  # 知识决策 Agent（LLM 结构化输出）
-│   │   │   └── tools/
-│   │   │       ├── search_tools.py # 混合检索（语义 + BM25 + RRF）
-│   │   │       ├── bm25_index.py   # BM25 倒排索引（jieba + rank_bm25）
-│   │   │       ├── crud_tools.py   # 知识库 CRUD 操作
-│   │   │       ├── chunker.py      # 文本分块（Markdown 结构感知）
-│   │   │       └── sync_manager.py # 三端同步管理器
-│   │   ├── routers/
-│   │   │   ├── wiki.py             # 知识库 REST API
-│   │   │   └── chat.py             # 对话 API（SSE 流式 + 确认）
-│   │   ├── wiki/
-│   │   │   ├── service.py          # Markdown 文件 CRUD
-│   │   │   ├── git_service.py      # Git 版本管理
-│   │   │   └── schemas.py          # Pydantic 数据模型
-│   │   ├── session/
-│   │   │   └── store.py            # 会话存储（SQLite）
-│   │   ├── config.py               # 配置（路径、API Key）
-│   │   ├── database.py             # SQLite 初始化
-│   │   └── main.py                 # FastAPI 入口
-│   ├── requirements.txt
-│   └── .env                        # 环境变量
-├── frontend/                       # Vue 3 前端
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── App.vue             # 根组件（Wiki/Chat 模式切换）
-│   │   │   ├── Sidebar.vue         # 目录树侧边栏
-│   │   │   ├── WikiPage.vue        # 知识条目查看/编辑
-│   │   │   ├── ChatView.vue        # AI 对话界面（SSE + 知识提取卡片）
-│   │   │   ├── HistoryPanel.vue    # Git 历史面板
-│   │   │   ├── CreateDialog.vue    # 新建条目弹窗
-│   │   │   └── ImportDialog.vue    # 导入弹窗
-│   │   └── api/
-│   │       └── index.js            # API 封装
-│   ├── vite.config.js
-│   └── package.json
-├── knowledge/                      # 知识库文件（Git 管理）
-├── models/                         # 本地 Embedding 模型
-│   └── bge-small-zh-v1.5/          # BAAI BGE 中文小模型（512 维）
-├── chroma_db/                      # ChromaDB 向量存储
-├── start.bat                       # Windows 一键启动
-└── README.md
+对话记录 → PydanticOutputParser → KnowledgeDecision
+                                      │
+                          ┌───────────┼───────────┐
+                          ▼           ▼           ▼
+                       create      update      delete/none
+                          │           │
+                    人工确认 ←─────┘
+                          │
+                    四路同步写入
 ```
-
----
-
-## Demo
-
-### 知识库管理
-
-多级目录分类，Markdown 编辑，Git 版本控制。
-
-![知识库管理](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260527202032020.png)
-
-### AI 对话
-
-基于知识库上下文的流式对话，SSE 实时推送。
-
-![AI 对话](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260527202105795.png)
-
-### 知识自动提取
-
-Agent 分析对话内容，自动发现可保存的知识，用户确认后写入知识库。
-
-![知识自动提取](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260527202132412.png)
-
-### 混合检索
-
-BM25 关键词精确匹配 + BGE 向量语义搜索，RRF 融合排序。
-
-![混合检索](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260527202245624.png)
-
----
-
-## 检索架构
-
-### 混合检索（Hybrid Search）
-
-```
-用户查询
-   │
-   ├── jieba 分词 → BM25 搜索 → 排名列表
-   │                              │
-   └── BGE 编码 → ChromaDB 余弦搜索 → 排名列表
-                                           │
-                                    RRF 融合 (k=60)
-                                    score = Σ 1/(k + rank_i)
-                                           │
-                                     最终排序结果
-```
-
-| 检索方式 | 原理 | 擅长场景 |
-|----------|------|----------|
-| **BM25** | jieba 分词 + TF-IDF 加权 + 长度归一 | 精确关键词匹配（函数名、专有名词） |
-| **向量搜索** | bge-small-zh-v1.5 编码 + ChromaDB 余弦相似度 | 语义理解（"土豆"→"马铃薯"） |
-| **RRF 融合** | 抛弃绝对分数，只看排名：`1/(60+rank)` | 解决两路分数尺度不同的问题 |
-
-### 文本分块策略
-
-采用 Markdown 结构感知分块：
-1. 按 `#` 标题切分章节
-2. 每个章节按 500 字符切块，保留句子边界
-3. 标题注入到第一块，保留上下文
-
----
-
-## Human-in-the-Loop 流程
-
-```
-用户提问 → Agent 搜索 + 回复 + 决策
-                         │
-                    interrupt() 暂停
-                         │
-              Checkpoint 保存到 SQLite
-                         │
-               SSE 推送 extraction 事件给前端
-                         │
-              前端渲染确认卡片（含 thread_id）
-                    ┌────┴────┐
-                 确认保存    忽略
-                    │         │
-           POST /confirm   POST /confirm
-           (confirm=true)  (confirm=false)
-                    │         │
-         Command(resume=True)  Command(resume=False)
-                    │         │
-              执行 CRUD     取消操作
-                    │         │
-         extraction 状态写回 DB（confirmed / rejected）
-```
-
-Checkpoint 持久化到 `backend/data/checkpoints.db`（SQLite），后端重启后仍可恢复中断状态。
-
----
-
-## 数据持久化
-
-```
-wiki-agent/
-├── knowledge/                      # Markdown 源文件（Git 管理）
-├── chroma_db/                      # ChromaDB 向量索引
-├── models/bge-small-zh-v1.5/       # 本地 Embedding 模型
-└── backend/data/
-    ├── chat.db                     # 会话 + 消息存储
-    ├── checkpoints.db              # LangGraph Agent 状态（interrupt 恢复）
-    └── bm25_index.pkl              # BM25 倒排索引
-```
-
-| 文件 | 说明 |
-|------|------|
-| `chat.db` | 存储会话和消息，含 extraction 状态（confirmed/rejected） |
-| `checkpoints.db` | 存储 LangGraph 图的 checkpoint，支持 interrupt 后重启恢复 |
-| `bm25_index.pkl` | jieba 分词后的 BM25 索引，启动时自动从 knowledge 目录构建 |
-
----
-
-## 配置说明
-
-在 `backend/.env` 中配置：
-
-```env
-# LLM 配置（智谱 GLM-4）
-ZHIPUAI_API_KEY=your-api-key
-ZHIPUAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-ZHIPUAI_CHAT_MODEL=glm-4
-
-# Git 版本管理
-GIT_ENABLED=true
-```
-
-路径配置在 `backend/app/config.py`，默认：
-
-| 配置项 | 默认路径 | 说明 |
-|--------|----------|------|
-| `KNOWLEDGE_DIR` | `wiki-agent/knowledge/` | 知识库 Markdown 文件 |
-| `CHROMA_DIR` | `wiki-agent/chroma_db/` | ChromaDB 向量存储 |
-| `EMBEDDING_MODEL_PATH` | `wiki-agent/models/bge-small-zh-v1.5/` | 本地 Embedding 模型 |
-| `DB_PATH` | `wiki-agent/backend/data/chat.db` | SQLite 会话数据库 |
-| `BM25_INDEX_PATH` | `wiki-agent/backend/data/bm25_index.pkl` | BM25 索引持久化文件 |
-| `CHECKPOINT_DB` | `wiki-agent/backend/data/checkpoints.db` | LangGraph Agent 状态持久化（自动） |
-
----
 
 ## API 接口
 
-### 知识库 API (`/api/wiki`)
+### 知识管理
+```http
+GET    /api/wiki/tree                      # 知识库目录树
+GET    /api/wiki/page/{path}               # 获取页面内容
+POST   /api/wiki/create                    # 创建页面
+PUT    /api/wiki/update/{path}             # 更新页面
+DELETE /api/wiki/page/{path}               # 删除页面
+POST   /api/wiki/rollback/{path}           # Git 回滚
+GET    /api/wiki/history/{path}            # 版本历史
+GET    /api/wiki/search?q={query}          # 搜索
+```
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/tree` | 获取目录树 |
-| GET | `/page/{path}` | 读取条目 |
-| POST | `/page/{path}` | 创建条目 |
-| PUT | `/page/{path}` | 更新条目 |
-| DELETE | `/page/{path}` | 删除条目 |
-| GET | `/search?q=xxx` | 搜索条目 |
-| GET | `/page/{path}/history` | 获取 Git 历史 |
-| POST | `/page/{path}/rollback` | 回滚版本 |
-| POST | `/import` | 导入 Markdown |
+### 对话
+```http
+POST   /api/chat/stream                    # SSE 流式对话 (7 种事件)
+POST   /api/chat/confirm                   # Human-in-the-Loop 确认
+GET    /api/chat/sessions                  # 会话列表
+```
 
-### 对话 API (`/api/chat`)
+### SSE 事件类型
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/stream` | SSE 流式对话 |
-| POST | `/message` | 非流式对话 |
-| POST | `/confirm` | 确认/取消知识操作 |
-| POST | `/save-knowledge` | 手动保存知识 |
-| GET/POST | `/sessions` | 会话管理 |
-
-### SSE 事件类型（`/api/chat/stream`）
-
-| type | 说明 |
+| 事件 | 说明 |
 |------|------|
-| `wiki_results` | 知识库搜索结果 |
-| `content` | 流式回复文本片段 |
-| `status` | 状态信息（如"正在分析对话内容..."） |
-| `extraction` | 知识提取结果（含 `thread_id`，等待用户确认） |
-| `done` | 流式结束 |
-
----
+| `content` | LLM 流式文本 |
+| `wiki_results` | 知识库检索结果 |
+| `status` | 状态消息 |
+| `extraction` | 知识提取决策 |
+| `evaluation_task` | 评估追踪 ID |
+| `error` | 错误事件 |
+| `done` | 流结束 |
 
 ## 技术栈
 
-| 层级 | 技术 |
-|------|------|
-| 后端框架 | FastAPI + Uvicorn |
-| Agent 编排 | LangGraph（状态机 + interrupt） |
-| LLM | 智谱 GLM-4（结构化输出 / PydanticOutputParser 双策略） |
-| 向量存储 | ChromaDB（余弦相似度） |
-| Embedding | bge-small-zh-v1.5（本地推理，512 维） |
-| 关键词检索 | jieba 分词 + rank_bm25（BM25Okapi） |
-| 融合策略 | RRF（Reciprocal Rank Fusion, k=60） |
-| 版本管理 | GitPython |
-| Checkpoint 存储 | AsyncSqliteSaver（SQLite 持久化，重启不丢失） |
-| 会话存储 | SQLite + aiosqlite |
-| 前端 | Vue 3 + Vite + vue-router |
-| 流式传输 | SSE（Server-Sent Events） |
+**后端**: Python 3.11+ · FastAPI · LangGraph · LangChain · ChromaDB · SentenceTransformers · jieba · rank-bm25 · GitPython · aiosqlite
+
+**前端**: Vue 3 · TypeScript · Element Plus · Markdown 渲染
+
+**LLM**: DeepSeek (ChatOpenAI 兼容)
