@@ -1,83 +1,44 @@
-"""文本分块工具 — 将长文档拆分为小块用于向量检索"""
+"""文档加载与分块 — 支持 PDF / Word / Markdown / TXT 的多格式解析与 RecursiveCharacterTextSplitter 分块。"""
 
 from __future__ import annotations
 
-
-def chunk_text(
-    text: str,
-    chunk_size: int = 500,
-    chunk_overlap: int = 50,
-) -> list[str]:
-    """将文本分块
-
-    Args:
-        text: 原始文本
-        chunk_size: 每块的目标大小（字符数）
-        chunk_overlap: 块之间的重叠大小
-
-    Returns:
-        list[str]: 分块后的文本列表
-    """
-    if not text or len(text) <= chunk_size:
-        return [text] if text else []
-
-    chunks = []
-    start = 0
-
-    while start < len(text):
-        # 计算结束位置
-        end = start + chunk_size
-
-        # 如果不是最后一块，尝试在句子边界分割
-        if end < len(text):
-            # 查找最近的句子结束符
-            boundary = _find_sentence_boundary(text, end)
-            if boundary > start:
-                end = boundary
-
-        # 提取块
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-
-        # 下一块的起始位置（考虑重叠）
-        start = end - chunk_overlap if end < len(text) else len(text)
-
-    return chunks
+from pathlib import Path
+from typing import List
 
 
-def _find_sentence_boundary(text: str, target_pos: int) -> int:
-    """在目标位置附近查找句子边界
+def load_document(file_path: str | Path) -> str:
+    """根据文件扩展名自动选择解析器，返回纯文本。"""
+    file_path = Path(file_path)
+    suffix = file_path.suffix.lower()
 
-    优先级：句号 > 换行 > 逗号 > 空格
-    """
-    # 在目标位置前后 100 字符范围内查找
-    search_range = 100
-    start = max(0, target_pos - search_range)
-    end = min(len(text), target_pos + search_range)
+    if suffix == ".pdf":
+        return _load_pdf(file_path)
+    elif suffix in (".docx", ".doc"):
+        return _load_docx(file_path)
+    elif suffix in (".md", ".markdown", ".txt", ".rst"):
+        return file_path.read_text(encoding="utf-8", errors="replace")
+    else:
+        raise ValueError(f"不支持的文件格式: {suffix}")
 
-    # 句子结束符（按优先级）
-    delimiters = ['。', '！', '？', '\n', '；', '，', '.', '!', '?', ';', ',']
 
-    best_pos = target_pos
-    best_priority = len(delimiters)
+def _load_pdf(file_path: Path) -> str:
+    """加载 PDF（需要 pypdf）。"""
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(str(file_path))
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except ImportError:
+        raise ImportError("PDF 支持需要 pypdf: pip install pypdf")
 
-    for i, delim in enumerate(delimiters):
-        # 向前查找
-        pos = text.rfind(delim, start, target_pos)
-        if pos != -1 and i < best_priority:
-            best_pos = pos + 1
-            best_priority = i
-            break
 
-        # 向后查找
-        pos = text.find(delim, target_pos, end)
-        if pos != -1 and i < best_priority:
-            best_pos = pos + 1
-            best_priority = i
-            break
-
-    return best_pos
+def _load_docx(file_path: Path) -> str:
+    """加载 Word 文档（需要 python-docx）。"""
+    try:
+        from docx import Document
+        doc = Document(str(file_path))
+        return "\n".join(p.text for p in doc.paragraphs)
+    except ImportError:
+        raise ImportError("Word 支持需要 python-docx: pip install python-docx")
 
 
 def chunk_markdown(
@@ -85,70 +46,37 @@ def chunk_markdown(
     chunk_size: int = 500,
     chunk_overlap: int = 50,
 ) -> list[str]:
-    """Markdown 专用分块 — 保持标题结构
+    """使用 LangChain RecursiveCharacterTextSplitter 分块。
 
-    Args:
-        content: Markdown 内容
-        chunk_size: 每块的目标大小
-        chunk_overlap: 块之间的重叠大小
-
-    Returns:
-        list[str]: 分块后的文本列表
+    分层分隔符: 双换行 → 单换行 → 句号 → 中文标点 → 空格
+    比手写实现更稳健，处理边界情况更好。
     """
-    if not content:
-        return []
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-    # 按标题分割
-    sections = _split_by_headers(content)
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=["\n\n", "\n", "。", "！", "？", "；", "，", ". ", "! ", "? ", "; ", ", ", " ", ""],
+            keep_separator=True,
+        )
+        return splitter.split_text(content)
+    except ImportError:
+        # Fallback: simple paragraph-based chunking
+        return _fallback_chunk(content, chunk_size, chunk_overlap)
 
-    # 如果只有一个部分，直接分块
-    if len(sections) <= 1:
-        return chunk_text(content, chunk_size, chunk_overlap)
 
-    # 对每个部分分别分块
+def _fallback_chunk(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
+    """兜底分块器 — 不依赖 langchain。"""
+    if not text or len(text) <= chunk_size:
+        return [text] if text else []
+
     chunks = []
-    for header, body in sections:
-        if not body.strip():
-            continue
-
-        # 将标题添加到第一块
-        section_chunks = chunk_text(body, chunk_size - len(header), chunk_overlap)
-        if section_chunks:
-            # 第一块加上标题
-            first_chunk = f"{header}\n{section_chunks[0]}" if header else section_chunks[0]
-            chunks.append(first_chunk)
-            chunks.extend(section_chunks[1:])
-        elif header:
-            chunks.append(header)
-
+    start = 0
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        start = end - chunk_overlap if end < len(text) else len(text)
     return chunks
-
-
-def _split_by_headers(content: str) -> list[tuple[str, str]]:
-    """按 Markdown 标题分割内容
-
-    Returns:
-        list[tuple[str, str]]: (标题, 内容) 列表
-    """
-    import re
-
-    sections = []
-    current_header = ""
-    current_body = []
-
-    for line in content.split('\n'):
-        if re.match(r'^#{1,6}\s+', line):
-            # 保存上一个部分
-            if current_body:
-                sections.append((current_header, '\n'.join(current_body)))
-            # 开始新部分
-            current_header = line
-            current_body = []
-        else:
-            current_body.append(line)
-
-    # 保存最后一个部分
-    if current_body:
-        sections.append((current_header, '\n'.join(current_body)))
-
-    return sections
