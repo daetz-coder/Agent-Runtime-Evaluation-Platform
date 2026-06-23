@@ -94,7 +94,7 @@ async def run_evaluation(
         raise HTTPException(status_code=404, detail="Task not found")
 
     # Create evaluation record (IN_PROGRESS) and return immediately
-    evaluation = await service.create_evaluation(request.task_id)
+    evaluation = await service.create_evaluation(request.task_id, stream_mode=request.use_stream)
 
     if not evaluation:
         raise HTTPException(status_code=500, detail="Evaluation failed to start")
@@ -212,7 +212,7 @@ async def evaluation_stream(
         MemoryEvaluator, ReplanEvaluator,
         RetrievalEvaluator,
     )
-    from app.db.models import AgentTrajectory, AgentTask, TaskStatus
+    from app.db.models import AgentTrajectory, AgentTask, TaskStatus, Evaluation, EvaluationStatus
     from app.models.schemas import TrajectoryStep as TS
     from sse_starlette.sse import EventSourceResponse
 
@@ -285,7 +285,32 @@ async def evaluation_stream(
                 "progress": current, "total": total,
             })})
 
+    async def yield_completed_evaluation(eval_row: Evaluation):
+        """Replay SSE events from a completed evaluation without re-running LLMs."""
+        dims = ("planning", "tactical", "tool_use", "memory", "replan", "retrieval")
+        score_values: dict = {}
+        for index, dim in enumerate(dims, start=1):
+            fb = getattr(eval_row, f"{dim}_feedback") or {}
+            score = fb.get("overall") if isinstance(fb, dict) else getattr(eval_row, f"{dim}_score", 0)
+            score = float(score or 0)
+            score_values[dim] = score
+            yield {"event": "progress", "data": json.dumps({
+                "dimension": dim, "score": score, "progress": index, "total": total,
+            })}
+        overall = float(eval_row.overall_score or 0)
+        yield {"event": "result", "data": json.dumps({
+            "scores": score_values, "overall": overall, "evaluation_id": evaluation_id,
+        })}
+        yield {"event": "done", "data": "{}"}
+
     async def event_generator():
+        if evaluation_id:
+            eval_row = await db.get(Evaluation, evaluation_id)
+            if eval_row and eval_row.status == EvaluationStatus.COMPLETED:
+                async for msg in yield_completed_evaluation(eval_row):
+                    yield msg
+                return
+
         await mark_running()
 
         asyncio.create_task(asyncio.gather(*[
@@ -343,7 +368,7 @@ async def consensus_evaluation(
     多模型共识评估 — DeepSeek + OpenAI + Anthropic 独立评分。
 
     - **task_id**: 任务 UUID
-    - **include_all**: 是否返回所有 5 个维度的共识结果
+    - **include_all**: 是否返回所有 6 个维度的共识结果
 
     返回均值 (mean_score)、标准差 (std_score，一致性指标，越小越可信)、各模型分数。
     """
