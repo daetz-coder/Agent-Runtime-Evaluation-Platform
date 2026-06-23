@@ -79,6 +79,7 @@ async def stream_response(session_id: str, user_message: str) -> AsyncGenerator[
     collected = ""
     wiki_text = None
     extraction_data = None
+    eval_task_id = None
 
     try:
         async for event in run_chat_stream(user_message, history, session_id=session_id):
