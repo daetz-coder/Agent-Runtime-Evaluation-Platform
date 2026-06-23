@@ -58,6 +58,12 @@ const router = createRouter({
           meta: { title: 'Wiki Agent', icon: 'Reading', fullBleed: true },
         },
         {
+          path: 'vector-admin',
+          name: 'VectorAdmin',
+          component: () => import('@/views/VectorAdmin.vue'),
+          meta: { title: '向量管理', icon: 'Database' },
+        },
+        {
           path: 'settings',
           name: 'Settings',
           component: () => import('@/views/Settings.vue'),

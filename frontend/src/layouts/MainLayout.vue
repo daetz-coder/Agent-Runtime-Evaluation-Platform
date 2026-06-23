@@ -20,12 +20,6 @@
           </el-menu-item>
         </template>
       </el-menu>
-
-      <a href="/wiki-admin" target="_blank" class="wiki-admin-link" title="Milvus 向量管理">
-        <el-icon><Database /></el-icon>
-        <span v-show="!isCollapse" class="link-text">向量管理</span>
-      </a>
-
       <div class="collapse-btn" @click="isCollapse = !isCollapse">
         <el-icon>
           <Fold v-if="!isCollapse" />
@@ -83,7 +77,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Refresh, Link, User, Cpu, Fold, Expand, Database } from '@element-plus/icons-vue'
+import { Refresh, Link, User, Cpu, Fold, Expand } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -151,25 +145,6 @@ const openGitHub = () => {
       background: linear-gradient(90deg, #409eff 0%, #66b1ff 100%);
       color: #fff;
     }
-  }
-}
-
-.wiki-admin-link {
-  display: flex;
-  align-items: center;
-  height: 48px;
-  padding: 0 20px;
-  color: rgba(255, 255, 255, 0.7);
-  text-decoration: none;
-  font-size: 14px;
-  transition: background 0.3s;
-  &:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-  }
-  .link-text {
-    margin-left: 8px;
-    overflow: hidden;
   }
 }
 
