@@ -313,7 +313,8 @@ async def evaluation_stream(
 
         await mark_running()
 
-        asyncio.create_task(asyncio.gather(*[
+        # Launch all evaluators concurrently (fire-and-forget via task)
+        _ = asyncio.ensure_future(asyncio.gather(*[
             run_eval(dim, cls) for dim, cls in evaluators
         ]))
 
