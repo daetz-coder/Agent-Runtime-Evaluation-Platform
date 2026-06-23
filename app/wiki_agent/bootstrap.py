@@ -8,6 +8,7 @@ from pathlib import Path
 
 warnings.filterwarnings("ignore", message=".*allowed_objects.*")
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="langgraph")
+warnings.filterwarnings("ignore", message=".*InsecureKeyLength.*")  # ZhipuAI GLM jwt key length
 
 from app.wiki_agent.config import settings
 
