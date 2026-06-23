@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.db.models import AgentTask, AgentTrajectory, Evaluation, TaskStatus, EvaluationStatus
 from app.models.schemas import (
     TaskCreate,
@@ -256,7 +257,8 @@ class EvaluationService:
             evaluation.tool_use_score = overall.get("tool_use", {}).get("overall")
             evaluation.memory_score = overall.get("memory", {}).get("overall")
             evaluation.replan_score = overall.get("replan", {}).get("overall")
-            evaluation.overall_score = overall.get("overall_score")
+            evaluation.retrieval_score = overall.get("retrieval", {}).get("overall")
+            evaluation.overall_score = overall.get("overall_score") or overall.get("overall", {}).get("overall_score")
 
             # Store detailed feedback
             evaluation.planning_feedback = overall.get("planning")
@@ -264,6 +266,7 @@ class EvaluationService:
             evaluation.tool_use_feedback = overall.get("tool_use")
             evaluation.memory_feedback = overall.get("memory")
             evaluation.replan_feedback = overall.get("replan")
+            evaluation.retrieval_feedback = overall.get("retrieval")
 
             evaluation.status = EvaluationStatus.COMPLETED
             evaluation.completed_at = datetime.now(timezone.utc)

@@ -202,6 +202,7 @@ const dimensions = [
   { key: 'tool_use', name: '工具使用', color: '#e6a23c' },
   { key: 'memory', name: '记忆保持', color: '#f56c6c' },
   { key: 'replan', name: '重规划', color: '#909399' },
+  { key: 'retrieval', name: '检索质量', color: '#9b59b6' },
 ]
 
 // Computed
@@ -338,7 +339,7 @@ const initLineChart = () => {
     ? tData.map((t: any) => dayjs(t.date).format('MM/DD'))
     : Array.from({ length: 7 }, (_, i) => dayjs().subtract(6 - i, 'day').format('MM/DD'))
 
-  const dimensionKeys = ['avg_planning', 'avg_tactical', 'avg_tool_use', 'avg_memory', 'avg_replan']
+  const dimensionKeys = ['avg_planning', 'avg_tactical', 'avg_tool_use', 'avg_memory', 'avg_replan', 'avg_retrieval']
   const seriesData = tData.length > 0
     ? dimensionKeys.map(key => ({
         name: dimensions.find(d => d.key === key.replace('avg_', ''))?.name || key,
