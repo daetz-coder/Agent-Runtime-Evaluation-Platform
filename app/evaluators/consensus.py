@@ -97,15 +97,18 @@ class ConsensusEvaluator:
 
         # GLM (ZhipuAI)
         if settings.ZHIPUAI_API_KEY:
-            from langchain_community.chat_models import ChatZhipuAI
-            providers.append((
-                "glm-4",
-                ChatZhipuAI(
-                    model=settings.ZHIPUAI_MODEL,
-                    api_key=settings.ZHIPUAI_API_KEY,
-                    temperature=0,
-                ),
-            ))
+            try:
+                from langchain_community.chat_models import ChatZhipuAI
+                providers.append((
+                    "glm-4",
+                    ChatZhipuAI(
+                        model=settings.ZHIPUAI_MODEL,
+                        api_key=settings.ZHIPUAI_API_KEY,
+                        temperature=0,
+                    ),
+                ))
+            except ImportError:
+                logger.warning("langchain_community not installed — skipping GLM provider")
 
         # Qwen (DashScope) — OpenAI 兼容 API
         if settings.QWEN_API_KEY:
