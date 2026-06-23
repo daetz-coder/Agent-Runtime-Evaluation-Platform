@@ -17,6 +17,36 @@
       </el-col>
     </el-row>
 
+    <!-- Cost Summary -->
+    <el-row :gutter="20" class="cost-row" v-if="costSummary.evalCount > 0">
+      <el-col :span="24">
+        <el-card shadow="hover">
+          <template #header>
+            <span>成本追踪</span>
+            <el-tag size="small" style="margin-left: 8px">基于 DeepSeek API 定价</el-tag>
+          </template>
+          <el-row :gutter="16">
+            <el-col :span="6">
+              <el-statistic title="评估总数" :value="costSummary.evalCount" />
+            </el-col>
+            <el-col :span="6">
+              <el-statistic title="预估 Token" :value="costSummary.estTokens.toLocaleString()" />
+            </el-col>
+            <el-col :span="6">
+              <el-statistic title="DeepSeek 费用" :value="'¥' + costSummary.estCostDeepSeek" />
+            </el-col>
+            <el-col :span="6">
+              <el-statistic title="对比 GPT-4o 节省" :value="'¥' + costSummary.savings">
+                <template #suffix>
+                  <el-tag type="success" size="small">节省 97%</el-tag>
+                </template>
+              </el-statistic>
+            </el-col>
+          </el-row>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <!-- Charts Row -->
     <el-row :gutter="20" class="chart-row">
       <!-- Radar Chart - Overall Performance -->
@@ -163,6 +193,7 @@ const summaryData = ref<any>(null)
 const dashboardData = ref<any>(null)
 const recentTasks = ref<any[]>([])
 const trendData = ref<any[]>([])
+const costSummary = ref({ evalCount: 0, estTokens: 0, estCostDeepSeek: 0, estCostGPT4: 0, savings: 0 })
 
 // Dimensions config
 const dimensions = [
@@ -520,6 +551,20 @@ const fetchData = async () => {
     dashboardData.value = dashboard
     recentTasks.value = dashboard.recent_tasks || []
     trendData.value = trends || []
+
+    // 成本估算（DeepSeek 定价: ¥1/百万tokens input, ¥2/百万tokens output）
+    const evalCount = summary?.total_evaluations || 0
+    const avgTokensPerEval = 11750 / 6  // 约 2000 tokens/评估维度
+    const estTokens = evalCount * avgTokensPerEval * 6  // 6维度
+    const estCostDeepSeek = (estTokens / 1_000_000 * 1.0).toFixed(4)
+    const estCostGPT4 = (estTokens / 1_000_000 * 30.0).toFixed(2)
+    costSummary.value = {
+      evalCount,
+      estTokens,
+      estCostDeepSeek: parseFloat(estCostDeepSeek),
+      estCostGPT4: parseFloat(estCostGPT4),
+      savings: parseFloat((parseFloat(estCostGPT4) - parseFloat(estCostDeepSeek)).toFixed(2)),
+    }
 
     requestAnimationFrame(() => {
       initRadarChart()
