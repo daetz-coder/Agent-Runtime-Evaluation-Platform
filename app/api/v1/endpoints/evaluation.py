@@ -225,7 +225,7 @@ async def consensus_evaluation(
             action_type=t.action_type,
             action_detail=t.action_detail or {},
             observation=t.observation,
-            timestamp=t.created_at,
+            timestamp=t.timestamp,
         )
         for t in trajectory_rows
     ]
