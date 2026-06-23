@@ -270,3 +270,113 @@ def _generate_global_recommendations(
         recommendations.append("Add replanning triggers: Monitor failure patterns and trigger replan proactively.")
 
     return recommendations
+
+
+@router.get("/export/{task_id}")
+async def export_report(task_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    导出单次评估报告为 Markdown 格式。
+
+    - **task_id**: 任务 UUID
+    """
+    from app.db.models import Evaluation, EvaluationStatus
+    from sqlalchemy import select as sa_select
+
+    result = await db.execute(
+        sa_select(Evaluation).where(
+            Evaluation.task_id == task_id,
+            Evaluation.status == EvaluationStatus.COMPLETED,
+        ).order_by(Evaluation.created_at.desc()).limit(1)
+    )
+    eval_row = result.scalar_one_or_none()
+    if not eval_row:
+        raise HTTPException(status_code=404, detail="No completed evaluation found")
+
+    md = f"""# Agent Evaluation Report
+
+**Task ID**: {task_id}
+**Evaluated**: {eval_row.created_at.isoformat()}
+
+## Overall Score: {eval_row.overall_score:.1f}/100
+
+## Dimension Scores
+
+| Dimension | Score | Weight |
+|-----------|-------|--------|
+| Planning  | {eval_row.planning_score or 0:.1f} | 25% |
+| Tactical  | {eval_row.tactical_score or 0:.1f} | 25% |
+| Tool Use  | {eval_row.tool_use_score or 0:.1f} | 20% |
+| Memory    | {eval_row.memory_score or 0:.1f} | 15% |
+| Replan    | {eval_row.replan_score or 0:.1f} | 15% |
+
+## Summary
+
+{eval_row.summary or 'No summary available.'}
+
+## Recommendations
+
+{chr(10).join('- ' + r for r in (eval_row.recommendations or ['No recommendations.']))}
+"""
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8",
+                              headers={"Content-Disposition": f"attachment; filename=eval-{task_id[:8]}.md"})
+
+
+@router.get("/compare/{task_id}")
+async def compare_evaluations(
+    task_id: str,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    对比同一任务的多轮评估结果，跟踪 Agent 质量变化趋势。
+
+    - **task_id**: 任务 UUID
+    - **limit**: 返回最近 N 轮评估（默认 10）
+    """
+    from app.db.models import Evaluation, EvaluationStatus
+    from sqlalchemy import select as sa_select, func as sa_func
+
+    # 获取所有已完成评估
+    result = await db.execute(
+        sa_select(Evaluation)
+        .where(Evaluation.task_id == task_id, Evaluation.status == EvaluationStatus.COMPLETED)
+        .order_by(Evaluation.created_at.asc())
+        .limit(limit)
+    )
+    evals = result.scalars().all()
+
+    if not evals:
+        raise HTTPException(status_code=404, detail="No evaluations found for this task")
+
+    scores_history = [
+        {
+            "evaluation_id": e.id,
+            "created_at": e.created_at.isoformat(),
+            "overall": e.overall_score,
+            "planning": e.planning_score,
+            "tactical": e.tactical_score,
+            "tool_use": e.tool_use_score,
+            "memory": e.memory_score,
+            "replan": e.replan_score,
+        }
+        for e in evals
+    ]
+
+    # 趋势计算
+    if len(scores_history) >= 2:
+        first = scores_history[0]["overall"] or 0
+        last = scores_history[-1]["overall"] or 0
+        trend = "improving" if last > first else "declining" if last < first else "stable"
+        delta = last - first
+    else:
+        trend = "insufficient_data"
+        delta = 0
+
+    return {
+        "task_id": task_id,
+        "total_evaluations": len(scores_history),
+        "trend": trend,
+        "score_delta": round(delta, 1),
+        "history": scores_history,
+    }
