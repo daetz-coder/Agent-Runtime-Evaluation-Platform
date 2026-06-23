@@ -1,6 +1,6 @@
 # Agent Runtime Evaluation Platform
 
-AI Agent 运行时质量评估平台 — 评估 Planning、Tactical、Tool Use、Memory、Replan 五个维度，使用 LangGraph 编排评估工作流。
+AI Agent 运行时质量评估平台 — 评估 Planning、Tactical、Tool Use、Memory、Replan、Retrieval 六个维度，使用 LangGraph 编排评估工作流。
 
 ## Project
 
@@ -30,24 +30,24 @@ AI Agent 运行时质量评估平台 — 评估 Planning、Tactical、Tool Use�
 
 ```
 frontend/src/          Vue 3 SPA — Element Plus + ECharts
-  views/               Dashboard, Tasks, Evaluations, Analytics, WikiAgent, Settings
-  stores/              Pinia stores
+  views/               Dashboard, Tasks, Evaluations, Analytics, Benchmark, WikiAgent, Settings
   api/                 Axios API client
 
 app/main.py            FastAPI app factory + lifespan (DB init, Wiki Agent bootstrap)
-app/api/v1/endpoints/   REST routers: tasks, evaluation, reports
-app/services/           EvaluationService — business logic, orchestrates LangGraph graphs
-app/graphs/             evaluation_graph.py — LangGraph StateGraph (validate → parallel eval → aggregate)
-app/evaluators/         5 evaluators (planning, tactical, tool_use, memory, replan) extending BaseEvaluator
-app/models/             Pydantic schemas (API) + ActionType constants (trajectory action types)
-app/db/                 SQLAlchemy ORM models (AgentTask, AgentTrajectory, Evaluation) + async session
-app/adapters/           Pluggable adapters: langgraph (instrument), llm_proxy, callback
-app/collectors/         trajectory.py — trajectory step collection
-app/wiki_agent/         Integrated RAG Wiki Agent (Chromadb, sentence-transformers, BM25)
-app/core/config.py      pydantic-settings from .env, case-sensitive
+app/api/v1/endpoints/  REST routers: tasks, evaluation, reports, benchmark
+app/services/          EvaluationService — business logic, orchestrates LangGraph graphs
+app/graphs/            evaluation_graph.py — LangGraph StateGraph (validate → parallel eval → aggregate)
+app/evaluators/        6 evaluators (planning, tactical, tool_use, memory, replan, retrieval)
+app/benchmarks/        Monotonicity benchmark trajectories + SSE runner
+app/models/            Pydantic schemas (API) + ActionType constants (trajectory action types)
+app/db/                SQLAlchemy ORM models (AgentTask, AgentTrajectory, Evaluation) + async session
+app/adapters/          Pluggable adapters: langgraph (instrument), llm_proxy, callback
+app/collectors/        trajectory.py — trajectory step collection
+app/wiki_agent/        Integrated RAG Wiki Agent (Chromadb, sentence-transformers, BM25)
+app/core/config.py     pydantic-settings from .env, case-sensitive
 ```
 
-**Evaluation flow**: Task created → trajectory steps pushed → evaluation triggered → LangGraph runs all 5 evaluators in parallel → scores aggregated into `OverallEvaluation` → stored in DB.
+**Evaluation flow**: Task created → trajectory steps pushed → evaluation triggered → 6 evaluators run in parallel (default) → scores aggregated into `OverallEvaluation` → stored in DB. Optional SSE stream via `POST /evaluations/stream` with live progress.
 
 ## Conventions
 
