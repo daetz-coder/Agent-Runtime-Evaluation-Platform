@@ -267,6 +267,8 @@ class MilvusVectorStore:
                     id_type="string",
                     max_length=512,
                 )
+            # Load collection into memory for queries (required for Milvus Lite)
+            client.load_collection(COLLECTION_NAME)
             self._client = client
             return self._client
         except Exception as exc:
