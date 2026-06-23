@@ -46,6 +46,12 @@ const router = createRouter({
           meta: { title: '数据分析', icon: 'TrendCharts' },
         },
         {
+          path: 'benchmark',
+          name: 'Benchmark',
+          component: () => import('@/views/Benchmark.vue'),
+          meta: { title: '单调性基准', icon: 'Histogram' },
+        },
+        {
           path: 'wiki-agent',
           name: 'WikiAgent',
           component: () => import('@/views/WikiAgent.vue'),

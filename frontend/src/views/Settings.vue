@@ -4,22 +4,32 @@
       <h2>系统设置</h2>
     </div>
 
+    <el-alert
+      title="本地偏好设置"
+      description="此处保存的是浏览器本地偏好（如刷新间隔）。评估权重、LLM 配置由服务端 .env 控制，修改后需重启后端生效。"
+      type="info"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px"
+    />
+
     <el-tabs v-model="activeTab" class="settings-tabs">
       <!-- General Settings -->
       <el-tab-pane label="基本设置" name="general">
         <el-card shadow="never">
           <el-form :model="generalForm" label-width="150px">
             <el-form-item label="默认LLM提供商">
-              <el-select v-model="generalForm.llmProvider" style="width: 300px">
+              <el-select v-model="generalForm.llmProvider" style="width: 300px" disabled>
+                <el-option label="DeepSeek（默认）" value="deepseek" />
                 <el-option label="OpenAI" value="openai" />
                 <el-option label="Anthropic" value="anthropic" />
               </el-select>
+              <div class="form-hint">LLM 提供商由服务端 .env 中 DEFAULT_LLM_PROVIDER 配置</div>
             </el-form-item>
 
             <el-form-item label="默认模型">
-              <el-select v-model="generalForm.llmModel" style="width: 300px">
-                <el-option v-for="model in models" :key="model.value" :label="model.label" :value="model.value" />
-              </el-select>
+              <el-input v-model="generalForm.llmModel" style="width: 300px" disabled />
+              <div class="form-hint">模型名称由服务端环境变量配置</div>
             </el-form-item>
 
             <el-form-item label="API Key">
@@ -27,8 +37,9 @@
                 v-model="generalForm.apiKey"
                 type="password"
                 show-password
-                placeholder="输入API Key"
+                placeholder="不在前端存储，请配置 .env"
                 style="width: 400px"
+                disabled
               />
             </el-form-item>
 
@@ -52,18 +63,27 @@
       <!-- Evaluation Settings -->
       <el-tab-pane label="评估设置" name="evaluation">
         <el-card shadow="never">
+          <el-alert
+            title="评估参数只读"
+            description="六维权重与阈值当前由后端 evaluate_parallel() 硬编码，以下配置仅供参考展示。"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 16px"
+          />
           <el-form :model="evaluationForm" label-width="150px">
             <el-form-item label="评估权重配置">
               <div class="weight-config">
                 <div v-for="dim in dimensions" :key="dim.key" class="weight-item">
                   <span class="dim-name">{{ dim.name }}</span>
                   <el-slider
-                    v-model="evaluationForm.weights[dim.key]"
+                    v-model="evaluationForm.weights[dim.key as keyof typeof evaluationForm.weights]"
                     :min="0"
                     :max="100"
                     :step="5"
                     show-input
                     style="width: 300px"
+                    disabled
                   />
                 </div>
               </div>
@@ -90,18 +110,13 @@
             </el-form-item>
 
             <el-form-item label="并发评估数">
-              <el-input-number v-model="evaluationForm.maxConcurrent" :min="1" :max="10" />
-              <span class="form-hint">同时运行的最大评估数量</span>
+              <el-input-number v-model="evaluationForm.maxConcurrent" :min="1" :max="10" disabled />
+              <span class="form-hint">并行评估由 EVAL_PARALLEL 环境变量控制</span>
             </el-form-item>
 
             <el-form-item label="超时时间">
-              <el-input-number v-model="evaluationForm.timeout" :min="30" :max="600" :step="30" />
+              <el-input-number v-model="evaluationForm.timeout" :min="30" :max="600" :step="30" disabled />
               <span class="form-hint">秒</span>
-            </el-form-item>
-
-            <el-form-item>
-              <el-button type="primary" @click="saveEvaluationSettings">保存设置</el-button>
-              <el-button @click="resetEvaluationSettings">重置</el-button>
             </el-form-item>
           </el-form>
         </el-card>
@@ -110,6 +125,14 @@
       <!-- Notification Settings -->
       <el-tab-pane label="通知设置" name="notification">
         <el-card shadow="never">
+          <el-alert
+            title="浏览器通知"
+            description="以下开关保存在本地，用于控制前端提示行为。Webhook 通知请配置服务端 EVAL_WEBHOOK_URL。"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 16px"
+          />
           <el-form :model="notificationForm" label-width="150px">
             <el-form-item label="评估完成通知">
               <el-switch v-model="notificationForm.onComplete" />
@@ -143,19 +166,20 @@
               <el-icon :size="64" color="#409eff"><Cpu /></el-icon>
             </div>
             <h3>Agent Runtime Evaluation Platform</h3>
-            <p class="version">版本 1.0.0</p>
+            <p class="version">版本 0.1.0</p>
             <p class="description">
-              一个用于评估AI Agent运行时质量的专业平台，支持对规划、战术决策、工具使用、记忆保持和重规划五个维度进行全面评估。
+              Agent 运行时质量评估平台 — 六维评估体系（Planning / Tactical / Tool Use / Memory / Replan / Retrieval），
+              配套 Wiki Agent RAG 演示与零侵入 SDK 接入。
             </p>
 
             <div class="features">
               <h4>核心功能</h4>
               <ul>
-                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> 多维度评估体系</li>
-                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> LangGraph工作流编排</li>
-                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> 实时可视化分析</li>
-                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> 详细的评估报告</li>
-                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> 灵活的配置选项</li>
+                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> 六维 LLM-as-Judge 评估</li>
+                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> RAG 检索质量与幻觉检测</li>
+                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> 并行评估 · 迭代对比 · 报告导出</li>
+                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> Wiki Agent 评估闭环</li>
+                <li><el-icon color="#67c23a"><CircleCheck /></el-icon> 多模型共识评估</li>
               </ul>
             </div>
 
@@ -191,34 +215,26 @@ const dimensions = [
   { key: 'tool_use', name: '工具使用' },
   { key: 'memory', name: '记忆保持' },
   { key: 'replan', name: '重规划' },
+  { key: 'retrieval', name: '检索质量' },
 ]
 
-// Models list
-const models = [
-  { label: 'GPT-4 Turbo', value: 'gpt-4-turbo-preview' },
-  { label: 'GPT-4', value: 'gpt-4' },
-  { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
-  { label: 'Claude 3 Opus', value: 'claude-3-opus-20240229' },
-  { label: 'Claude 3 Sonnet', value: 'claude-3-sonnet-20240229' },
-  { label: 'Claude 3 Haiku', value: 'claude-3-haiku-20240307' },
-]
-
-// General settings form
+// General settings form (local UI preferences only)
 const generalForm = reactive({
-  llmProvider: 'openai',
-  llmModel: 'gpt-4-turbo-preview',
+  llmProvider: 'deepseek',
+  llmModel: 'deepseek-chat',
   apiKey: '',
   refreshInterval: 60,
 })
 
-// Evaluation settings form
+// Evaluation settings form (read-only reference values)
 const evaluationForm = reactive({
   weights: {
-    planning: 25,
-    tactical: 25,
-    tool_use: 20,
+    planning: 20,
+    tactical: 20,
+    tool_use: 15,
     memory: 15,
     replan: 15,
+    retrieval: 15,
   },
   thresholds: {
     excellent: 80,
@@ -239,55 +255,29 @@ const notificationForm = reactive({
 
 // Methods
 const saveGeneralSettings = () => {
-  // Save to localStorage or API
-  localStorage.setItem('generalSettings', JSON.stringify(generalForm))
-  ElMessage.success('基本设置已保存')
+  localStorage.setItem('generalSettings', JSON.stringify({
+    refreshInterval: generalForm.refreshInterval,
+  }))
+  ElMessage.success('本地偏好已保存')
 }
 
 const resetGeneralSettings = () => {
-  generalForm.llmProvider = 'openai'
-  generalForm.llmModel = 'gpt-4-turbo-preview'
-  generalForm.apiKey = ''
   generalForm.refreshInterval = 60
-}
-
-const saveEvaluationSettings = () => {
-  localStorage.setItem('evaluationSettings', JSON.stringify(evaluationForm))
-  ElMessage.success('评估设置已保存')
-}
-
-const resetEvaluationSettings = () => {
-  evaluationForm.weights = {
-    planning: 25,
-    tactical: 25,
-    tool_use: 20,
-    memory: 15,
-    replan: 15,
-  }
-  evaluationForm.thresholds = {
-    excellent: 80,
-    good: 60,
-    pass: 40,
-  }
-  evaluationForm.maxConcurrent = 3
-  evaluationForm.timeout = 120
 }
 
 const saveNotificationSettings = () => {
   localStorage.setItem('notificationSettings', JSON.stringify(notificationForm))
-  ElMessage.success('通知设置已保存')
+  ElMessage.success('通知偏好已保存（本地）')
 }
 
 // Load settings from localStorage
 const loadSettings = () => {
   const general = localStorage.getItem('generalSettings')
   if (general) {
-    Object.assign(generalForm, JSON.parse(general))
-  }
-
-  const evaluation = localStorage.getItem('evaluationSettings')
-  if (evaluation) {
-    Object.assign(evaluationForm, JSON.parse(evaluation))
+    const parsed = JSON.parse(general)
+    if (parsed.refreshInterval !== undefined) {
+      generalForm.refreshInterval = parsed.refreshInterval
+    }
   }
 
   const notification = localStorage.getItem('notificationSettings')

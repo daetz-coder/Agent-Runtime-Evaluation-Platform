@@ -112,6 +112,14 @@ start.bat
 # 自动打开两个窗口，分别启动后端和前端
 ```
 
+**方式三：Docker Compose**
+
+```bash
+cp .env.example .env   # 填入 DEEPSEEK_API_KEY
+docker compose up --build
+# 前端 http://localhost:3000  后端 http://localhost:8000
+```
+
 ### 4. 验证
 
 ```bash

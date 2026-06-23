@@ -5,6 +5,7 @@ Evaluation endpoints.
 import logging
 import json
 import asyncio
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,7 @@ from sqlalchemy import select
 
 from app.db.database import get_db, async_session_factory
 from app.core.config import settings
-from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem, TrajectoryStep
+from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem, TrajectoryStep, StreamEvaluationRequest
 from app.services.evaluation_service import EvaluationService
 
 logger = logging.getLogger(__name__)
@@ -82,8 +83,8 @@ async def run_evaluation(
     - **include_details**: Include detailed feedback (default: true)
 
     Returns immediately with the evaluation ID (status=in_progress).
-    The evaluation runs in the background.
-    Poll GET /evaluations/{id} until status becomes 'completed' or 'failed'.
+    When use_stream=false (default), evaluation runs in background — poll GET /evaluations/{id}.
+    When use_stream=true, call POST /evaluations/stream from the client for live progress.
     """
     service = EvaluationService(db)
 
@@ -101,12 +102,12 @@ async def run_evaluation(
     # 显式 commit — 确保前端立即跳转时 GET 能查到这条记录
     await db.commit()
 
-    # Run the actual evaluation in background
-    background_tasks.add_task(
-        _run_evaluation_background,
-        request.task_id,
-        evaluation.id,
-    )
+    if not request.use_stream:
+        background_tasks.add_task(
+            _run_evaluation_background,
+            request.task_id,
+            evaluation.id,
+        )
 
     return evaluation
 
@@ -194,39 +195,34 @@ async def batch_evaluation(
 
 @router.post("/stream")
 async def evaluation_stream(
-    task_id: str = Body(..., embed=True),
+    request: StreamEvaluationRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    SSE 流式评估 — 每个评估器完成时实时推送分数。
-
-    - **task_id**: 任务 UUID
+    SSE 流式评估 — 每个评估器完成时实时推送分数，可选持久化到 evaluation_id。
 
     事件类型:
     - progress: {dimension, score, progress, total}
-    - result: {scores: {...}, overall: ...}
+    - result: {scores, overall}
     - error: {message}
     - done
     """
     from app.evaluators import (
         PlanningEvaluator, TacticalEvaluator, ToolUseEvaluator,
         MemoryEvaluator, ReplanEvaluator,
-            RetrievalEvaluator,
+        RetrievalEvaluator,
     )
-    from app.db.models import AgentTrajectory
+    from app.db.models import AgentTrajectory, AgentTask, TaskStatus
     from app.models.schemas import TrajectoryStep as TS
     from sse_starlette.sse import EventSourceResponse
-    import asyncio
 
-    # Verify task
     service = EvaluationService(db)
-    task = await service.get_task(task_id)
+    task = await service.get_task(request.task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # Get trajectory
     traj_result = await db.execute(
-        select(AgentTrajectory).where(AgentTrajectory.task_id == task_id)
+        select(AgentTrajectory).where(AgentTrajectory.task_id == request.task_id)
         .order_by(AgentTrajectory.step_number)
     )
     traj_rows = traj_result.scalars().all()
@@ -245,26 +241,53 @@ async def evaluation_stream(
         ("retrieval", RetrievalEvaluator),
     ]
     total = len(evaluators)
-    scores: dict = {}
+    dim_results: dict = {}
     queue: asyncio.Queue = asyncio.Queue()
+    progress_lock = asyncio.Lock()
+    progress_count = 0
+    task_id = request.task_id
+    evaluation_id = request.evaluation_id
+
+    async def mark_running():
+        if not evaluation_id:
+            return
+        async with async_session_factory() as session:
+            task_row = await session.get(AgentTask, task_id)
+            if task_row:
+                task_row.status = TaskStatus.RUNNING
+                task_row.started_at = task_row.started_at or datetime.now(timezone.utc)
+                await session.commit()
 
     async def run_eval(dim_name: str, EvalClass):
+        nonlocal progress_count
         try:
             ev = EvalClass()
             r = await ev.evaluate(goal=task.goal, trajectory=steps, context=task.context)
             score = getattr(r, "overall", 0)
-            scores[dim_name] = score
+            dim_results[dim_name] = r.model_dump() if hasattr(r, "model_dump") else {"overall": score}
+            async with progress_lock:
+                progress_count += 1
+                current = progress_count
             await queue.put({"event": "progress", "data": json.dumps({
                 "dimension": dim_name, "score": score,
-                "progress": len(scores), "total": total,
+                "progress": current, "total": total,
             })})
         except Exception as e:
+            dim_results[dim_name] = {"overall": 0, "feedback": str(e)}
+            async with progress_lock:
+                progress_count += 1
+                current = progress_count
             await queue.put({"event": "error", "data": json.dumps({
                 "dimension": dim_name, "message": str(e),
             })})
+            await queue.put({"event": "progress", "data": json.dumps({
+                "dimension": dim_name, "score": 0,
+                "progress": current, "total": total,
+            })})
 
     async def event_generator():
-        # Start all evaluators
+        await mark_running()
+
         asyncio.create_task(asyncio.gather(*[
             run_eval(dim, cls) for dim, cls in evaluators
         ]))
@@ -272,23 +295,39 @@ async def evaluation_stream(
         completed = 0
         while completed < total:
             try:
-                msg = await asyncio.wait_for(queue.get(), timeout=120)
+                msg = await asyncio.wait_for(queue.get(), timeout=180)
                 yield msg
                 if msg["event"] == "progress":
                     completed = json.loads(msg["data"])["progress"]
-                    if completed >= total:
-                        break
             except asyncio.TimeoutError:
                 yield {"event": "error", "data": json.dumps({"message": "Evaluation timeout"})}
-                break
+                return
 
-        # Send final result
-        if scores:
-            weights = {"planning": 0.20, "tactical": 0.20, "tool_use": 0.15, "memory": 0.15, "replan": 0.15, "retrieval": 0.15}
-            overall = sum(weights.get(d, 0) * s for d, s in scores.items())
-            yield {"event": "result", "data": json.dumps({
-                "scores": scores, "overall": round(overall, 1),
-            })}
+        weights = {
+            "planning": 0.20, "tactical": 0.20, "tool_use": 0.15,
+            "memory": 0.15, "replan": 0.15, "retrieval": 0.15,
+        }
+        score_values = {
+            d: (dim_results.get(d) or {}).get("overall", 0)
+            for d in weights
+        }
+        overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
+        parallel_result = {**dim_results, "overall": {"overall_score": overall}}
+
+        if evaluation_id:
+            try:
+                async with async_session_factory() as session:
+                    svc = EvaluationService(session)
+                    await svc.finalize_from_parallel(evaluation_id, task_id, parallel_result)
+                    await session.commit()
+            except Exception as e:
+                logger.error("Failed to persist stream evaluation %s: %s", evaluation_id, e)
+                yield {"event": "error", "data": json.dumps({"message": f"Persist failed: {e}"})}
+
+        yield {"event": "result", "data": json.dumps({
+            "scores": score_values, "overall": overall,
+            "evaluation_id": evaluation_id,
+        })}
         yield {"event": "done", "data": "{}"}
 
     return EventSourceResponse(event_generator())

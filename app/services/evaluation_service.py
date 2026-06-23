@@ -257,40 +257,7 @@ class EvaluationService:
                 await self.db.flush()
                 return None
 
-            # Update evaluation with results
-            evaluation.planning_score = self._dim_score(overall, "planning")
-            evaluation.tactical_score = self._dim_score(overall, "tactical")
-            evaluation.tool_use_score = self._dim_score(overall, "tool_use")
-            evaluation.memory_score = self._dim_score(overall, "memory")
-            evaluation.replan_score = self._dim_score(overall, "replan")
-            evaluation.retrieval_score = self._dim_score(overall, "retrieval")
-            evaluation.overall_score = overall.get("overall_score")
-
-            # Store detailed feedback
-            evaluation.planning_feedback = overall.get("planning")
-            evaluation.tactical_feedback = overall.get("tactical")
-            evaluation.tool_use_feedback = overall.get("tool_use")
-            evaluation.memory_feedback = overall.get("memory")
-            evaluation.replan_feedback = overall.get("replan")
-            evaluation.retrieval_feedback = overall.get("retrieval")
-
-            evaluation.status = EvaluationStatus.COMPLETED
-            evaluation.completed_at = datetime.now(timezone.utc)
-
-            # Update task status
-            task.status = TaskStatus.COMPLETED
-            task.completed_at = datetime.now(timezone.utc)
-
-            await self.db.flush()
-
-            return EvaluationResponse(
-                id=evaluation.id,
-                task_id=evaluation.task_id,
-                status=evaluation.status.value,
-                created_at=evaluation.created_at,
-                completed_at=evaluation.completed_at,
-                evaluation=OverallEvaluation(**overall),
-            )
+            return await self._persist_evaluation_results(evaluation, task, overall)
 
         except Exception as e:
             import traceback
@@ -488,6 +455,71 @@ class EvaluationService:
             }
             for step in steps
         ]
+
+    async def finalize_from_parallel(
+        self,
+        evaluation_id: str,
+        task_id: str,
+        parallel_result: Dict[str, Any],
+    ) -> Optional[EvaluationResponse]:
+        """Persist parallel evaluator output into an existing evaluation record."""
+        task = await self._get_task_model(task_id)
+        if not task:
+            return None
+
+        result = await self.db.execute(
+            select(Evaluation).where(Evaluation.id == evaluation_id)
+        )
+        evaluation = result.scalar_one_or_none()
+        if not evaluation:
+            return None
+
+        task.status = TaskStatus.RUNNING
+        task.started_at = task.started_at or datetime.now(timezone.utc)
+        await self.db.flush()
+
+        overall_eval = self._build_overall_from_parallel(parallel_result)
+        overall = overall_eval.model_dump()
+        return await self._persist_evaluation_results(evaluation, task, overall)
+
+    async def _persist_evaluation_results(
+        self,
+        evaluation: Evaluation,
+        task: AgentTask,
+        overall: Dict[str, Any],
+    ) -> EvaluationResponse:
+        """Write dimension scores and mark evaluation/task completed."""
+        evaluation.planning_score = self._dim_score(overall, "planning")
+        evaluation.tactical_score = self._dim_score(overall, "tactical")
+        evaluation.tool_use_score = self._dim_score(overall, "tool_use")
+        evaluation.memory_score = self._dim_score(overall, "memory")
+        evaluation.replan_score = self._dim_score(overall, "replan")
+        evaluation.retrieval_score = self._dim_score(overall, "retrieval")
+        evaluation.overall_score = overall.get("overall_score")
+
+        evaluation.planning_feedback = overall.get("planning")
+        evaluation.tactical_feedback = overall.get("tactical")
+        evaluation.tool_use_feedback = overall.get("tool_use")
+        evaluation.memory_feedback = overall.get("memory")
+        evaluation.replan_feedback = overall.get("replan")
+        evaluation.retrieval_feedback = overall.get("retrieval")
+
+        evaluation.status = EvaluationStatus.COMPLETED
+        evaluation.completed_at = datetime.now(timezone.utc)
+
+        task.status = TaskStatus.COMPLETED
+        task.completed_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
+
+        return EvaluationResponse(
+            id=evaluation.id,
+            task_id=evaluation.task_id,
+            status=evaluation.status.value,
+            created_at=evaluation.created_at,
+            completed_at=evaluation.completed_at,
+            evaluation=OverallEvaluation(**overall),
+        )
 
     @staticmethod
     def _dim_score(overall: Dict[str, Any], dimension: str) -> Optional[float]:

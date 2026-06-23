@@ -75,7 +75,7 @@ export const evaluationApi = {
     return api.get('/evaluations/', { params })
   },
 
-  run(data: { task_id: string; include_details?: boolean }) {
+  run(data: { task_id: string; include_details?: boolean; use_stream?: boolean }) {
     return api.post('/evaluations/', data)
   },
 
@@ -116,6 +116,13 @@ export const reportApi = {
 
   getExportUrl(taskId: string) {
     return `/api/v1/reports/export/${taskId}`
+  },
+}
+
+// Benchmark API
+export const benchmarkApi = {
+  getMonotonicity() {
+    return api.get('/benchmark/monotonicity')
   },
 }
 
