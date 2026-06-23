@@ -64,6 +64,18 @@ async def test_get_task_not_found(client):
 
 
 @pytest.mark.asyncio
+async def test_monotonicity_benchmark_metadata(client):
+    """Benchmark metadata endpoint is registered and returns reference curve."""
+    response = await client.get("/api/v1/benchmark/monotonicity")
+    assert response.status_code == 200
+    data = response.json()
+    assert "quality_order" in data
+    assert len(data["quality_order"]) == 6
+    assert "reference_scores" in data
+    assert data["reference_scores"][0]["overall"] == 93.1
+
+
+@pytest.mark.asyncio
 async def test_evaluation_summary(client):
     """Test evaluation summary endpoint."""
     response = await client.get("/api/v1/reports/summary")

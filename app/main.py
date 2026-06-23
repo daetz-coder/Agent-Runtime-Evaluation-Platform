@@ -16,7 +16,7 @@ from fastapi.routing import APIRoute
 
 from app.core.config import settings
 from app.db.database import init_db, close_db
-from app.api.v1.endpoints import evaluation, reports, tasks
+from app.api.v1.endpoints import benchmark, evaluation, reports, tasks
 from app.wiki_agent.bootstrap import startup as wiki_agent_startup
 from app.wiki_agent.routers import chat as wiki_chat
 from app.wiki_agent.routers import wiki as wiki_router
@@ -47,13 +47,14 @@ def create_app() -> FastAPI:
         description="""
 ## Agent Runtime Evaluation Platform
 
-Evaluate the runtime quality of AI agents across 5 dimensions:
+Evaluate the runtime quality of AI agents across 6 dimensions:
 
 1. **Planning Quality** - Coverage, ordering, granularity, completeness
 2. **Tactical Decisions** - Relevance, efficiency, correctness of next actions
 3. **Tool Use** - Selection quality, parameter accuracy, result utilization
 4. **Memory** - Retention, relevance, consistency of recalled information
 5. **Replanning** - Trigger appropriateness, adaptation quality, learning from failure
+6. **Retrieval Quality** - Relevance, evidence accuracy, coverage, hallucination detection
 
 ### Features
 
@@ -102,6 +103,7 @@ Evaluate the runtime quality of AI agents across 5 dimensions:
     register_routes(tasks.router, "/api/v1/tasks", ["tasks"])
     register_routes(evaluation.router, "/api/v1/evaluations", ["evaluations"])
     register_routes(reports.router, "/api/v1/reports", ["reports"])
+    register_routes(benchmark.router, "/api/v1/benchmark", ["benchmark"])
     register_routes(wiki_router.router, "", ["wiki-agent"])
     register_routes(wiki_chat.router, "", ["wiki-agent"])
     register_routes(workspace_router, "/api/v1", ["workspaces"])

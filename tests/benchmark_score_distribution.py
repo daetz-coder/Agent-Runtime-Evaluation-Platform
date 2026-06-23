@@ -1,7 +1,7 @@
 """
 多轨迹评估分布 — 不同质量 trajectory 的评分分布、维度相关性、一致性验证。
 
-用 6 条精心设计的不同质量 trajectory 跑全部 5 个评估器，
+用 6 条精心设计的不同质量 trajectory 跑全部 6 个评估器，
 输出分维度统计（mean/std/min/max）和维度间 Pearson 相关性矩阵。
 
 用法:
@@ -148,12 +148,13 @@ def pearson_r(xs: List[float], ys: List[float]) -> float:
 
 async def main():
     print("=" * 72)
-    print("  多轨迹评估分布 — 6 条轨迹 × 5 个评估器")
+    print("  多轨迹评估分布 — 6 条轨迹 × 6 个评估器")
     print("=" * 72)
 
     from app.evaluators import (
         PlanningEvaluator, TacticalEvaluator,
         ToolUseEvaluator, MemoryEvaluator, ReplanEvaluator,
+        RetrievalEvaluator,
     )
     from app.models.schemas import TrajectoryStep
 
@@ -163,6 +164,7 @@ async def main():
         ("Tool Use",  ToolUseEvaluator),
         ("Memory",    MemoryEvaluator),
         ("Replan",    ReplanEvaluator),
+        ("Retrieval", RetrievalEvaluator),
     ]
 
     # ── 逐轨迹评估 ──

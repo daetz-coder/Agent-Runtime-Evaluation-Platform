@@ -64,32 +64,38 @@ async def run_monotonicity_benchmark_stream() -> AsyncIterator[Dict[str, str]]:
             }),
         }
 
-        steps = _to_steps(ALL_TRAJECTORIES[level])
-        goal = GOAL_BY_LEVEL[level]
-        parallel = await evaluate_parallel(goal, steps, context=None)
-        overall = float((parallel.get("overall") or {}).get("overall_score", 0))
+        try:
+            steps = _to_steps(ALL_TRAJECTORIES[level])
+            goal = GOAL_BY_LEVEL[level]
+            parallel = await evaluate_parallel(goal, steps, context=None)
+            overall = float((parallel.get("overall") or {}).get("overall_score", 0))
 
-        dim_scores = {
-            dim: (parallel.get(dim) or {}).get("overall", 0)
-            for dim in ("planning", "tactical", "tool_use", "memory", "replan", "retrieval")
-        }
-        item = {
-            "level": level,
-            "overall": overall,
-            "reference": REFERENCE_SCORES[level],
-            "steps": len(steps),
-            "dimensions": dim_scores,
-        }
-        results.append(item)
+            dim_scores = {
+                dim: (parallel.get(dim) or {}).get("overall", 0)
+                for dim in ("planning", "tactical", "tool_use", "memory", "replan", "retrieval")
+            }
+            item = {
+                "level": level,
+                "overall": overall,
+                "reference": REFERENCE_SCORES[level],
+                "steps": len(steps),
+                "dimensions": dim_scores,
+            }
+            results.append(item)
 
-        yield {
-            "event": "result",
-            "data": json.dumps({
-                **item,
-                "index": index,
-                "total": total,
-            }),
-        }
+            yield {
+                "event": "result",
+                "data": json.dumps({
+                    **item,
+                    "index": index,
+                    "total": total,
+                }),
+            }
+        except Exception as exc:
+            yield {
+                "event": "error",
+                "data": json.dumps({"level": level, "message": str(exc)}),
+            }
 
     monotonic = check_monotonicity(results)
     yield {
