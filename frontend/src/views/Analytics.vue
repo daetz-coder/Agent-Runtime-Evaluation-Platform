@@ -306,10 +306,27 @@ const recommendations = ref([
 ])
 
 // Initialize charts
+const bucketOverallScores = (scores: number[]) => {
+  const buckets = [0, 0, 0, 0, 0]
+  for (const score of scores) {
+    if (score < 20) buckets[0]++
+    else if (score < 40) buckets[1]++
+    else if (score < 60) buckets[2]++
+    else if (score < 80) buckets[3]++
+    else buckets[4]++
+  }
+  return buckets
+}
+
+const distributionColors = ['#f56c6c', '#e6a23c', '#409eff', '#67c23a', '#67c23a']
+
 const initDistributionChart = () => {
   if (!distributionChart.value) return
 
   distributionInstance = echarts.init(distributionChart.value)
+
+  const overallScores: number[] = summaryData.value?.score_distribution?.overall || []
+  const bucketValues = bucketOverallScores(overallScores)
 
   const option: echarts.EChartsOption = {
     tooltip: {
@@ -337,13 +354,10 @@ const initDistributionChart = () => {
       {
         type: 'bar',
         barWidth: '60%',
-        data: [
-          { value: 5, itemStyle: { color: '#f56c6c' } },
-          { value: 12, itemStyle: { color: '#e6a23c' } },
-          { value: 28, itemStyle: { color: '#409eff' } },
-          { value: 45, itemStyle: { color: '#67c23a' } },
-          { value: 30, itemStyle: { color: '#67c23a' } },
-        ],
+        data: bucketValues.map((value, index) => ({
+          value,
+          itemStyle: { color: distributionColors[index] },
+        })),
         label: {
           show: true,
           position: 'top',
@@ -427,7 +441,7 @@ const initCorrelationChart = () => {
             (distI.reduce((a:number,b:number)=>a+b,0)/distI.length -
              distJ.reduce((a:number,b:number)=>a+b,0)/distJ.length) / 50))
         ).toFixed(2)
-        : (0.5 + Math.random() * 0.4).toFixed(2)
+        : (i === j ? '1.00' : '0.50')
       data.push([i, j, parseFloat(val)])
     }
   }

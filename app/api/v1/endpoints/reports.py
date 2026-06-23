@@ -53,6 +53,7 @@ async def get_evaluation_summary(
                 "tool_use": 0,
                 "memory": 0,
                 "replan": 0,
+                "retrieval": 0,
                 "overall": 0,
             },
             score_distribution={
