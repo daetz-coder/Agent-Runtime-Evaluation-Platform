@@ -73,6 +73,7 @@ class Evaluation(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     task_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_tasks.id"))
     status: Mapped[EvaluationStatus] = mapped_column(SQLEnum(EvaluationStatus), default=EvaluationStatus.PENDING)
+    stream_mode: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

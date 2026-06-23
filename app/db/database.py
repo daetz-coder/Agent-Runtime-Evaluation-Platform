@@ -44,9 +44,22 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
+    """Initialize database tables and apply lightweight schema patches."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_apply_schema_patches)
+
+
+def _apply_schema_patches(connection) -> None:
+    """Add columns introduced after initial deploy (SQLite has no ALTER IF NOT EXISTS)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    if "evaluations" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("evaluations")}
+    if "stream_mode" not in columns:
+        connection.execute(text("ALTER TABLE evaluations ADD COLUMN stream_mode BOOLEAN DEFAULT 0 NOT NULL"))
 
 
 async def close_db() -> None:

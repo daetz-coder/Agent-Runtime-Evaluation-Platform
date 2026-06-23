@@ -167,6 +167,7 @@ class EvaluationResponse(BaseModel):
     id: str
     task_id: str
     status: str
+    stream_mode: bool = False
     created_at: datetime
     completed_at: Optional[datetime] = None
     evaluation: Optional[OverallEvaluation] = None
@@ -181,6 +182,7 @@ class EvaluationListItem(BaseModel):
     task_id: str
     task_goal: Optional[str] = None
     status: str
+    stream_mode: bool = False
     created_at: datetime
     completed_at: Optional[datetime] = None
     overall_score: Optional[float] = None

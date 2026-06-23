@@ -137,7 +137,7 @@ class EvaluationService:
         await self.db.flush()
         return True
 
-    async def create_evaluation(self, task_id: str) -> Optional[EvaluationResponse]:
+    async def create_evaluation(self, task_id: str, stream_mode: bool = False) -> Optional[EvaluationResponse]:
         """Create an evaluation record (IN_PROGRESS) without running the graph.
 
         Used by the async endpoint to return immediately, then the background
@@ -152,6 +152,7 @@ class EvaluationService:
             id=eval_id,
             task_id=task_id,
             status=EvaluationStatus.IN_PROGRESS,
+            stream_mode=stream_mode,
             created_at=datetime.now(timezone.utc),
         )
         self.db.add(evaluation)
@@ -161,6 +162,7 @@ class EvaluationService:
             id=evaluation.id,
             task_id=evaluation.task_id,
             status=evaluation.status.value,
+            stream_mode=evaluation.stream_mode,
             created_at=evaluation.created_at,
             completed_at=None,
             evaluation=None,
@@ -304,6 +306,7 @@ class EvaluationService:
             id=evaluation.id,
             task_id=evaluation.task_id,
             status=evaluation.status.value,
+            stream_mode=evaluation.stream_mode,
             created_at=evaluation.created_at,
             completed_at=evaluation.completed_at,
             evaluation=overall,
@@ -350,6 +353,7 @@ class EvaluationService:
                 task_id=item.task_id,
                 task_goal=goal,
                 status=item.status.value,
+                stream_mode=item.stream_mode,
                 created_at=item.created_at,
                 completed_at=item.completed_at,
                 overall_score=item.overall_score,
@@ -516,6 +520,7 @@ class EvaluationService:
             id=evaluation.id,
             task_id=evaluation.task_id,
             status=evaluation.status.value,
+            stream_mode=evaluation.stream_mode,
             created_at=evaluation.created_at,
             completed_at=evaluation.completed_at,
             evaluation=OverallEvaluation(**overall),
