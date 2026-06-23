@@ -128,6 +128,17 @@ class ReplanScore(BaseModel):
     feedback: str = Field(..., description="Detailed feedback")
 
 
+class RetrievalScore(BaseModel):
+    """Retrieval quality evaluation (RAG Eval)."""
+    relevance: float = Field(0, ge=0, le=100)
+    evidence_accuracy: float = Field(0, ge=0, le=100)
+    coverage: float = Field(0, ge=0, le=100)
+    overall: float = Field(0, ge=0, le=100)
+    feedback: str = Field("")
+    hallucination_detected: bool = Field(False)
+    missing_info: List[str] = Field(default_factory=list)
+
+
 class OverallEvaluation(BaseModel):
     """Overall evaluation combining all dimensions."""
     planning: PlanningScore
@@ -135,6 +146,7 @@ class OverallEvaluation(BaseModel):
     tool_use: ToolUseScore
     memory: MemoryScore
     replan: ReplanScore
+    retrieval: Optional[RetrievalScore] = None
     overall_score: float = Field(..., ge=0, le=100, description="Weighted overall score")
     summary: str = Field(..., description="Overall evaluation summary")
     recommendations: List[str] = Field(default_factory=list, description="Improvement recommendations")
