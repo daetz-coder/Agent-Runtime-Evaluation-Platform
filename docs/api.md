@@ -8,273 +8,116 @@ http://localhost:8000/api/v1
 
 ## Authentication
 
-Currently, the API does not require authentication. In production, add JWT or API key authentication.
+可选中。设置 `AUTH_ENABLED=true` 启用 API Key 认证，通过 `Authorization: Bearer <key>` 或 `?api_key=<key>` 传递。
+
+---
 
 ## Endpoints
 
 ### Tasks
 
-#### Create Task
-
-```http
-POST /tasks/
-```
-
-**Request Body:**
-```json
-{
-  "goal": "Fix authentication bug in login flow",
-  "context": {
-    "project": "web-app",
-    "language": "python"
-  }
-}
-```
-
-**Response (201):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "goal": "Fix authentication bug in login flow",
-  "context": {
-    "project": "web-app",
-    "language": "python"
-  },
-  "status": "pending",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
-
-#### Get Task
-
-```http
-GET /tasks/{task_id}
-```
-
-**Response (200):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "goal": "Fix authentication bug in login flow",
-  "status": "completed",
-  "created_at": "2024-01-15T10:30:00Z",
-  "started_at": "2024-01-15T10:30:05Z",
-  "completed_at": "2024-01-15T10:35:00Z"
-}
-```
-
-#### List Tasks
-
-```http
-GET /tasks/?skip=0&limit=100
-```
-
-**Response (200):**
-```json
-[
-  {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "goal": "Fix authentication bug",
-    "status": "completed",
-    "created_at": "2024-01-15T10:30:00Z"
-  }
-]
-```
-
-#### Add Trajectory
-
-```http
-POST /tasks/{task_id}/trajectory
-```
-
-**Request Body:**
-```json
-[
-  {
-    "step_number": 1,
-    "action_type": "plan",
-    "action_detail": {
-      "goal": "Fix auth bug",
-      "steps": [
-        {"description": "Search for auth code"},
-        {"description": "Read auth.py"},
-        {"description": "Fix the bug"}
-      ]
-    },
-    "timestamp": "2024-01-15T10:30:00Z"
-  },
-  {
-    "step_number": 2,
-    "action_type": "tool_call",
-    "action_detail": {
-      "tool_name": "search_code",
-      "input": {"query": "authentication"}
-    },
-    "observation": "Found: auth.py, login.py",
-    "timestamp": "2024-01-15T10:30:05Z"
-  }
-]
-```
-
-**Response (201):**
-```json
-{
-  "message": "Added 2 trajectory steps",
-  "task_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST /tasks/` | 创建任务 |
+| `GET /tasks/` | 列出任务（支持 `?skip=&limit=`） |
+| `GET /tasks/{id}` | 获取任务详情 |
+| `PUT /tasks/{id}` | 更新任务（goal/context/status） |
+| `GET /tasks/dashboard` | 仪表板统计（总数、状态分布、最近 5 条） |
+| `POST /tasks/{id}/trajectory` | 上传轨迹步骤（批量 JSON 数组） |
 
 ### Evaluations
 
-#### Run Evaluation
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST /evaluations/` | 创建并运行评估（`use_stream=true` 跳过后台任务） |
+| `POST /evaluations/stream` | **SSE 流式评估** — 实时推送 6 维进度 |
+| `POST /evaluations/quick` | 同步评估（阻塞，返回完整结果） |
+| `POST /evaluations/batch` | 批量评估 `{"task_ids": [...]}` |
+| `POST /evaluations/consensus` | 多模型共识评估（DeepSeek+GLM+Qwen） |
+| `GET /evaluations/` | 列出评估（支持 `?skip=&limit=&status=`） |
+| `GET /evaluations/{id}` | 获取评估详情（含 6 维分数+反馈） |
+| `DELETE /evaluations/{id}` | 删除评估记录 |
 
-```http
-POST /evaluations/
-```
+### Reports
 
-**Request Body:**
-```json
-{
-  "task_id": "550e8400-e29b-41d4-a716-446655440000",
-  "include_details": true
-}
-```
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET /reports/summary` | 评估摘要（总评估数、六维均分、分布、问题洞察） |
+| `GET /reports/trends` | 按日期分组的评估趋势（Dashboard 图表数据） |
+| `GET /reports/tasks/{id}/history` | 某任务的所有评估历史 |
+| `GET /reports/dimensions/{dim}` | 单维度统计（planning/tactical/tool_use/memory/replan/retrieval） |
+| `GET /reports/compare/{task_id}` | 同任务多轮评估迭代对比（趋势+分数差） |
+| `GET /reports/export/{task_id}` | 导出 Markdown 评估报告（下载） |
 
-**Response (202):**
+### Benchmark
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET /benchmark/monotonicity` | 单调性基准元数据（6 档参考分数） |
+| `POST /benchmark/monotonicity/run` | **SSE 流式**实时运行单调性基准 |
+
+### Workspaces（多租户）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST /workspaces/` | 创建工作区（自动生成 API Key） |
+| `GET /workspaces/` | 列出工作区 |
+| `GET /workspaces/{id}` | 获取工作区详情 |
+| `POST /workspaces/{id}/rotate-key` | 轮换 API Key |
+| `POST /workspaces/{id}/members` | 添加成员（admin/evaluator/viewer） |
+| `DELETE /workspaces/{id}/members/{uid}` | 移除成员 |
+| `GET /workspaces/{id}/audit` | 审计日志 |
+
+### Wiki Agent
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET /api/wiki/tree` | 知识库目录树 |
+| `GET /api/wiki/page/{path}` | 获取页面内容 |
+| `POST /api/wiki/create` | 创建页面（自动四路同步） |
+| `PUT /api/wiki/update/{path}` | 更新页面 |
+| `DELETE /api/wiki/page/{path}` | 删除页面 |
+| `POST /api/wiki/rollback/{path}` | Git 回滚 |
+| `GET /api/wiki/history` | 版本历史 |
+| `GET /api/wiki/search?q=` | 搜索知识库 |
+| `POST /api/wiki/import` | 导入 Markdown |
+| `POST /api/wiki/auto-tag` | LLM 自动生成标签 |
+| `GET /api/wiki/export` | 知识库 ZIP 导出 |
+| `POST /api/chat/stream` | **SSE 流式对话** |
+| `POST /api/chat/message` | 同步对话（返回 evaluation_link） |
+| `POST /api/chat/confirm` | Human-in-the-Loop CRUD 确认 |
+
+---
+
+## 评估响应示例
+
 ```json
 {
   "id": "eval-uuid",
-  "task_id": "550e8400-e29b-41d4-a716-446655440000",
+  "task_id": "task-uuid",
   "status": "completed",
-  "created_at": "2024-01-15T10:35:00Z",
-  "completed_at": "2024-01-15T10:35:30Z",
+  "stream_mode": false,
   "evaluation": {
-    "planning": {
-      "coverage": 85.0,
-      "ordering": 90.0,
-      "granularity": 80.0,
-      "completeness": 85.0,
-      "overall": 85.0,
-      "feedback": "Good plan with clear milestones..."
-    },
-    "tactical": {
-      "relevance": 90.0,
-      "efficiency": 85.0,
-      "correctness": 88.0,
-      "overall": 88.0,
-      "feedback": "Actions were relevant and efficient..."
-    },
-    "tool_use": {
-      "selection_quality": 92.0,
-      "parameter_accuracy": 88.0,
-      "result_utilization": 85.0,
-      "overall": 89.0,
-      "feedback": "Good tool selection..."
-    },
-    "memory": {
-      "retention": 85.0,
-      "relevance": 90.0,
-      "consistency": 88.0,
-      "overall": 87.0,
-      "feedback": "Key facts were retained..."
-    },
-    "replan": {
-      "trigger_appropriateness": 100.0,
-      "adaptation_quality": 100.0,
-      "learning_from_failure": 100.0,
-      "overall": 100.0,
-      "feedback": "No replanning needed..."
-    },
-    "overall_score": 89.0,
-    "summary": "Agent performance is good (overall: 89.0/100)...",
-    "recommendations": [
-      "Continue maintaining high performance"
-    ]
+    "planning": { "coverage": 85, "ordering": 90, "granularity": 80, "completeness": 85, "overall": 85, "feedback": "..." },
+    "tactical": { "relevance": 90, "efficiency": 85, "correctness": 88, "overall": 88, "feedback": "..." },
+    "tool_use": { "selection_quality": 92, "parameter_accuracy": 88, "result_utilization": 85, "overall": 89, "feedback": "..." },
+    "memory": { "retention": 85, "relevance": 90, "consistency": 88, "overall": 87, "feedback": "..." },
+    "replan": { "trigger_appropriateness": 100, "adaptation_quality": 100, "learning_from_failure": 100, "overall": 100, "feedback": "..." },
+    "retrieval": { "relevance": 80, "evidence_accuracy": 85, "coverage": 75, "overall": 80, "feedback": "...", "hallucination_detected": false, "missing_info": [] },
+    "overall_score": 88.0,
+    "summary": "...",
+    "recommendations": ["..."]
   }
 }
 ```
 
-#### Get Evaluation
+## SSE 流式事件
 
-```http
-GET /evaluations/{evaluation_id}
-```
+`POST /evaluations/stream` 返回的事件类型：
 
-### Reports
-
-#### Get Summary
-
-```http
-GET /reports/summary
-```
-
-**Response (200):**
-```json
-{
-  "total_evaluations": 50,
-  "average_scores": {
-    "planning": 78.5,
-    "tactical": 82.3,
-    "tool_use": 75.8,
-    "memory": 71.2,
-    "replan": 85.0,
-    "overall": 78.6
-  },
-  "score_distribution": {
-    "planning": [85, 90, 75, ...],
-    "tactical": [88, 92, 80, ...]
-  },
-  "top_issues": [
-    "Memory retention is weak: Key facts are being forgotten"
-  ],
-  "recommendations": [
-    "Strengthen memory management: Implement explicit fact tracking"
-  ]
-}
-```
-
-#### Get Task History
-
-```http
-GET /reports/tasks/{task_id}/history
-```
-
-#### Get Dimension Statistics
-
-```http
-GET /reports/dimensions/{dimension}
-```
-
-**Valid dimensions:** planning, tactical, tool_use, memory, replan, retrieval
-
-## Error Responses
-
-### 404 Not Found
-
-```json
-{
-  "detail": "Task not found"
-}
-```
-
-### 422 Validation Error
-
-```json
-{
-  "detail": [
-    {
-      "loc": ["body", "goal"],
-      "msg": "field required",
-      "type": "value_error.missing"
-    }
-  ]
-}
-```
-
-### 500 Internal Server Error
-
-```json
-{
-  "detail": "Internal server error"
-}
-```
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `progress` | `{"dimension":"planning","score":85,"progress":1,"total":6}` | 某一维度评估完成 |
+| `result` | `{"scores":{...},"overall":88}` | 全部完成，含总分 |
+| `error` | `{"dimension":"...","message":"..."}` | 某维度评估失败 |
+| `done` | `{}` | 流结束 |
