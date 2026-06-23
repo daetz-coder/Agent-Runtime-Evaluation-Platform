@@ -1,5 +1,15 @@
 <template>
   <div class="dashboard">
+    <el-alert
+      v-if="!hasEvaluationData"
+      title="欢迎使用 Agent 评估平台"
+      description="在「任务管理」中创建任务、上传轨迹并运行评估，Dashboard 将展示真实统计数据。"
+      type="info"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 20px"
+    />
+
     <!-- Stats Cards -->
     <el-row :gutter="20" class="stats-row">
       <el-col :span="6" v-for="stat in statsCards" :key="stat.title">
@@ -23,7 +33,7 @@
         <el-card shadow="hover">
           <template #header>
             <span>成本追踪</span>
-            <el-tag size="small" style="margin-left: 8px">基于 DeepSeek API 定价</el-tag>
+            <el-tag size="small" style="margin-left: 8px">预估 · DeepSeek 定价</el-tag>
           </template>
           <el-row :gutter="16">
             <el-col :span="6">
@@ -38,7 +48,7 @@
             <el-col :span="6">
               <el-statistic title="对比 GPT-4o 节省" :value="'¥' + costSummary.savings">
                 <template #suffix>
-                  <el-tag type="success" size="small">节省 97%</el-tag>
+                  <el-tag type="success" size="small">预估</el-tag>
                 </template>
               </el-statistic>
             </el-col>
@@ -55,7 +65,7 @@
           <template #header>
             <div class="card-header">
               <span>综合能力雷达图</span>
-              <el-tag type="success" size="small">实时数据</el-tag>
+              <el-tag v-if="hasEvaluationData" type="success" size="small">已评估 {{ summaryData?.total_evaluations || 0 }} 次</el-tag>
             </div>
           </template>
           <div ref="radarChart" class="chart-container"></div>
@@ -169,6 +179,11 @@ import { reportApi, taskApi } from '@/api'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/zh-cn'
+import {
+  REPORT_DIMENSIONS,
+  chartEmptyOption,
+  filterTrendsByRange,
+} from '@/utils/reportCharts'
 
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
@@ -196,14 +211,14 @@ const trendData = ref<any[]>([])
 const costSummary = ref({ evalCount: 0, estTokens: 0, estCostDeepSeek: 0, estCostGPT4: 0, savings: 0 })
 
 // Dimensions config
-const dimensions = [
-  { key: 'planning', name: '规划质量', color: '#409eff' },
-  { key: 'tactical', name: '战术决策', color: '#67c23a' },
-  { key: 'tool_use', name: '工具使用', color: '#e6a23c' },
-  { key: 'memory', name: '记忆保持', color: '#f56c6c' },
-  { key: 'replan', name: '重规划', color: '#909399' },
-  { key: 'retrieval', name: '检索质量', color: '#9b59b6' },
-]
+const dimensions = REPORT_DIMENSIONS
+
+const hasEvaluationData = computed(() => (summaryData.value?.total_evaluations || 0) > 0)
+
+const filteredTrends = computed(() => {
+  const range = trendPeriod.value === 'week' ? 'week' : trendPeriod.value === 'month' ? 'month' : 'all'
+  return filterTrendsByRange(trendData.value, range)
+})
 
 // Computed
 const statsCards = computed(() => [
@@ -275,6 +290,11 @@ const initRadarChart = () => {
   radarInstance = echarts.init(radarChart.value)
   const avgScores = summaryData.value?.average_scores || {}
 
+  if (!hasEvaluationData.value) {
+    radarInstance.setOption(chartEmptyOption())
+    return
+  }
+
   const option: echarts.EChartsOption = {
     tooltip: {
       trigger: 'item',
@@ -333,30 +353,22 @@ const initLineChart = () => {
 
   lineInstance = echarts.init(lineChart.value)
 
-  // Use real trend data, fallback to empty if no data
-  const tData = trendData.value || []
-  const dates = tData.length > 0
-    ? tData.map((t: any) => dayjs(t.date).format('MM/DD'))
-    : Array.from({ length: 7 }, (_, i) => dayjs().subtract(6 - i, 'day').format('MM/DD'))
+  const tData = filteredTrends.value
+  if (!tData.length) {
+    lineInstance.setOption(chartEmptyOption())
+    return
+  }
 
-  const dimensionKeys = ['avg_planning', 'avg_tactical', 'avg_tool_use', 'avg_memory', 'avg_replan', 'avg_retrieval']
-  const seriesData = tData.length > 0
-    ? dimensionKeys.map(key => ({
-        name: dimensions.find(d => d.key === key.replace('avg_', ''))?.name || key,
-        type: 'line' as const,
-        smooth: true,
-        data: tData.map((t: any) => t[key] || 0),
-        itemStyle: { color: dimensions.find(d => d.key === key.replace('avg_', ''))?.color },
-        lineStyle: { width: 2 },
-      }))
-    : dimensions.map(d => ({
-        name: d.name,
-        type: 'line' as const,
-        smooth: true,
-        data: dates.map(() => Math.floor(Math.random() * 40) + 60),  // 无数据时用占位
-        itemStyle: { color: d.color },
-        lineStyle: { width: 2 },
-      }))
+  const dates = tData.map((t: any) => dayjs(t.date).format('MM/DD'))
+
+  const seriesData = REPORT_DIMENSIONS.map(d => ({
+    name: d.name,
+    type: 'line' as const,
+    smooth: true,
+    data: tData.map((t: any) => t[d.trendKey] || 0),
+    itemStyle: { color: d.color },
+    lineStyle: { width: 2 },
+  }))
 
   const option: echarts.EChartsOption = {
     tooltip: {
@@ -397,6 +409,11 @@ const initBarChart = () => {
 
   barInstance = echarts.init(barChart.value)
   const avgScores = summaryData.value?.average_scores || {}
+
+  if (!hasEvaluationData.value) {
+    barInstance.setOption(chartEmptyOption())
+    return
+  }
 
   const option: echarts.EChartsOption = {
     tooltip: {

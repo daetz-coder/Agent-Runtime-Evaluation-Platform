@@ -386,11 +386,10 @@ const handleEvaluate = async () => {
 
     evaluating.value = true
     // 发起异步评估，后端立即返回 evaluation ID（status=in_progress）
-    const result = await evaluationApi.run({ task_id: task.value.id })
+    const result = await evaluationApi.run({ task_id: task.value.id, use_stream: true })
 
-    // 不阻塞页面 — 跳转到评估详情页，用户可在那里等待结果
-    ElMessage.success('评估已启动，请等待结果...')
-    router.push(`/evaluations/${result.id}`)
+    ElMessage.success('评估已启动，正在实时推送进度…')
+    router.push(`/evaluations/${result.id}?stream=1`)
   } catch (error) {
     if (error !== 'cancel') {
       console.error('Failed to run evaluation:', error)

@@ -11,6 +11,16 @@
       </el-radio-group>
     </div>
 
+    <el-alert
+      v-if="!hasEvaluationData"
+      title="暂无评估数据"
+      description="创建任务并运行评估后，此处将展示真实统计与趋势分析。"
+      type="info"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 20px"
+    />
+
     <!-- Summary Stats -->
     <el-row :gutter="20" class="summary-row">
       <el-col :span="6">
@@ -21,9 +31,8 @@
           <div class="summary-content">
             <div class="summary-value">{{ summaryData.total_evaluations || 0 }}</div>
             <div class="summary-label">总评估数</div>
-            <div class="summary-trend" :class="trendClass">
-              <el-icon><Top v-if="trend > 0" /><Bottom v-else /></el-icon>
-              {{ Math.abs(trend) }}%
+            <div v-if="periodEvalCount !== null" class="summary-trend neutral">
+              本周期 {{ periodEvalCount }} 次
             </div>
           </div>
         </el-card>
@@ -34,11 +43,11 @@
             <el-icon :size="32" color="#fff"><TrendCharts /></el-icon>
           </div>
           <div class="summary-content">
-            <div class="summary-value">{{ averageScore }}</div>
-            <div class="summary-label">平均得分</div>
-            <div class="summary-trend positive">
-              <el-icon><Top /></el-icon>
-              5.2%
+            <div class="summary-value">{{ overallAverageScore }}</div>
+            <div class="summary-label">综合均分</div>
+            <div v-if="scoreTrend !== null" class="summary-trend" :class="scoreTrend >= 0 ? 'positive' : 'negative'">
+              <el-icon><Top v-if="scoreTrend >= 0" /><Bottom v-else /></el-icon>
+              {{ Math.abs(scoreTrend) }}%
             </div>
           </div>
         </el-card>
@@ -122,7 +131,7 @@
         <el-card class="chart-card" shadow="hover">
           <template #header>
             <div class="card-header">
-              <span>性能热力图</span>
+              <span>维度 × 日期</span>
               <el-radio-group v-model="heatmapMetric" size="small">
                 <el-radio-button label="score">得分</el-radio-button>
                 <el-radio-button label="count">数量</el-radio-button>
@@ -138,13 +147,14 @@
     <el-card class="insights-card" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>智能洞察</span>
-          <el-tag type="success">AI 分析</el-tag>
+          <span>数据洞察</span>
+          <el-tag type="info">基于评估汇总</el-tag>
         </div>
       </template>
 
-      <el-row :gutter="20">
-        <el-col :span="8" v-for="insight in insights" :key="insight.title">
+      <el-empty v-if="displayInsights.length === 0" description="完成评估后将自动生成问题洞察" />
+      <el-row v-else :gutter="20">
+        <el-col :span="8" v-for="insight in displayInsights" :key="insight.title">
           <div class="insight-item" :style="{ borderLeft: `4px solid ${insight.color}` }">
             <div class="insight-icon" :style="{ background: insight.bgColor }">
               <el-icon :size="20" :color="insight.color">
@@ -166,19 +176,12 @@
         <span>改进建议</span>
       </template>
 
-      <div class="recommendations-list">
-        <div v-for="(rec, index) in recommendations" :key="index" class="recommendation-item">
+      <el-empty v-if="displayRecommendations.length === 0" description="暂无改进建议" />
+      <div v-else class="recommendations-list">
+        <div v-for="(rec, index) in displayRecommendations" :key="index" class="recommendation-item">
           <div class="rec-number">{{ index + 1 }}</div>
           <div class="rec-content">
-            <h4>{{ rec.title }}</h4>
             <p>{{ rec.description }}</p>
-            <div class="rec-tags">
-              <el-tag v-for="tag in rec.tags" :key="tag" size="small" type="info">{{ tag }}</el-tag>
-            </div>
-          </div>
-          <div class="rec-impact">
-            <span class="impact-label">预期提升</span>
-            <span class="impact-value" :style="{ color: rec.impactColor }">+{{ rec.impact }}%</span>
           </div>
         </div>
       </div>
@@ -189,12 +192,21 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
-import { DataAnalysis, TrendCharts, Trophy, Warning, Top, Bottom, InfoFilled, CircleCheck, Star, Aim } from '@element-plus/icons-vue'
+import dayjs from 'dayjs'
+import { DataAnalysis, TrendCharts, Trophy, Warning, Top, Bottom, InfoFilled } from '@element-plus/icons-vue'
 import { reportApi } from '@/api'
+import {
+  REPORT_DIMENSIONS,
+  bucketScores,
+  chartEmptyOption,
+  filterTrendsByRange,
+  pearsonCorrelation,
+  trendDeltaPercent,
+} from '@/utils/reportCharts'
 
 // State
 const timeRange = ref('month')
-const selectedDimensions = ref(['planning', 'tactical', 'tool_use', 'memory', 'replan'])
+const selectedDimensions = ref(['planning', 'tactical', 'tool_use', 'memory', 'replan', 'retrieval'])
 const heatmapMetric = ref('score')
 const summaryData = ref<any>({})
 const trendData = ref<any[]>([])
@@ -211,112 +223,78 @@ let dimensionTrendInstance: echarts.ECharts | null = null
 let correlationInstance: echarts.ECharts | null = null
 let heatmapInstance: echarts.ECharts | null = null
 
-// Dimensions config
-const allDimensions = [
-  { key: 'planning', name: '规划质量', color: '#409eff' },
-  { key: 'tactical', name: '战术决策', color: '#67c23a' },
-  { key: 'tool_use', name: '工具使用', color: '#e6a23c' },
-  { key: 'memory', name: '记忆保持', color: '#f56c6c' },
-  { key: 'replan', name: '重规划', color: '#909399' },
-  { key: 'retrieval', name: '检索质量', color: '#9b59b6' },
-]
+const allDimensions = REPORT_DIMENSIONS
 
-// Computed
-const trend = computed(() => 12.5) // Mock trend
-const trendClass = computed(() => trend.value > 0 ? 'positive' : 'negative')
+const filteredTrends = computed(() => filterTrendsByRange(trendData.value, timeRange.value))
 
-const averageScore = computed(() => {
-  const scores = summaryData.value?.average_scores || {}
-  const values = Object.values(scores).filter(v => typeof v === 'number') as number[]
-  return values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0
+const hasEvaluationData = computed(() => (summaryData.value?.total_evaluations || 0) > 0)
+
+const overallAverageScore = computed(() => {
+  const score = summaryData.value?.average_scores?.overall
+  return typeof score === 'number' ? Math.round(score) : 0
+})
+
+const scoreTrend = computed(() => trendDeltaPercent(filteredTrends.value, 'avg_overall'))
+
+const periodEvalCount = computed(() => {
+  if (!filteredTrends.value.length) return null
+  return filteredTrends.value.reduce((sum, row) => sum + (row.count || 0), 0)
 })
 
 const bestDimension = computed(() => {
   const scores = summaryData.value?.average_scores || {}
-  let best = { key: '', score: 0 }
-  for (const [key, score] of Object.entries(scores)) {
+  let best = { key: '', score: -1 }
+  for (const dim of allDimensions) {
+    const score = scores[dim.key]
     if (typeof score === 'number' && score > best.score) {
-      best = { key, score }
+      best = { key: dim.key, score }
     }
   }
-  const dim = allDimensions.find(d => d.key === best.key)
-  return dim?.name || '-'
+  return allDimensions.find((d) => d.key === best.key)?.name || '-'
 })
 
 const worstDimension = computed(() => {
   const scores = summaryData.value?.average_scores || {}
-  let worst = { key: '', score: 100 }
-  for (const [key, score] of Object.entries(scores)) {
+  let worst = { key: '', score: 101 }
+  for (const dim of allDimensions) {
+    const score = scores[dim.key]
     if (typeof score === 'number' && score < worst.score) {
-      worst = { key, score }
+      worst = { key: dim.key, score }
     }
   }
-  const dim = allDimensions.find(d => d.key === worst.key)
-  return dim?.name || '-'
+  return allDimensions.find((d) => d.key === worst.key)?.name || '-'
 })
 
-// Insights
-const insights = ref([
-  {
-    title: '规划能力提升',
-    description: '最近一周规划质量得分提升了15%，建议继续保持',
-    icon: 'TrendCharts',
-    color: '#67c23a',
-    bgColor: 'rgba(103, 194, 58, 0.1)',
-  },
-  {
-    title: '记忆保持问题',
-    description: '记忆保持维度得分较低，建议优化Agent的记忆管理策略',
-    icon: 'Warning',
-    color: '#e6a23c',
-    bgColor: 'rgba(230, 162, 60, 0.1)',
-  },
-  {
-    title: '工具使用优化',
-    description: '工具选择准确率提高了8%，参数准确性仍需改进',
-    icon: 'Aim',
-    color: '#409eff',
-    bgColor: 'rgba(64, 158, 255, 0.1)',
-  },
-])
-
-// Recommendations
-const recommendations = ref([
-  {
-    title: '增强记忆管理',
-    description: '建议实现显式的事实跟踪机制，在关键步骤后验证Agent是否记住了重要信息',
-    tags: ['记忆', '核心改进'],
-    impact: 15,
-    impactColor: '#67c23a',
-  },
-  {
-    title: '优化重规划触发',
-    description: '当前重规划触发过于保守，建议在连续3次失败后主动触发重规划',
-    tags: ['重规划', '策略优化'],
-    impact: 10,
-    impactColor: '#409eff',
-  },
-  {
-    title: '改进工具参数验证',
-    description: '添加工具调用前的参数验证步骤，减少因参数错误导致的失败',
-    tags: ['工具使用', '错误预防'],
-    impact: 8,
-    impactColor: '#e6a23c',
-  },
-])
-
-// Initialize charts
-const bucketOverallScores = (scores: number[]) => {
-  const buckets = [0, 0, 0, 0, 0]
-  for (const score of scores) {
-    if (score < 20) buckets[0]++
-    else if (score < 40) buckets[1]++
-    else if (score < 60) buckets[2]++
-    else if (score < 80) buckets[3]++
-    else buckets[4]++
-  }
-  return buckets
+const insightIconMap: Record<string, { icon: string; color: string }> = {
+  planning: { icon: 'TrendCharts', color: '#409eff' },
+  tactical: { icon: 'Aim', color: '#67c23a' },
+  tool_use: { icon: 'Warning', color: '#e6a23c' },
+  memory: { icon: 'Warning', color: '#f56c6c' },
+  replan: { icon: 'TrendCharts', color: '#909399' },
+  retrieval: { icon: 'Warning', color: '#9b59b6' },
 }
+
+const displayInsights = computed(() => {
+  const issues: string[] = (summaryData.value?.top_issues || []).filter(
+    (item: string) => item && !item.includes('No significant') && !item.includes('No evaluations')
+  )
+  return issues.slice(0, 3).map((description, index) => {
+    const dimKey = allDimensions[index]?.key || 'planning'
+    const meta = insightIconMap[dimKey] || insightIconMap.planning
+    return {
+      title: `洞察 ${index + 1}`,
+      description,
+      icon: meta.icon,
+      color: meta.color,
+      bgColor: `${meta.color}1a`,
+    }
+  })
+})
+
+const displayRecommendations = computed(() => {
+  const recs: string[] = (summaryData.value?.recommendations || []).filter(Boolean)
+  return recs.map((description) => ({ description }))
+})
 
 const distributionColors = ['#f56c6c', '#e6a23c', '#409eff', '#67c23a', '#67c23a']
 
@@ -326,7 +304,12 @@ const initDistributionChart = () => {
   distributionInstance = echarts.init(distributionChart.value)
 
   const overallScores: number[] = summaryData.value?.score_distribution?.overall || []
-  const bucketValues = bucketOverallScores(overallScores)
+  if (!overallScores.length) {
+    distributionInstance.setOption(chartEmptyOption())
+    return
+  }
+
+  const bucketValues = bucketScores(overallScores)
 
   const option: echarts.EChartsOption = {
     tooltip: {
@@ -374,9 +357,13 @@ const initDimensionTrendChart = () => {
 
   dimensionTrendInstance = echarts.init(dimensionTrendChart.value)
 
-  const dates = Array.from({ length: 7 }, (_, i) =>
-    new Date(Date.now() - (6 - i) * 24 * 60 * 60 * 1000).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
-  )
+  const tData = filteredTrends.value
+  if (!tData.length) {
+    dimensionTrendInstance.setOption(chartEmptyOption())
+    return
+  }
+
+  const dates = tData.map((t: any) => dayjs(t.date).format('MM/DD'))
 
   const option: echarts.EChartsOption = {
     tooltip: {
@@ -404,16 +391,12 @@ const initDimensionTrendChart = () => {
     },
     series: selectedDimensions.value.map(key => {
       const dim = allDimensions.find(d => d.key === key)
-      // Use real trend data if available
-      const trendKey = 'avg_' + key
-      const realData = trendData.value?.length > 0
-        ? trendData.value.map((t: any) => t[trendKey] || 0)
-        : dates.map(() => 0)
+      const trendKey = dim?.trendKey || `avg_${key}`
       return {
         name: dim?.name || key,
         type: 'line',
         smooth: true,
-        data: realData.length === dates.length ? realData : dates.map(() => 0),
+        data: tData.map((t: any) => t[trendKey] || 0),
         itemStyle: { color: dim?.color },
       }
     }),
@@ -427,23 +410,24 @@ const initCorrelationChart = () => {
 
   correlationInstance = echarts.init(correlationChart.value)
 
-  // Correlation matrix from score_distribution or placeholder
-  const dims = ['planning', 'tactical', 'tool_use', 'memory', 'replan', 'retrieval']
-  const data = []
+  const dims = allDimensions.map((d) => d.key)
   const dist = summaryData.value?.score_distribution || {}
+  const data: [number, number, number][] = []
+
   for (let i = 0; i < dims.length; i++) {
     for (let j = 0; j < dims.length; j++) {
-      // Compute approximate correlation from score distributions if available
-      const distI = dist[dims[i]] || []
-      const distJ = dist[dims[j]] || []
-      const val = distI.length > 1 && distJ.length > 1
-        ? Math.min(0.95, 0.5 + 0.4 * (1 - Math.abs(
-            (distI.reduce((a:number,b:number)=>a+b,0)/distI.length -
-             distJ.reduce((a:number,b:number)=>a+b,0)/distJ.length) / 50))
-        ).toFixed(2)
-        : (i === j ? '1.00' : '0.50')
-      data.push([i, j, parseFloat(val)])
+      const distI: number[] = dist[dims[i]] || []
+      const distJ: number[] = dist[dims[j]] || []
+      const pairedLen = Math.min(distI.length, distJ.length)
+      const corr = pairedLen >= 2 ? pearsonCorrelation(distI.slice(0, pairedLen), distJ.slice(0, pairedLen)) : null
+      const val = corr !== null ? corr : i === j ? 1 : 0
+      data.push([i, j, Number(val.toFixed(2))])
     }
+  }
+
+  if (!data.some(([, , v]) => v !== 0 && v !== 1)) {
+    correlationInstance.setOption(chartEmptyOption('评估样本不足，无法计算相关性'))
+    return
   }
 
   const option: echarts.EChartsOption = {
@@ -505,23 +489,36 @@ const initHeatmapChart = () => {
 
   heatmapInstance = echarts.init(heatmapChart.value)
 
-  // Mock heatmap data - dimensions vs time
-  const hours = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-  const dims = allDimensions.map(d => d.name)
+  const tData = filteredTrends.value
+  if (!tData.length) {
+    heatmapInstance.setOption(chartEmptyOption())
+    return
+  }
 
+  const dates = tData.map((t: any) => dayjs(t.date).format('MM/DD'))
+  const dims = allDimensions.map((d) => d.name)
   const data: [number, number, number][] = []
-  for (let i = 0; i < dims.length; i++) {
-    for (let j = 0; j < hours.length; j++) {
-      data.push([j, i, Math.floor(Math.random() * 40) + 60])
+
+  for (let i = 0; i < allDimensions.length; i++) {
+    const dim = allDimensions[i]
+    for (let j = 0; j < tData.length; j++) {
+      const value = heatmapMetric.value === 'count'
+        ? (tData[j].count || 0)
+        : (tData[j][dim.trendKey] || 0)
+      data.push([j, i, Math.round(value)])
     }
   }
+
+  const values = data.map(([, , v]) => v)
+  const minVal = Math.min(...values)
+  const maxVal = Math.max(...values)
 
   const option: echarts.EChartsOption = {
     tooltip: {
       position: 'top',
       formatter: (params: any) => {
         const [x, y, value] = params.data
-        return `${hours[x]} ${dims[y]}: ${value}`
+        return `${dates[x]} ${dims[y]}: ${value}`
       },
     },
     grid: {
@@ -532,7 +529,7 @@ const initHeatmapChart = () => {
     },
     xAxis: {
       type: 'category',
-      data: hours,
+      data: dates,
       splitArea: { show: true },
     },
     yAxis: {
@@ -541,8 +538,8 @@ const initHeatmapChart = () => {
       splitArea: { show: true },
     },
     visualMap: {
-      min: 50,
-      max: 100,
+      min: minVal,
+      max: maxVal || 100,
       calculable: true,
       orient: 'horizontal',
       left: 'center',
@@ -614,7 +611,10 @@ onUnmounted(() => {
   heatmapInstance?.dispose()
 })
 
-watch(timeRange, fetchData)
+watch(timeRange, () => {
+  initDimensionTrendChart()
+  initHeatmapChart()
+})
 watch(selectedDimensions, initDimensionTrendChart)
 watch(heatmapMetric, initHeatmapChart)
 </script>
@@ -680,6 +680,10 @@ watch(heatmapMetric, initHeatmapChart)
 
         &.negative {
           color: #f56c6c;
+        }
+
+        &.neutral {
+          color: #909399;
         }
       }
     }

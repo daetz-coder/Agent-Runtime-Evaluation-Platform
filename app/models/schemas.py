@@ -80,6 +80,16 @@ class EvaluationRequest(BaseModel):
     """Schema for evaluation request."""
     task_id: str
     include_details: bool = Field(True, description="Include detailed feedback")
+    use_stream: bool = Field(
+        False,
+        description="When true, skip background task; client drives POST /evaluations/stream",
+    )
+
+
+class StreamEvaluationRequest(BaseModel):
+    """Schema for SSE streaming evaluation."""
+    task_id: str
+    evaluation_id: Optional[str] = Field(None, description="Existing IN_PROGRESS evaluation to persist into")
 
 
 class PlanningScore(BaseModel):

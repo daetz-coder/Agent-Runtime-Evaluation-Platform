@@ -12,9 +12,42 @@
     </div>
 
     <template v-if="evaluation">
-      <!-- In-progress banner -->
+      <!-- In-progress: SSE stream progress -->
+      <el-card
+        v-if="evaluation.status === 'in_progress' && useStreamMode"
+        class="stream-progress-card"
+        shadow="hover"
+      >
+        <template #header>
+          <div class="card-header">
+            <span>评估进行中</span>
+            <el-tag type="info" size="small">SSE 实时进度</el-tag>
+          </div>
+        </template>
+        <el-progress
+          :percentage="streamProgressPercent"
+          :stroke-width="14"
+          :status="streamError ? 'exception' : undefined"
+          style="margin-bottom: 20px"
+        />
+        <el-steps :active="streamProgress.completed" finish-status="success" align-center>
+          <el-step
+            v-for="dim in streamDimensions"
+            :key="dim.key"
+            :title="dim.name"
+            :description="streamStepDescription(dim.key)"
+          />
+        </el-steps>
+        <p v-if="streamError" class="stream-error">{{ streamError }}</p>
+        <p v-else-if="streaming" class="stream-hint">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          正在运行 6 个评估器（约 15–30 秒）…
+        </p>
+      </el-card>
+
+      <!-- In-progress: legacy polling fallback -->
       <el-alert
-        v-if="evaluation.status === 'in_progress'"
+        v-else-if="evaluation.status === 'in_progress'"
         title="评估正在进行中，页面将自动刷新..."
         type="info"
         :closable="false"
@@ -275,6 +308,7 @@ import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { ArrowLeft, Warning, CircleCheck, DataAnalysis, TrendCharts, Tools, Memory, Refresh, Loading } from '@element-plus/icons-vue'
 import { evaluationApi, taskApi, withSilent } from '@/api'
+import { connectEvaluationStream } from '@/utils/evaluationStream'
 import dayjs from 'dayjs'
 
 const route = useRoute()
@@ -289,8 +323,41 @@ const radarChart = ref<HTMLElement>()
 let radarInstance: echarts.ECharts | null = null
 let consensusInstance: echarts.ECharts | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let streamAbort: AbortController | null = null
 const consensusData = ref<any>(null)
 const consensusChart = ref<HTMLElement>()
+
+const useStreamMode = computed(() => route.query.stream === '1')
+const streaming = ref(false)
+const streamError = ref('')
+const streamProgress = ref({
+  completed: 0,
+  total: 6,
+  scores: {} as Record<string, number>,
+  overall: null as number | null,
+})
+
+const streamDimensions = [
+  { key: 'planning', name: '规划' },
+  { key: 'tactical', name: '战术' },
+  { key: 'tool_use', name: '工具' },
+  { key: 'memory', name: '记忆' },
+  { key: 'replan', name: '重规划' },
+  { key: 'retrieval', name: '检索' },
+]
+
+const streamProgressPercent = computed(() =>
+  Math.round((streamProgress.value.completed / streamProgress.value.total) * 100),
+)
+
+const streamStepDescription = (key: string) => {
+  const score = streamProgress.value.scores[key]
+  if (score != null) return `${score.toFixed(1)} 分`
+  const idx = streamDimensions.findIndex((d) => d.key === key)
+  if (idx < streamProgress.value.completed) return '完成'
+  if (idx === streamProgress.value.completed && streaming.value) return '评估中…'
+  return '等待'
+}
 
 // Dimensions config
 const dimensions = [
@@ -572,14 +639,62 @@ const fetchData = async () => {
       }
     }
 
-    // 如果评估还在进行中，启动轮询
-    if (data.status === 'in_progress') {
+    // Stream mode: drive evaluation via SSE instead of polling
+    if (data.status === 'in_progress' && useStreamMode.value && streamProgress.value.completed < streamProgress.value.total) {
+      startEvaluationStream(data.task_id, evalId)
+    } else if (data.status === 'in_progress') {
       startPolling(evalId)
     }
   } catch (error) {
     console.error('Failed to fetch evaluation:', error)
   } finally {
     loading.value = false
+  }
+}
+
+const stopStream = () => {
+  streamAbort?.abort()
+  streamAbort = null
+  streaming.value = false
+}
+
+const startEvaluationStream = async (taskId: string, evalId: string) => {
+  stopStream()
+  stopPolling()
+  streamError.value = ''
+  streamProgress.value = { completed: 0, total: 6, scores: {}, overall: null }
+  streaming.value = true
+  streamAbort = new AbortController()
+
+  try {
+    await connectEvaluationStream(
+      taskId,
+      evalId,
+      {
+        onProgress: (data) => {
+          streamProgress.value.completed = data.progress
+          streamProgress.value.scores[data.dimension] = data.score
+        },
+        onResult: (data) => {
+          streamProgress.value.overall = data.overall
+        },
+        onError: (data) => {
+          streamError.value = data.message
+        },
+        onDone: async () => {
+          streaming.value = false
+          await fetchData()
+        },
+      },
+      streamAbort.signal,
+    )
+  } catch (error: any) {
+    if (error?.name !== 'AbortError') {
+      streamError.value = error?.message || '流式评估连接失败'
+      startPolling(evalId)
+    }
+  } finally {
+    streaming.value = false
   }
 }
 
@@ -631,6 +746,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   radarInstance?.dispose()
   stopPolling()
+  stopStream()
 })
 
 watch(selectedDimension, () => {
@@ -640,6 +756,25 @@ watch(selectedDimension, () => {
 
 <style scoped lang="scss">
 .evaluation-detail {
+  .stream-progress-card {
+    margin-bottom: 20px;
+
+    .stream-hint {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+      color: #909399;
+      font-size: 14px;
+    }
+
+    .stream-error {
+      margin-top: 12px;
+      color: #f56c6c;
+      font-size: 14px;
+    }
+  }
+
   .page-header {
     display: flex;
     align-items: center;

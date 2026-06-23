@@ -1,0 +1,25 @@
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./agent_eval.db:/app/agent_eval.db
+      - ./data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      - VITE_EVAL_API_BASE=http://backend:8000

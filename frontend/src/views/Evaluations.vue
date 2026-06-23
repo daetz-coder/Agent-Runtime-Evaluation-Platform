@@ -113,9 +113,17 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="得分" width="300">
+        <el-table-column label="综合" width="80">
           <template #default="{ row }">
-            <div class="score-bars">
+            <span :style="{ color: getScoreColor(row.overall_score), fontWeight: 600 }">
+              {{ row.overall_score ?? '-' }}
+            </span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="六维得分" min-width="360">
+          <template #default="{ row }">
+            <div class="score-bars compact">
               <div v-for="dim in dimensions" :key="dim.key" class="score-bar-item">
                 <span class="dim-name">{{ dim.name }}</span>
                 <el-progress
@@ -267,6 +275,12 @@ const getScore = (evaluation: any, dimKey: string) => {
   return Math.round(evaluation[scoreField] || 0)
 }
 
+const getScoreColor = (score: number) => {
+  if (score >= 80) return '#67c23a'
+  if (score >= 60) return '#e6a23c'
+  return '#f56c6c'
+}
+
 const formatDateTime = (date: string) => {
   if (!date) return '-'
   const d = date.endsWith('Z') || date.includes('+') ? date : date + 'Z'
@@ -382,6 +396,12 @@ onMounted(() => {
       display: flex;
       flex-direction: column;
       gap: 4px;
+
+      &.compact {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 4px 12px;
+      }
 
       .score-bar-item {
         display: flex;
