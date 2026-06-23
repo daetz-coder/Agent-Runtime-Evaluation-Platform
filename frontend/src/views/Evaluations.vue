@@ -146,7 +146,7 @@
 
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="router.push(`/evaluations/${row.id}`)">
+            <el-button type="primary" link @click="goToEvaluationDetail(row)">
               查看详情
             </el-button>
             <el-popconfirm
@@ -187,6 +187,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Refresh, CircleCheck, Loading, TrendCharts, Warning } from '@element-plus/icons-vue'
 import { reportApi, evaluationApi } from '@/api'
 import dayjs from 'dayjs'
@@ -302,6 +303,11 @@ const fetchEvaluations = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const goToEvaluationDetail = (row: { id: string; stream_mode?: boolean }) => {
+  const suffix = row.stream_mode ? '?stream=1' : ''
+  router.push(`/evaluations/${row.id}${suffix}`)
 }
 
 const resetFilters = () => {

@@ -95,7 +95,7 @@ const handleRefresh = () => {
 }
 
 const openGitHub = () => {
-  window.open('https://github.com/yourusername/agent-eval-platform', '_blank')
+  window.open('https://github.com/daetz-coder/Agent-Runtime-Evaluation-Platform', '_blank')
 }
 </script>
 

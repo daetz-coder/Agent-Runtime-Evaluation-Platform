@@ -77,7 +77,7 @@
                 <div v-for="dim in dimensions" :key="dim.key" class="weight-item">
                   <span class="dim-name">{{ dim.name }}</span>
                   <el-slider
-                    v-model="evaluationForm.weights[dim.key as keyof typeof evaluationForm.weights]"
+                    v-model="evaluationForm.weights[dim.key]"
                     :min="0"
                     :max="100"
                     :step="5"
@@ -235,7 +235,7 @@ const evaluationForm = reactive({
     memory: 15,
     replan: 15,
     retrieval: 15,
-  },
+  } as Record<string, number>,
   thresholds: {
     excellent: 80,
     good: 60,

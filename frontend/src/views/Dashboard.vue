@@ -174,7 +174,6 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { DataAnalysis, Document, TrendCharts, Warning } from '@element-plus/icons-vue'
 import { reportApi, taskApi } from '@/api'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'

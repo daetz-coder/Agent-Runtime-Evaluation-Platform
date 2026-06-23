@@ -1,4 +1,4 @@
-import axios, { type AxiosRequestConfig } from 'axios'
+import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { ElMessage } from 'element-plus'
 
 export interface ApiRequestConfig extends AxiosRequestConfig {
@@ -6,8 +6,14 @@ export interface ApiRequestConfig extends AxiosRequestConfig {
   silent?: boolean
 }
 
-// Create axios instance
-const api = axios.create({
+/** Axios instance whose response interceptor unwraps `response.data`. */
+interface ApiClient {
+  get<T = any>(url: string, config?: ApiRequestConfig): Promise<T>
+  post<T = any>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<T>
+  delete<T = any>(url: string, config?: ApiRequestConfig): Promise<T>
+}
+
+const axiosInstance = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,
   headers: {
@@ -15,15 +21,13 @@ const api = axios.create({
   },
 })
 
-// Request interceptor
-api.interceptors.request.use(
+axiosInstance.interceptors.request.use(
   (config) => config,
   (error) => Promise.reject(error)
 )
 
-// Response interceptor
-api.interceptors.response.use(
-  (response) => response.data,
+axiosInstance.interceptors.response.use(
+  (response: AxiosResponse) => response.data,
   (error) => {
     const silent = (error.config as ApiRequestConfig | undefined)?.silent
     if (!silent) {
@@ -33,6 +37,8 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+const api = axiosInstance as ApiClient
 
 function withSilent(config?: ApiRequestConfig): ApiRequestConfig {
   return { ...config, silent: true }

@@ -86,8 +86,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
 import { benchmarkApi } from '@/api'
 import { connectBenchmarkStream } from '@/utils/evaluationStream'
 
@@ -228,14 +229,14 @@ const handleRun = async () => {
           renderChart()
         },
         onError: (message) => {
-          console.error('Benchmark stream error:', message)
+          ElMessage.error(message || '基准测试流式连接失败')
         },
       },
       streamAbort.signal,
     )
   } catch (error: any) {
     if (error?.name !== 'AbortError') {
-      console.error('Benchmark run failed:', error)
+      ElMessage.error(error?.message || '基准测试运行失败')
     }
   } finally {
     running.value = false
