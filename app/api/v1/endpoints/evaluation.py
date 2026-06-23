@@ -3,6 +3,8 @@ Evaluation endpoints.
 """
 
 import logging
+import json
+import asyncio
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -187,6 +189,105 @@ async def batch_evaluation(
             "status": "accepted",
         })
     return {"batch_size": len(task_ids), "results": results}
+
+
+@router.post("/stream")
+async def evaluation_stream(
+    task_id: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    SSE 流式评估 — 每个评估器完成时实时推送分数。
+
+    - **task_id**: 任务 UUID
+
+    事件类型:
+    - progress: {dimension, score, progress, total}
+    - result: {scores: {...}, overall: ...}
+    - error: {message}
+    - done
+    """
+    from app.evaluators import (
+        PlanningEvaluator, TacticalEvaluator, ToolUseEvaluator,
+        MemoryEvaluator, ReplanEvaluator,
+    )
+    from app.models.schemas import TrajectoryStep as TS
+    from sse_starlette.sse import EventSourceResponse
+    import asyncio
+
+    # Verify task
+    service = EvaluationService(db)
+    task = await service.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Get trajectory
+    traj_result = await db.execute(
+        select(AgentTrajectory).where(AgentTrajectory.task_id == task_id)
+        .order_by(AgentTrajectory.step_number)
+    )
+    traj_rows = traj_result.scalars().all()
+    steps = [TS(
+        step_number=t.step_number, action_type=t.action_type,
+        action_detail=t.action_detail or {}, observation=t.observation,
+        timestamp=t.timestamp,
+    ) for t in traj_rows]
+
+    evaluators = [
+        ("planning", PlanningEvaluator),
+        ("tactical", TacticalEvaluator),
+        ("tool_use", ToolUseEvaluator),
+        ("memory", MemoryEvaluator),
+        ("replan", ReplanEvaluator),
+    ]
+    total = len(evaluators)
+    scores: dict = {}
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def run_eval(dim_name: str, EvalClass):
+        try:
+            ev = EvalClass()
+            r = await ev.evaluate(goal=task.goal, trajectory=steps, context=task.context)
+            score = getattr(r, "overall", 0)
+            scores[dim_name] = score
+            await queue.put({"event": "progress", "data": json.dumps({
+                "dimension": dim_name, "score": score,
+                "progress": len(scores), "total": total,
+            })})
+        except Exception as e:
+            await queue.put({"event": "error", "data": json.dumps({
+                "dimension": dim_name, "message": str(e),
+            })})
+
+    async def event_generator():
+        # Start all evaluators
+        asyncio.create_task(asyncio.gather(*[
+            run_eval(dim, cls) for dim, cls in evaluators
+        ]))
+
+        completed = 0
+        while completed < total:
+            try:
+                msg = await asyncio.wait_for(queue.get(), timeout=120)
+                yield msg
+                if msg["event"] == "progress":
+                    completed = json.loads(msg["data"])["progress"]
+                    if completed >= total:
+                        break
+            except asyncio.TimeoutError:
+                yield {"event": "error", "data": json.dumps({"message": "Evaluation timeout"})}
+                break
+
+        # Send final result
+        if scores:
+            weights = {"planning": 0.25, "tactical": 0.25, "tool_use": 0.20, "memory": 0.15, "replan": 0.15}
+            overall = sum(weights.get(d, 0) * s for d, s in scores.items())
+            yield {"event": "result", "data": json.dumps({
+                "scores": scores, "overall": round(overall, 1),
+            })}
+        yield {"event": "done", "data": "{}"}
+
+    return EventSourceResponse(event_generator())
 
 
 @router.post("/consensus")
