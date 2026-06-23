@@ -248,8 +248,8 @@ class ConsensusEvaluator:
         trajectory: List[TrajectoryStep],
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, ConsensusResult]:
-        """对所有 5 个维度进行共识评估。"""
-        dimensions = ["planning", "tactical", "tool_use", "memory", "replan"]
+        """对所有 6 个维度进行共识评估。"""
+        dimensions = ["planning", "tactical", "tool_use", "memory", "replan", "retrieval"]
         tasks = [
             self.evaluate(goal, trajectory, context, dim)
             for dim in dimensions
