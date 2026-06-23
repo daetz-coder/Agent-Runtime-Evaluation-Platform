@@ -82,6 +82,7 @@ class Evaluation(Base):
     tool_use_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     memory_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     replan_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    retrieval_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     overall_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Detailed feedback
@@ -90,6 +91,7 @@ class Evaluation(Base):
     tool_use_feedback: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     memory_feedback: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     replan_feedback: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    retrieval_feedback: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Relationships
     task: Mapped["AgentTask"] = relationship(back_populates="evaluations")

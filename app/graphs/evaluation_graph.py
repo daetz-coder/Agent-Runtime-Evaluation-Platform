@@ -31,6 +31,7 @@ from app.evaluators import (
     ToolUseEvaluator,
     MemoryEvaluator,
     ReplanEvaluator,
+    RetrievalEvaluator,
 )
 
 
@@ -383,6 +384,7 @@ async def evaluate_parallel(
         _eval("tool_use", ToolUseEvaluator),
         _eval("memory", MemoryEvaluator),
         _eval("replan", ReplanEvaluator),
+        _eval("retrieval", RetrievalEvaluator),
     ]
     results = await asyncio.gather(*tasks)
 
@@ -395,7 +397,7 @@ async def evaluate_parallel(
             scores[dim_name] = {"overall": 0, "feedback": "Evaluation failed"}
 
     # 计算加权总分
-    weights = {"planning": 0.25, "tactical": 0.25, "tool_use": 0.20, "memory": 0.15, "replan": 0.15}
+    weights = {"planning": 0.20, "tactical": 0.20, "tool_use": 0.15, "memory": 0.15, "replan": 0.15, "retrieval": 0.15}
     overall = sum(
         weights.get(d, 0) * (s.get("overall", 0) if isinstance(s, dict) else 0)
         for d, s in scores.items()

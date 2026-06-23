@@ -167,6 +167,7 @@ class EvaluationListItem(BaseModel):
     tool_use_score: Optional[float] = None
     memory_score: Optional[float] = None
     replan_score: Optional[float] = None
+    retrieval_score: Optional[float] = None
 
     class Config:
         from_attributes = True
