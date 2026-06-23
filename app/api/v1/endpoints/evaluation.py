@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.database import get_db, async_session_factory
+from app.core.config import settings
 from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem, TrajectoryStep
 from app.services.evaluation_service import EvaluationService
 
@@ -210,6 +211,7 @@ async def evaluation_stream(
     from app.evaluators import (
         PlanningEvaluator, TacticalEvaluator, ToolUseEvaluator,
         MemoryEvaluator, ReplanEvaluator,
+            RetrievalEvaluator,
     )
     from app.models.schemas import TrajectoryStep as TS
     from sse_starlette.sse import EventSourceResponse
@@ -239,6 +241,7 @@ async def evaluation_stream(
         ("tool_use", ToolUseEvaluator),
         ("memory", MemoryEvaluator),
         ("replan", ReplanEvaluator),
+        ("retrieval", RetrievalEvaluator),
     ]
     total = len(evaluators)
     scores: dict = {}
@@ -280,7 +283,7 @@ async def evaluation_stream(
 
         # Send final result
         if scores:
-            weights = {"planning": 0.25, "tactical": 0.25, "tool_use": 0.20, "memory": 0.15, "replan": 0.15}
+            weights = {"planning": 0.20, "tactical": 0.20, "tool_use": 0.15, "memory": 0.15, "replan": 0.15, "retrieval": 0.15}
             overall = sum(weights.get(d, 0) * s for d, s in scores.items())
             yield {"event": "result", "data": json.dumps({
                 "scores": scores, "overall": round(overall, 1),

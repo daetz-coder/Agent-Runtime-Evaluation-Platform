@@ -24,7 +24,7 @@
         <template #default>
           <div style="display: flex; align-items: center; gap: 8px">
             <el-icon class="is-loading"><Loading /></el-icon>
-            <span>正在运行 5 个评估器，请稍候（约 30-60 秒）</span>
+            <span>正在运行 6 个评估器，请稍候（约 15-30 秒）</span>
           </div>
         </template>
       </el-alert>

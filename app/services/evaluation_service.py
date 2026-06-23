@@ -18,8 +18,8 @@ from app.models.schemas import (
     TrajectoryStep,
     EvaluationRequest,
     EvaluationResponse,
-    EvaluationListItem,
-    OverallEvaluation,
+    EvaluationListItem, RetrievalScore,
+    OverallEvaluation, PlanningScore, TacticalScore, ToolUseScore, MemoryScore, ReplanScore,
 )
 from app.graphs.evaluation_graph import create_evaluation_graph, EvaluationState
 
@@ -383,6 +383,7 @@ class EvaluationService:
                 tool_use_score=item.tool_use_score,
                 memory_score=item.memory_score,
                 replan_score=item.replan_score,
+                retrieval_score=item.retrieval_score,
             )
             for item, goal in rows
         ]

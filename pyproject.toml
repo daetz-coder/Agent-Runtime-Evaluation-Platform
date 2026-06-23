@@ -49,6 +49,7 @@ dependencies = [
 
     # Utilities
     "python-dotenv>=1.0.0",
+    "sse-starlette>=2.0.0",
     "httpx>=0.26.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",

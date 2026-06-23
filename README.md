@@ -127,7 +127,7 @@ python -m tests.benchmark_score_distribution
 python -m tests.eval_retrieval_standalone
 ```
 
-## 五维评估体系
+## 六维评估体系
 
 | 维度 | 子指标（权重） | 评估器 |
 |------|---------------|--------|
@@ -136,8 +136,9 @@ python -m tests.eval_retrieval_standalone
 | **Tool Use** | selection_quality(0.40), parameter_accuracy(0.30), result_utilization(0.30) | `tool_use_evaluator.py` |
 | **Memory** | retention(0.45), relevance(0.30), consistency(0.25) | `memory_evaluator.py` |
 | **Replan** | trigger_appropriateness(0.35), adaptation_quality(0.35), learning_from_failure(0.30) | `replan_evaluator.py` |
+| **Retrieval** | relevance(0.35), evidence_accuracy(0.35), coverage(0.30) + hallucination_detected | `retrieval_evaluator.py` |
 
-加权聚合: Planning 0.25 + Tactical 0.25 + Tool Use 0.20 + Memory 0.15 + Replan 0.15
+加权聚合: Planning 0.20 + Tactical 0.20 + Tool Use 0.15 + Memory 0.15 + Replan 0.15 + Retrieval 0.15
 质量标定: 优秀 ≥80 · 良好 ≥60 · 一般 ≥40 · 较差 <40
 
 ## 三种接入模式（零侵入 SDK）
