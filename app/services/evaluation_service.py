@@ -72,6 +72,36 @@ class EvaluationService:
             completed_at=task.completed_at,
         )
 
+    async def update_task(self, task_id: str, task_data) -> Optional[TaskResponse]:
+        """Update an existing task."""
+        result = await self.db.execute(
+            select(AgentTask).where(AgentTask.id == task_id)
+        )
+        task = result.scalar_one_or_none()
+        if not task:
+            return None
+
+        if task_data.goal is not None:
+            task.goal = task_data.goal
+        if task_data.context is not None:
+            task.context = task_data.context
+        if task_data.status is not None:
+            try:
+                task.status = TaskStatus(task_data.status)
+            except ValueError:
+                pass
+
+        await self.db.flush()
+        return TaskResponse(
+            id=task.id,
+            goal=task.goal,
+            context=task.context,
+            status=task.status.value,
+            created_at=task.created_at,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+        )
+
     async def add_trajectory(
         self,
         task_id: str,
@@ -285,13 +315,26 @@ class EvaluationService:
             evaluation=overall,
         )
 
-    async def list_evaluations(
+    async def list_evaluations_with_count(
         self,
         skip: int = 0,
         limit: int = 100,
         status: Optional[str] = None,
-    ) -> List[EvaluationListItem]:
-        """List evaluations with lightweight score fields and task goal."""
+    ) -> tuple[List[EvaluationListItem], int]:
+        """List evaluations with total count for pagination."""
+        from sqlalchemy import func as sql_func
+
+        # Count query
+        count_query = select(sql_func.count()).select_from(Evaluation)
+        if status:
+            try:
+                count_query = count_query.where(Evaluation.status == EvaluationStatus(status))
+            except ValueError:
+                pass
+        total_result = await self.db.execute(count_query)
+        total = total_result.scalar_one()
+
+        # Data query
         query = (
             select(Evaluation, AgentTask.goal)
             .join(AgentTask, Evaluation.task_id == AgentTask.id)
@@ -307,7 +350,7 @@ class EvaluationService:
         result = await self.db.execute(query)
         rows = result.all()
 
-        return [
+        items = [
             EvaluationListItem(
                 id=item.id,
                 task_id=item.task_id,
@@ -324,6 +367,17 @@ class EvaluationService:
             )
             for item, goal in rows
         ]
+        return items, total
+
+    async def list_evaluations(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        status: Optional[str] = None,
+    ) -> List[EvaluationListItem]:
+        """List evaluations (backward compatibility)."""
+        items, _ = await self.list_evaluations_with_count(skip, limit, status)
+        return items
 
     async def get_trajectory(self, task_id: str) -> Optional[List[Dict[str, Any]]]:
         """Get trajectory steps for a task."""

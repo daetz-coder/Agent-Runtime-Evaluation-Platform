@@ -18,6 +18,7 @@ from app.evaluators import (
 @pytest.fixture
 def sample_trajectory():
     """Create sample trajectory for testing."""
+    from datetime import timezone
     return [
         TrajectoryStep(
             step_number=1,
@@ -32,27 +33,27 @@ def sample_trajectory():
                     {"description": "Run tests"},
                 ],
             },
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         ),
         TrajectoryStep(
             step_number=2,
             action_type="tool_call",
             action_detail={"tool_name": "search_code", "input": {"query": "authentication"}},
             observation="Found: auth.py, login.py, jwt_handler.py",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         ),
         TrajectoryStep(
             step_number=3,
             action_type="tool_call",
             action_detail={"tool_name": "read_file", "input": {"file_path": "auth.py"}},
             observation="def authenticate(user, password):\n    # JWT authentication logic\n    token = generate_jwt(user)\n    return token",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         ),
         TrajectoryStep(
             step_number=4,
             action_type="think",
             action_detail={"thought": "Found the auth code. Need to check JWT handling."},
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         ),
     ]
 

@@ -15,6 +15,13 @@ class TaskCreate(BaseModel):
     context: Optional[Dict[str, Any]] = Field(None, description="Additional context for the task")
 
 
+class TaskUpdate(BaseModel):
+    """Schema for updating an existing task."""
+    goal: Optional[str] = Field(None, description="Updated goal/objective")
+    context: Optional[Dict[str, Any]] = Field(None, description="Updated context")
+    status: Optional[str] = Field(None, description="New status: pending/running/completed/failed/timeout")
+
+
 class TaskResponse(BaseModel):
     """Schema for task response."""
     id: str

@@ -218,10 +218,17 @@ def main():
     eval_id = evaluation["id"]
     print(f"✅ 评估完成: {eval_id}")
 
-    # 4. 获取结果
-    print("\n📊 步骤4: 获取评估结果...")
-    time.sleep(1)  # 等待评估完成
-    result = get_evaluation(eval_id)
+    # 4. 获取结果（轮询等待评估完成）
+    print("\n📊 步骤4: 等待评估结果...")
+    max_wait = 90  # 最多等待 90 秒
+    for _ in range(max_wait):
+        result = get_evaluation(eval_id)
+        eval_data = result.get("evaluation", {})
+        if eval_data and eval_data.get("overall_score") is not None:
+            break
+        time.sleep(2)
+    else:
+        print("⚠ 评估超时，可能仍在处理中")
 
     # 5. 打印结果
     print_results(result)

@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from app.db.database import get_db
 from app.db.models import AgentTask, TaskStatus
-from app.models.schemas import TaskCreate, TaskResponse, TrajectoryStep
+from app.models.schemas import TaskCreate, TaskUpdate, TaskResponse, TrajectoryStep
 from app.services.evaluation_service import EvaluationService
 
 router = APIRouter()
@@ -107,6 +107,26 @@ async def add_trajectory(
         raise HTTPException(status_code=404, detail="Task not found")
 
     return {"message": f"Added {len(steps)} trajectory steps", "task_id": task_id}
+
+
+@router.put("/{task_id}", response_model=TaskResponse)
+async def update_task(
+    task_id: str,
+    task_data: TaskUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update an existing task.
+
+    - **goal**: Updated goal (optional)
+    - **context**: Updated context (optional)
+    - **status**: New status (optional)
+    """
+    service = EvaluationService(db)
+    task = await service.update_task(task_id, task_data)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
 
 
 @router.get("/{task_id}/trajectory")

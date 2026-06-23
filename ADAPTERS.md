@@ -5,6 +5,7 @@
 **可插拔、零侵入、一行集成**
 
 不需要修改原有代码，只需要替换一行即可自动收集轨迹。
+SDK 已独立为 `sdk/` 包，外部项目只需 `pip install httpx langchain-core` 即可使用。
 
 ---
 
@@ -18,8 +19,8 @@
 # 原来的代码
 graph = build_graph()
 
-# 替换为 ↓
-from app.adapters.langgraph import instrument_langgraph
+# 替换为 ↓  一行代码接入
+from agent_eval_sdk import instrument_langgraph
 graph = instrument_langgraph(build_graph())
 
 # 后续使用完全相同
@@ -43,7 +44,7 @@ result = await graph.ainvoke(initial_state)
 llm = ChatZhipuAI(...)
 
 # 替换为 ↓
-from app.adapters.llm_proxy import create_proxy_llm
+from agent_eval_sdk import create_proxy_llm
 llm = create_proxy_llm(ChatZhipuAI(...))
 
 # 后续使用完全相同
@@ -62,7 +63,7 @@ response = llm.invoke("Hello")
 适用于需要更细粒度控制的场景。
 
 ```python
-from app.adapters.callback import create_callback_handler
+from agent_eval_sdk import create_callback_handler
 
 # 创建 handler
 handler = create_callback_handler()
@@ -111,7 +112,7 @@ graph = instrument_langgraph(build_graph())
 
 ```python
 # 在创建 LLM 时
-from app.adapters.llm_proxy import create_proxy_llm
+from agent_eval_sdk import create_proxy_llm
 
 llm = create_proxy_llm(ChatZhipuAI(...))
 ```
@@ -188,7 +189,7 @@ result = await graph.compile().ainvoke(initial_state)
 
 ```python
 from langchain_community.chat_models import ChatZhipuAI
-from app.adapters.llm_proxy import create_proxy_llm
+from agent_eval_sdk import create_proxy_llm
 
 # 原来的代码
 # llm = ChatZhipuAI(...)
