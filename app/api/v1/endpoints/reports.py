@@ -151,6 +151,7 @@ async def get_task_evaluation_history(
                 "created_at": e.created_at,
                 "completed_at": e.completed_at,
                 "overall_score": e.overall_score,
+                "stream_mode": e.stream_mode,
             }
             for e in evaluations
         ],
