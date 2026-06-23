@@ -77,7 +77,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Refresh, Link, User, Cpu, Fold, Expand } from '@element-plus/icons-vue'
+import { Refresh, Link, User, Cpu, Fold, Expand, Database } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
