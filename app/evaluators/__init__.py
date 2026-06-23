@@ -15,6 +15,7 @@ from app.evaluators.tactical_evaluator import TacticalEvaluator
 from app.evaluators.tool_use_evaluator import ToolUseEvaluator
 from app.evaluators.memory_evaluator import MemoryEvaluator
 from app.evaluators.replan_evaluator import ReplanEvaluator
+from app.evaluators.retrieval_evaluator import RetrievalEvaluator
 
 __all__ = [
     "BaseEvaluator",
@@ -23,4 +24,5 @@ __all__ = [
     "ToolUseEvaluator",
     "MemoryEvaluator",
     "ReplanEvaluator",
+    "RetrievalEvaluator",
 ]
