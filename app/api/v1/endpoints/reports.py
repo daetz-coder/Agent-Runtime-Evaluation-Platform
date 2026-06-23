@@ -165,9 +165,9 @@ async def get_dimension_statistics(
     """
     Get statistics for a specific evaluation dimension.
 
-    - **dimension**: One of: planning, tactical, tool_use, memory, replan
+    - **dimension**: One of: planning, tactical, tool_use, memory, replan, retrieval
     """
-    valid_dimensions = ["planning", "tactical", "tool_use", "memory", "replan"]
+    valid_dimensions = ["planning", "tactical", "tool_use", "memory", "replan", "retrieval"]
 
     if dimension not in valid_dimensions:
         raise HTTPException(
