@@ -538,30 +538,25 @@ function scrollToBottom() {
 
 function renderMarkdown(text) {
   if (!text) return "";
-  let html = text
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="code-block"><code>$2</code></pre>')
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/^- (.+)$/gm, "• $1")
-    .replace(/\n\n/g, "</p><p>")
-    .replace(/\n/g, "<br>");
-
-  // 把路径格式的来源转成可点击链接
-  html = html.replace(
-    /来源:\s*([\w一-龥\-\/]+\.md)/g,
-    '<span class="source-link" onclick="window.__wikiNavigate && window.__wikiNavigate(\'$1\')">📎 $1</span>'
-  );
-  html = html.replace(
-    /(?<![">/])([\w一-龥]+(?:\/[\w一-龥\-]+)+\.md)(?![<"])/g,
-    '<span class="source-link" onclick="window.__wikiNavigate && window.__wikiNavigate(\'$1\')">📄 $1</span>'
-  );
-
-  return html;
+  try {
+    const { marked } = require('marked');
+    if (!renderMarkdown._parser) {
+      marked.setOptions({ breaks: true, gfm: true });
+      renderMarkdown._parser = marked;
+    }
+    return renderMarkdown._parser.parse(text, { async: false });
+  } catch {
+    // Fallback to regex
+    let html = text
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+      .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+      .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+      .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+      .replace(/\n\n/g, "</p><p>")
+      .replace(/\n/g, "<br>");
+    return html;
+  }
 }
 
 // 注册全局导航函数，让内联 onclick 能触发
