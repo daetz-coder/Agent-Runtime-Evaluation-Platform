@@ -40,11 +40,25 @@ class BaseEvaluator(ABC):
                 temperature=0,
             )
         elif provider == "deepseek":
-            # DeepSeek API is compatible with OpenAI API format
             return ChatOpenAI(
                 model=settings.DEEPSEEK_MODEL,
                 openai_api_key=settings.DEEPSEEK_API_KEY,
                 openai_api_base=settings.DEEPSEEK_BASE_URL,
+                temperature=0,
+            )
+        elif provider == "glm":
+            from langchain_community.chat_models import ChatZhipuAI
+            return ChatZhipuAI(
+                model=settings.ZHIPUAI_MODEL,
+                api_key=settings.ZHIPUAI_API_KEY,
+                temperature=0,
+            )
+        elif provider == "qwen":
+            # Qwen DashScope is OpenAI-compatible
+            return ChatOpenAI(
+                model=settings.QWEN_MODEL,
+                openai_api_key=settings.QWEN_API_KEY,
+                openai_api_base=settings.QWEN_BASE_URL,
                 temperature=0,
             )
         else:  # openai

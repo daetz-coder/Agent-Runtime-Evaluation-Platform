@@ -49,6 +49,10 @@ def _consensus_type(providers: list) -> str:
             unique_vendors.add("openai")
         elif n.startswith("anthropic"):
             unique_vendors.add("anthropic")
+        elif n.startswith("glm"):
+            unique_vendors.add("zhipuai")
+        elif n.startswith("qwen"):
+            unique_vendors.add("qwen")
     if len(unique_vendors) >= 2:
         return "cross_provider"
     if any("t0." in n for n in names):
@@ -87,6 +91,30 @@ class ConsensusEvaluator:
                     model="deepseek-chat",
                     openai_api_key=settings.DEEPSEEK_API_KEY,
                     openai_api_base=settings.DEEPSEEK_BASE_URL,
+                    temperature=0,
+                ),
+            ))
+
+        # GLM (ZhipuAI)
+        if settings.ZHIPUAI_API_KEY:
+            from langchain_community.chat_models import ChatZhipuAI
+            providers.append((
+                "glm-4",
+                ChatZhipuAI(
+                    model=settings.ZHIPUAI_MODEL,
+                    api_key=settings.ZHIPUAI_API_KEY,
+                    temperature=0,
+                ),
+            ))
+
+        # Qwen (DashScope) — OpenAI 兼容 API
+        if settings.QWEN_API_KEY:
+            providers.append((
+                "qwen-plus",
+                ChatOpenAI(
+                    model=settings.QWEN_MODEL,
+                    openai_api_key=settings.QWEN_API_KEY,
+                    openai_api_base=settings.QWEN_BASE_URL,
                     temperature=0,
                 ),
             ))
