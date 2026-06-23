@@ -1,210 +1,111 @@
-# Getting Started
+# 快速开始指南
 
-## Prerequisites
+## 环境要求
 
 - Python 3.11+
-- PostgreSQL (or SQLite for development)
-- Redis (optional, for caching)
+- Node.js 18+
+- Git
 
-## Installation
-
-### 1. Clone the repository
+## 安装
 
 ```bash
 git clone https://github.com/daetz-coder/Agent-Runtime-Evaluation-Platform.git
-cd agent-eval-platform
-```
+cd Agent-Runtime-Evaluation-Platform
 
-### 2. Create virtual environment
-
-```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# macOS/Linux
-source venv/bin/activate
-```
-
-### 3. Install dependencies
-
-```bash
-pip install -e .
-```
-
-### 4. Set up environment variables
-
-```bash
+# 配置 API Key
 cp .env.example .env
+# 编辑 .env：填入 DEEPSEEK_API_KEY（必填），可选 ZHIPUAI_API_KEY / QWEN_API_KEY
+
+# 安装后端依赖
+pip install -e ".[dev]"
+
+# 安装前端依赖
+cd frontend && npm install && cd ..
 ```
 
-Edit `.env` with your settings:
+## 启动
 
-```env
-# Required: LLM API keys
-OPENAI_API_KEY=sk-your-key-here
-
-# Optional: Use Anthropic instead
-# ANTHROPIC_API_KEY=sk-ant-your-key-here
-# DEFAULT_LLM_PROVIDER=anthropic
-# DEFAULT_LLM_MODEL=claude-3-sonnet-20240229
-
-# Database (default: PostgreSQL)
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/agent_eval
-
-# For development with SQLite:
-# DATABASE_URL=sqlite+aiosqlite:///./agent_eval.db
-```
-
-### 5. Initialize database
+### 方式一：命令行
 
 ```bash
-# For PostgreSQL, create the database first:
-createdb agent_eval
-
-# The app will create tables automatically on startup
-```
-
-### 6. Run the application
-
-```bash
-# Development
+# 终端 1：启动后端
 python -m app.main
+# → http://localhost:8000
 
-# Or with uvicorn
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# 终端 2：启动前端
+cd frontend && npm run dev
+# → http://localhost:3000
 ```
 
-### 7. Access the API
-
-- API Documentation: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- Health Check: http://localhost:8000/health
-
-## Quick Start Example
-
-### 1. Create a task
+### 方式二：Docker Compose
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/tasks/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "goal": "Fix authentication bug in login flow",
-    "context": {"project": "web-app"}
-  }'
+cp .env.example .env  # 填入 DEEPSEEK_API_KEY
+docker compose up --build
 ```
 
-### 2. Add trajectory steps
+### 方式三：Windows 一键
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/tasks/{task_id}/trajectory \
-  -H "Content-Type: application/json" \
-  -d '[
-    {
-      "step_number": 1,
-      "action_type": "plan",
-      "action_detail": {
-        "steps": [
-          {"description": "Search for auth code"},
-          {"description": "Read auth.py"},
-          {"description": "Fix the bug"}
-        ]
-      }
-    },
-    {
-      "step_number": 2,
-      "action_type": "tool_call",
-      "action_detail": {
-        "tool_name": "search_code",
-        "input": {"query": "authentication"}
-      },
-      "observation": "Found: auth.py, login.py"
-    }
-  ]'
+start.bat
 ```
 
-### 3. Run evaluation
+## 访问地址
+
+| 地址 | 内容 |
+|------|------|
+| `http://localhost:3000` | 评估平台前端 |
+| `http://localhost:3000/wiki-agent` | Wiki Agent |
+| `http://localhost:8000/docs` | Swagger API 文档 |
+| `http://localhost:8000/health` | 健康检查 |
+
+## 验证
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/evaluations/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "{task_id}",
-    "include_details": true
-  }'
+# 健康检查
+curl http://localhost:8000/health
+
+# 运行示例评估
+python example_evaluation.py
+
+# SDK 演示
+python example/sdk_demo.py
 ```
 
-### 4. View results
+## 运行基准测试
 
 ```bash
-# Get evaluation summary
-curl http://localhost:8000/api/v1/reports/summary
+# 多轨迹评估分布（6 条 × 6 评估器）
+python -m tests.benchmark_score_distribution
 
-# Get dimension statistics
-curl http://localhost:8000/api/v1/reports/dimensions/planning
+# 多模型成本对比
+python -m tests.benchmark_multimodel
+
+# 评估器准确性验证
+python -m tests.eval_evaluator_accuracy
+
+# Wiki-Agent 检索评估
+python -m tests.eval_retrieval_standalone
+
+# Adapter 集成测试
+python -m tests.test_adapters
 ```
 
-## Running Tests
+## 数据库迁移
 
 ```bash
-# Install test dependencies
-pip install pytest pytest-asyncio
-
-# Run tests
-pytest
-
-# With coverage
-pytest --cov=app --cov-report=html
+alembic upgrade head     # 应用所有迁移
+alembic revision --autogenerate -m "描述"  # 生成新迁移
 ```
 
-## Development
+## 配置参考
 
-### Code Formatting
-
-```bash
-# Install ruff
-pip install ruff
-
-# Format code
-ruff format .
-
-# Check linting
-ruff check .
-```
-
-### Type Checking
-
-```bash
-# Install mypy
-pip install mypy
-
-# Run type checking
-mypy app
-```
-
-## Project Structure
-
-```
-agent-eval-platform/
-├── app/
-│   ├── api/v1/endpoints/    # API endpoints
-│   ├── core/                # Configuration
-│   ├── db/                  # Database models
-│   ├── evaluators/          # 5 evaluation dimensions
-│   ├── graphs/              # LangGraph workflow
-│   ├── models/              # Pydantic schemas
-│   ├── services/            # Business logic
-│   └── main.py              # FastAPI app
-├── tests/                   # Test suite
-├── docs/                    # Documentation
-├── pyproject.toml           # Project config
-└── README.md
-```
-
-## Next Steps
-
-1. Review the [Architecture Documentation](architecture.md)
-2. Check the [API Documentation](api.md)
-3. Explore the evaluators in `app/evaluators/`
-4. Run the example agent in `app/agents/example_agent.py`
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `DEEPSEEK_API_KEY` | DeepSeek API Key（必填） | - |
+| `ZHIPUAI_API_KEY` | 智谱 GLM-4 API Key | - |
+| `QWEN_API_KEY` | 阿里 DashScope API Key | - |
+| `DEFAULT_LLM_PROVIDER` | 默认 LLM（deepseek/glm/qwen） | deepseek |
+| `EVAL_PARALLEL` | 是否并行评估 | true |
+| `AUTH_ENABLED` | 是否启用 API 认证 | false |
+| `EVAL_WEBHOOK_URL` | 评估完成通知 URL | - |
