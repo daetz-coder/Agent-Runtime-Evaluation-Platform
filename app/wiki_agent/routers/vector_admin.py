@@ -27,6 +27,24 @@ def get_vector_stats() -> VectorStatsResponse:
     return VectorStatsResponse(**stats)
 
 
+@api_router.post("/vector-rebuild")
+def rebuild_vector_index():
+    """删除向量库和 BM25 索引，从 knowledge/ 目录全量重建。"""
+    from app.wiki_agent.agent.tools.sync_manager import sync_manager
+    from app.wiki_agent.agent.tools.bm25_index import get_bm25_index
+
+    store = get_vector_store()
+    store.delete_all()
+    bm25 = get_bm25_index()
+    bm25._tokenized_corpus = []
+    bm25._chunk_meta = []
+    bm25._dirty = True
+    bm25.save()
+
+    result = sync_manager.reindex_all()
+    return {"status": "ok", "message": "索引已重建", **result}
+
+
 @api_router.get("/vector-paths", response_model=VectorPathListResponse)
 def list_vector_paths(limit: int = Query(default=500, ge=1, le=2000)) -> VectorPathListResponse:
     """List wiki page paths indexed in Milvus."""

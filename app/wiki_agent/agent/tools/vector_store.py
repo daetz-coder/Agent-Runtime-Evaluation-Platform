@@ -155,6 +155,25 @@ class MilvusVectorStore:
             "error": None,
         }
 
+    def delete_all(self) -> int:
+        """删除 collection 中所有数据。"""
+        client = self._get_client()
+        if client is None:
+            return 0
+        try:
+            client.drop_collection(COLLECTION_NAME)
+            client.create_collection(
+                collection_name=COLLECTION_NAME,
+                dimension=EMBEDDING_DIM,
+                metric_type="COSINE",
+                id_type="string",
+                max_length=512,
+            )
+            client.load_collection(COLLECTION_NAME)
+            return 0
+        except Exception:
+            return -1
+
     def list_paths(self, limit: int = 500) -> list[dict[str, Any]]:
         """List wiki pages indexed in Milvus with chunk counts."""
         client = self._get_client()

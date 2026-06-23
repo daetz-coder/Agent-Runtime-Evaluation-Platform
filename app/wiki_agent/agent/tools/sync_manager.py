@@ -205,7 +205,38 @@ class WikiSyncManager:
                 "message": f"删除失败: {str(e)}",
             }
 
-    def reindex_page(self, path: str) -> dict:
+    def reindex_all(self) -> dict:
+        """遍历 knowledge/ 目录所有 Markdown，全量重建 Milvus + BM25。"""
+        from pathlib import Path
+        from app.wiki_agent.agent.tools.chunker import chunk_markdown
+
+        knowledge_dir = Path(settings.KNOWLEDGE_DIR)
+        if not knowledge_dir.exists():
+            return {"status": "error", "message": "Knowledge 目录不存在"}
+
+        count = 0
+        for md_file in knowledge_dir.rglob("*.md"):
+            if ".git" in md_file.parts:
+                continue
+            try:
+                content = md_file.read_text(encoding="utf-8")
+                title = md_file.stem
+                if content.startswith("---"):
+                    parts = content.split("---", 2)
+                    if len(parts) >= 3:
+                        for line in parts[1].split("\n"):
+                            if line.strip().startswith("title:"):
+                                title = line.split(":", 1)[1].strip().strip("\"'")
+                        content = parts[2].strip()
+                rel_path = str(md_file.relative_to(knowledge_dir)).replace("\\", "/")
+                self._sync_to_vector_store(rel_path, title, content, [])
+                count += 1
+            except Exception as e:
+                print(f"[Sync] 重建失败 {md_file}: {e}")
+
+        bm25 = get_bm25_index()
+        bm25.save()
+        return {"status": "ok", "reindexed": count}
         """根据磁盘上的 Markdown 重建 Milvus + BM25 索引（用于 Git 回滚等）"""
         try:
             page = service.get_page(path)
