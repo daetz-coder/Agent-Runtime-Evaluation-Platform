@@ -20,6 +20,7 @@ from app.api.v1.endpoints import evaluation, reports, tasks
 from app.wiki_agent.bootstrap import startup as wiki_agent_startup
 from app.wiki_agent.routers import chat as wiki_chat
 from app.wiki_agent.routers import wiki as wiki_router
+from app.api.workspace_endpoints import router as workspace_router
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ Evaluate the runtime quality of AI agents across 5 dimensions:
     register_routes(reports.router, "/api/v1/reports", ["reports"])
     register_routes(wiki_router.router, "", ["wiki-agent"])
     register_routes(wiki_chat.router, "", ["wiki-agent"])
+    register_routes(workspace_router, "/api/v1", ["workspaces"])
 
     from app.api.auth_middleware import AuthMiddleware
     app.add_middleware(AuthMiddleware)
