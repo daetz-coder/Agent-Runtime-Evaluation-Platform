@@ -86,6 +86,10 @@ export const evaluationApi = {
   delete(id: string) {
     return api.delete(`/evaluations/${id}`)
   },
+
+  getConsensus(taskId: string, includeAll?: boolean) {
+    return api.post('/evaluations/consensus', { task_id: taskId, include_all: includeAll || false })
+  },
 }
 
 // Report API

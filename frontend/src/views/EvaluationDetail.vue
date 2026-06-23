@@ -181,6 +181,47 @@
           </el-timeline>
         </div>
       </el-card>
+
+      <!-- Multi-model Consensus -->
+      <el-card class="consensus-card" shadow="hover" v-if="consensusData">
+        <template #header>
+          <div class="card-header">
+            <span>多模型共识评估</span>
+            <el-tag :type="consensusData.result.consensus_type === 'cross_provider' ? 'success' : 'warning'" size="small">
+              {{ consensusData.result.consensus_type === 'cross_provider' ? '跨厂商' : '同厂商' }}
+            </el-tag>
+            <el-tag v-if="consensusData.result.std_score !== undefined" 
+              :type="consensusData.result.std_score < 10 ? 'success' : 'warning'" size="small" style="margin-left:4px">
+              std={{ consensusData.result.std_score.toFixed(1) }}
+            </el-tag>
+          </div>
+        </template>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <div ref="consensusChart" class="consensus-chart"></div>
+          </el-col>
+          <el-col :span="12">
+            <div class="consensus-info">
+              <el-descriptions :column="1" border size="small">
+                <el-descriptions-item label="参与模型">{{ consensusData.result.model_count }} 个</el-descriptions-item>
+                <el-descriptions-item label="综合均分">{{ consensusData.result.mean_score }}</el-descriptions-item>
+                <el-descriptions-item label="分歧度 (std)">
+                  <el-tag :type="consensusData.result.std_score > 15 ? 'danger' : 'success'" size="small">
+                    {{ consensusData.result.std_score > 15 ? '高分歧' : '一致' }}
+                  </el-tag>
+                </el-descriptions-item>
+              </el-descriptions>
+              <div style="margin-top:12px">
+                <div v-for="(score, model) in consensusData.result.individual_scores" :key="model" class="model-score-row">
+                  <span class="model-name">{{ model }}</span>
+                  <el-progress :percentage="score" :color="getScoreColor(score)" :stroke-width="8" style="flex:1;margin:0 8px" />
+                  <span class="model-score">{{ score }}</span>
+                </div>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+      </el-card>
     </template>
   </div>
 </template>
@@ -203,7 +244,10 @@ const trajectory = ref<any[]>([])
 const selectedDimension = ref('planning')
 const radarChart = ref<HTMLElement>()
 let radarInstance: echarts.ECharts | null = null
+let consensusInstance: echarts.ECharts | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
+const consensusData = ref<any>(null)
+const consensusChart = ref<HTMLElement>()
 
 // Dimensions config
 const dimensions = [
@@ -410,6 +454,32 @@ const initRadarChart = () => {
   radarInstance.setOption(option)
 }
 
+// Consensus chart — horizontal bar comparing model scores
+const initConsensusChart = () => {
+  if (!consensusChart.value || !consensusData.value?.result?.individual_scores) return
+  if (consensusInstance) consensusInstance.dispose()
+
+  consensusInstance = echarts.init(consensusChart.value)
+  const scores = consensusData.value.result.individual_scores
+  const models = Object.keys(scores)
+  const values = Object.values(scores) as number[]
+  const colors = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399']
+
+  consensusInstance.setOption({
+    title: { text: '模型评分对比', left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: { trigger: 'axis' },
+    grid: { left: '20%', right: '10%', top: '15%', bottom: '5%' },
+    xAxis: { type: 'value', min: 0, max: 100 },
+    yAxis: { type: 'category', data: models },
+    series: [{
+      type: 'bar',
+      data: values.map((v, i) => ({ value: v, itemStyle: { color: colors[i % colors.length] } })),
+      label: { show: true, position: 'right', formatter: '{c}' },
+      barMaxWidth: 30,
+    }],
+  })
+}
+
 // Fetch data
 const fetchData = async () => {
   const evalId = route.params.id as string
@@ -431,6 +501,17 @@ const fetchData = async () => {
     }
 
     setTimeout(initRadarChart, 100)
+
+    // Fetch consensus data for completed evaluations
+    if (data.status === 'completed' && data.task_id) {
+      try {
+        const consensus = await evaluationApi.getConsensus(data.task_id)
+        consensusData.value = consensus
+        setTimeout(initConsensusChart, 200)
+      } catch {
+        consensusData.value = null
+      }
+    }
 
     // 如果评估还在进行中，启动轮询
     if (data.status === 'in_progress') {
@@ -757,6 +838,32 @@ watch(selectedDimension, () => {
             font-size: 12px;
           }
         }
+      }
+    }
+  }
+}
+
+.consensus-card {
+  margin-top: 20px;
+  .consensus-chart {
+    width: 100%;
+    height: 200px;
+  }
+  .consensus-info {
+    .model-score-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      .model-name {
+        width: 100px;
+        font-size: 13px;
+        color: #606266;
+      }
+      .model-score {
+        width: 40px;
+        text-align: right;
+        font-weight: 600;
+        font-size: 14px;
       }
     }
   }
