@@ -19,6 +19,7 @@ from app.db.database import init_db, close_db
 from app.api.v1.endpoints import benchmark, evaluation, reports, tasks
 from app.wiki_agent.bootstrap import startup as wiki_agent_startup
 from app.wiki_agent.routers import chat as wiki_chat
+from app.wiki_agent.routers import vector_admin as wiki_vector_admin
 from app.wiki_agent.routers import wiki as wiki_router
 from app.api.workspace_endpoints import router as workspace_router
 
@@ -106,6 +107,8 @@ Evaluate the runtime quality of AI agents across 6 dimensions:
     register_routes(benchmark.router, "/api/v1/benchmark", ["benchmark"])
     register_routes(wiki_router.router, "", ["wiki-agent"])
     register_routes(wiki_chat.router, "", ["wiki-agent"])
+    register_routes(wiki_vector_admin.api_router, "", ["wiki-agent"])
+    register_routes(wiki_vector_admin.page_router, "", ["wiki-agent"])
     register_routes(workspace_router, "/api/v1", ["workspaces"])
 
     from app.api.auth_middleware import AuthMiddleware
@@ -144,6 +147,7 @@ Evaluate the runtime quality of AI agents across 6 dimensions:
             "api": "/api/v1",
             "wiki_agent": "/api/wiki",
             "wiki_chat": "/api/chat",
+            "wiki_vector_admin": "/wiki-admin",
         }
 
     return app

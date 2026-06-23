@@ -23,10 +23,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  server: {
+    server: {
     port: 3000,
     proxy: {
       '/api': {
+        target: apiTarget,
+        changeOrigin: true,
+      },
+      '/wiki-admin': {
         target: apiTarget,
         changeOrigin: true,
       },

@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Milvus 向量管理 · Wiki Agent</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7edf5;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-top: 4px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    button, select, input {
+      font: inherit;
+    }
+
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+
+    .btn:hover { background: var(--accent-hover); }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover { background: var(--panel); }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .stat-value {
+      font-size: 1.4rem;
+      font-weight: 600;
+      margin-top: 6px;
+      word-break: break-all;
+    }
+
+    .stat-value.small { font-size: 0.95rem; font-weight: 500; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge.ok { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+    .badge.err { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .filters {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    @media (max-width: 768px) {
+      .filters { grid-template-columns: 1fr; }
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-bottom: 6px;
+    }
+
+    select, input[type="text"] {
+      width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 500;
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 520px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .mono { font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; }
+    .muted { color: var(--muted); }
+    .snippet { max-width: 360px; white-space: pre-wrap; word-break: break-word; }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .empty, .error-box {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--muted);
+    }
+
+    .error-box { color: var(--danger); }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Milvus 向量管理</h1>
+        <div class="subtitle">查看 Wiki Agent 写入 Milvus 的分块向量与元数据</div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-secondary" onclick="location.href='/'">返回首页</button>
+        <button class="btn" id="refreshBtn">刷新</button>
+      </div>
+    </header>
+
+    <section class="stats" id="statsGrid">
+      <div class="stat-card"><div class="stat-label">状态</div><div class="stat-value" id="statStatus">—</div></div>
+      <div class="stat-card"><div class="stat-label">集合</div><div class="stat-value small" id="statCollection">—</div></div>
+      <div class="stat-card"><div class="stat-label">连接 URI</div><div class="stat-value small" id="statUri">—</div></div>
+      <div class="stat-card"><div class="stat-label">向量维度</div><div class="stat-value" id="statDim">—</div></div>
+      <div class="stat-card"><div class="stat-label">分块总数</div><div class="stat-value" id="statChunks">—</div></div>
+      <div class="stat-card"><div class="stat-label">页面数</div><div class="stat-value" id="statPages">—</div></div>
+    </section>
+
+    <section class="panel">
+      <div class="filters">
+        <div>
+          <label for="pathFilter">按页面路径筛选</label>
+          <select id="pathFilter">
+            <option value="">全部页面</option>
+          </select>
+        </div>
+        <div>
+          <label for="keywordFilter">文档关键词</label>
+          <input id="keywordFilter" type="text" placeholder="搜索 document 字段..." />
+        </div>
+        <div>
+          <button class="btn" id="searchBtn" style="width:100%">查询</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Chunk ID</th>
+              <th>路径 / 标题</th>
+              <th>分块</th>
+              <th>标签</th>
+              <th>更新时间</th>
+              <th>内容预览</th>
+            </tr>
+          </thead>
+          <tbody id="chunkTableBody">
+            <tr><td colspan="6" class="empty">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <div class="muted" id="pageInfo">—</div>
+        <div class="actions">
+          <button class="btn btn-secondary" id="prevBtn">上一页</button>
+          <button class="btn btn-secondary" id="nextBtn">下一页</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const PAGE_SIZE = 20;
+    let offset = 0;
+    let total = 0;
+
+    const els = {
+      statStatus: document.getElementById('statStatus'),
+      statCollection: document.getElementById('statCollection'),
+      statUri: document.getElementById('statUri'),
+      statDim: document.getElementById('statDim'),
+      statChunks: document.getElementById('statChunks'),
+      statPages: document.getElementById('statPages'),
+      pathFilter: document.getElementById('pathFilter'),
+      keywordFilter: document.getElementById('keywordFilter'),
+      chunkTableBody: document.getElementById('chunkTableBody'),
+      pageInfo: document.getElementById('pageInfo'),
+      prevBtn: document.getElementById('prevBtn'),
+      nextBtn: document.getElementById('nextBtn'),
+    };
+
+    async function fetchJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    function escapeHtml(text) {
+      return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function loadStats() {
+      const data = await fetchJson('/api/wiki/vector-stats');
+      els.statStatus.innerHTML = data.available
+        ? '<span class="badge ok">可用</span>'
+        : `<span class="badge err">不可用</span>`;
+      els.statCollection.textContent = data.collection;
+      els.statUri.textContent = data.uri;
+      els.statDim.textContent = data.embedding_dim;
+      els.statChunks.textContent = data.total_chunks;
+      els.statPages.textContent = data.unique_pages;
+      if (data.error) {
+        els.statStatus.innerHTML += `<div class="error-box" style="padding:8px 0;font-size:0.8rem">${escapeHtml(data.error)}</div>`;
+      }
+    }
+
+    async function loadPaths() {
+      const data = await fetchJson('/api/wiki/vector-paths');
+      const current = els.pathFilter.value;
+      els.pathFilter.innerHTML = '<option value="">全部页面</option>';
+      for (const item of data.items) {
+        const opt = document.createElement('option');
+        opt.value = item.path;
+        opt.textContent = `${item.path} (${item.chunk_count})`;
+        els.pathFilter.appendChild(opt);
+      }
+      if (current) els.pathFilter.value = current;
+    }
+
+    async function loadChunks() {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(PAGE_SIZE) });
+      const path = els.pathFilter.value.trim();
+      const keyword = els.keywordFilter.value.trim();
+      if (path) params.set('path', path);
+      if (keyword) params.set('keyword', keyword);
+
+      els.chunkTableBody.innerHTML = '<tr><td colspan="6" class="empty">加载中...</td></tr>';
+
+      try {
+        const data = await fetchJson(`/api/wiki/vector-chunks?${params}`);
+        total = data.total;
+        renderChunks(data.items, data.error);
+        updatePagination();
+      } catch (err) {
+        els.chunkTableBody.innerHTML = `<tr><td colspan="6" class="error-box">${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    function renderChunks(items, error) {
+      if (error) {
+        els.chunkTableBody.innerHTML = `<tr><td colspan="6" class="error-box">${escapeHtml(error)}</td></tr>`;
+        return;
+      }
+      if (!items.length) {
+        els.chunkTableBody.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+        return;
+      }
+
+      els.chunkTableBody.innerHTML = items.map(item => `
+        <tr>
+          <td class="mono">${escapeHtml(item.chunk_id)}</td>
+          <td>
+            <div class="mono">${escapeHtml(item.path)}</div>
+            <div class="muted">${escapeHtml(item.title)}</div>
+          </td>
+          <td>${item.chunk_index + 1} / ${item.total_chunks}</td>
+          <td>${escapeHtml(item.tags || '—')}</td>
+          <td class="mono">${escapeHtml(item.updated_at || '—')}</td>
+          <td class="snippet">${escapeHtml(item.document_preview)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function updatePagination() {
+      const from = total === 0 ? 0 : offset + 1;
+      const to = Math.min(offset + PAGE_SIZE, total);
+      els.pageInfo.textContent = `显示 ${from}-${to} / 共 ${total} 条`;
+      els.prevBtn.disabled = offset <= 0;
+      els.nextBtn.disabled = offset + PAGE_SIZE >= total;
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadStats(), loadPaths()]);
+      await loadChunks();
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', refreshAll);
+    document.getElementById('searchBtn').addEventListener('click', () => { offset = 0; loadChunks(); });
+    document.getElementById('prevBtn').addEventListener('click', () => {
+      offset = Math.max(0, offset - PAGE_SIZE);
+      loadChunks();
+    });
+    document.getElementById('nextBtn').addEventListener('click', () => {
+      if (offset + PAGE_SIZE < total) {
+        offset += PAGE_SIZE;
+        loadChunks();
+      }
+    });
+    els.keywordFilter.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { offset = 0; loadChunks(); }
+    });
+
+    refreshAll();
+  </script>
+</body>
+</html>

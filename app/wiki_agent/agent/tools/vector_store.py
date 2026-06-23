@@ -129,6 +129,122 @@ class MilvusVectorStore:
             )
         return hits
 
+    def get_stats(self) -> dict[str, Any]:
+        """Return Milvus connection and collection statistics."""
+        client = self._get_client()
+        if client is None:
+            return {
+                "available": False,
+                "uri": settings.MILVUS_URI,
+                "collection": COLLECTION_NAME,
+                "embedding_dim": EMBEDDING_DIM,
+                "total_chunks": 0,
+                "unique_pages": 0,
+                "error": self._init_error,
+            }
+
+        total = self.count()
+        paths = self._collect_paths(client)
+        return {
+            "available": True,
+            "uri": settings.MILVUS_URI,
+            "collection": COLLECTION_NAME,
+            "embedding_dim": EMBEDDING_DIM,
+            "total_chunks": total,
+            "unique_pages": len(paths),
+            "error": None,
+        }
+
+    def list_paths(self, limit: int = 500) -> list[dict[str, Any]]:
+        """List wiki pages indexed in Milvus with chunk counts."""
+        client = self._get_client()
+        if client is None:
+            return []
+
+        path_counts = self._collect_paths(client)
+        items = [{"path": path, "chunk_count": count} for path, count in sorted(path_counts.items())]
+        return items[:limit]
+
+    def list_chunks(
+        self,
+        path: str | None = None,
+        keyword: str | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """List indexed chunks with optional filters and pagination."""
+        client = self._get_client()
+        if client is None:
+            return {"items": [], "total": 0, "offset": offset, "limit": limit}
+
+        filter_expr = _build_list_filter(path, keyword)
+        safe_limit = max(1, min(limit, 100))
+        safe_offset = max(0, offset)
+
+        try:
+            rows = client.query(
+                collection_name=COLLECTION_NAME,
+                filter=filter_expr,
+                output_fields=[
+                    "id",
+                    "path",
+                    "title",
+                    "document",
+                    "tags",
+                    "chunk_index",
+                    "total_chunks",
+                    "updated_at",
+                ],
+                limit=safe_limit,
+                offset=safe_offset,
+            )
+        except Exception as exc:
+            print(f"[Milvus] Query failed: {exc}")
+            return {"items": [], "total": 0, "offset": safe_offset, "limit": safe_limit, "error": str(exc)}
+
+        total = self._count_matching(client, filter_expr)
+        items = [_format_chunk_row(row) for row in rows]
+        items.sort(key=lambda item: (item["path"], item["chunk_index"]))
+
+        return {
+            "items": items,
+            "total": total,
+            "offset": safe_offset,
+            "limit": safe_limit,
+        }
+
+    def _collect_paths(self, client: Any) -> dict[str, int]:
+        """Aggregate chunk counts grouped by wiki page path."""
+        try:
+            rows = client.query(
+                collection_name=COLLECTION_NAME,
+                filter="",
+                output_fields=["path"],
+                limit=16384,
+            )
+        except Exception:
+            return {}
+
+        counts: dict[str, int] = {}
+        for row in rows:
+            page_path = row.get("path", "")
+            if page_path:
+                counts[page_path] = counts.get(page_path, 0) + 1
+        return counts
+
+    def _count_matching(self, client: Any, filter_expr: str) -> int:
+        """Count rows matching a filter expression."""
+        try:
+            rows = client.query(
+                collection_name=COLLECTION_NAME,
+                filter=filter_expr,
+                output_fields=["id"],
+                limit=16384,
+            )
+            return len(rows)
+        except Exception:
+            return 0
+
     def _get_client(self) -> Any | None:
         if self._client is not None:
             return self._client
@@ -163,6 +279,33 @@ def _path_filter(path: str) -> str:
     """Build a Milvus filter expression for a wiki page path."""
     escaped = path.replace("\\", "\\\\").replace('"', '\\"')
     return f'path == "{escaped}"'
+
+
+def _build_list_filter(path: str | None, keyword: str | None) -> str:
+    """Build a Milvus filter expression for admin listing."""
+    parts: list[str] = []
+    if path:
+        parts.append(_path_filter(path))
+    if keyword:
+        escaped = keyword.replace("\\", "\\\\").replace('"', '\\"')
+        parts.append(f'document like "%{escaped}%"')
+    return " and ".join(parts)
+
+
+def _format_chunk_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a Milvus query row for API responses."""
+    document = row.get("document") or ""
+    return {
+        "chunk_id": row.get("id", ""),
+        "path": row.get("path", ""),
+        "title": row.get("title", ""),
+        "document": document,
+        "document_preview": document[:200],
+        "tags": row.get("tags", ""),
+        "chunk_index": int(row.get("chunk_index", 0)),
+        "total_chunks": int(row.get("total_chunks", 0)),
+        "updated_at": row.get("updated_at", ""),
+    }
 
 
 _vector_store: MilvusVectorStore | None = None
