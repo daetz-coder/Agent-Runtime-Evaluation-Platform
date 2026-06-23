@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Agent Runtime Evaluation Platform is designed to evaluate the runtime quality of AI agents across 5 key dimensions. The platform uses LangGraph for workflow orchestration and FastAPI for the API layer.
+The Agent Runtime Evaluation Platform evaluates the runtime quality of AI agents across 6 key dimensions. The platform uses LangGraph for workflow orchestration and FastAPI for the API layer.
 
 ## System Architecture
 
@@ -10,7 +10,7 @@ The Agent Runtime Evaluation Platform is designed to evaluate the runtime qualit
 ┌─────────────────────────────────────────────────────────────────┐
 │                        API Layer (FastAPI)                       │
 ├─────────────────────────────────────────────────────────────────┤
-│  /api/v1/tasks     │  /api/v1/evaluations  │  /api/v1/reports   │
+│  /api/v1/tasks     │  /api/v1/evaluations  │  /api/v1/reports  │  /api/v1/benchmark │
 └────────────────────┴──────────────────────┴────────────────────┘
                               │
                               ▼
@@ -76,7 +76,7 @@ The Agent Runtime Evaluation Platform is designed to evaluate the runtime qualit
 The evaluation workflow is orchestrated using LangGraph:
 
 1. **Validate Input**: Check required fields
-2. **Parallel Evaluation**: Run 5 evaluators simultaneously
+2. **Parallel Evaluation**: Run 6 evaluators simultaneously
 3. **Aggregate Results**: Combine scores and generate report
 
 ### 4. Evaluators
@@ -90,6 +90,7 @@ Each evaluator focuses on a specific dimension:
 | Tool Use | Tool selection | Selection Quality, Parameter Accuracy, Result Utilization |
 | Memory | Information retention | Retention, Relevance, Consistency |
 | Replan | Replanning decisions | Trigger Appropriateness, Adaptation Quality, Learning |
+| Retrieval | RAG / retrieval quality | Relevance, Evidence Accuracy, Coverage, Hallucination detection |
 
 ### 5. Database Models
 

@@ -245,7 +245,7 @@ GET /reports/tasks/{task_id}/history
 GET /reports/dimensions/{dimension}
 ```
 
-**Valid dimensions:** planning, tactical, tool_use, memory, replan
+**Valid dimensions:** planning, tactical, tool_use, memory, replan, retrieval
 
 ## Error Responses
 

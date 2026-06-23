@@ -11,7 +11,7 @@
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/agent-eval-platform.git
+git clone https://github.com/daetz-coder/Agent-Runtime-Evaluation-Platform.git
 cd agent-eval-platform
 ```
 
