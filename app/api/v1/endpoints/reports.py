@@ -287,23 +287,24 @@ async def get_trends(db: AsyncSession = Depends(get_db)):
     获取评估趋势数据（Dashboard 趋势图）。
     返回最近 30 条按日期分组的评估分数均值。
     """
-    from sqlalchemy import func as sa_func, cast, Date
+    from sqlalchemy import func as sa_func, text
 
+    # SQLite 兼容：用 func.date() 替代 cast(Date)，避免 timezone 字符串解析报错
     result = await db.execute(
         select(
-            cast(Evaluation.completed_at, Date).label("date"),
+            sa_func.date(Evaluation.completed_at).label("date"),
             sa_func.avg(Evaluation.overall_score).label("avg_overall"),
             sa_func.avg(Evaluation.planning_score).label("avg_planning"),
             sa_func.avg(Evaluation.tactical_score).label("avg_tactical"),
             sa_func.avg(Evaluation.tool_use_score).label("avg_tool_use"),
             sa_func.avg(Evaluation.memory_score).label("avg_memory"),
             sa_func.avg(Evaluation.replan_score).label("avg_replan"),
-            func.avg(Evaluation.retrieval_score).label("avg_retrieval"),
+            sa_func.avg(Evaluation.retrieval_score).label("avg_retrieval"),
             sa_func.count(Evaluation.id).label("count"),
         )
         .where(Evaluation.status == EvaluationStatus.COMPLETED)
-        .group_by(cast(Evaluation.completed_at, Date))
-        .order_by(cast(Evaluation.completed_at, Date).desc())
+        .group_by(sa_func.date(Evaluation.completed_at))
+        .order_by(sa_func.date(Evaluation.completed_at).desc())
         .limit(30)
     )
     rows = result.all()
