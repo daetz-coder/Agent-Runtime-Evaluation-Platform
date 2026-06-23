@@ -1,43 +1,32 @@
 """WikiSyncManager — Wiki 数据库同步管理器
 
-确保 Markdown、ChromaDB、BM25、Git 四端一致。
+确保 Markdown、Milvus、BM25、Git 四端一致。
 所有写操作（REST API、Agent CRUD）应经此模块。
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
-from app.wiki_agent.config import settings
-from app.wiki_agent.wiki import service, git_service
-from app.wiki_agent.wiki.schemas import WikiPageCreate, WikiPageUpdate
-from app.wiki_agent.agent.tools.chunker import chunk_markdown
 from app.wiki_agent.agent.tools.bm25_index import get_bm25_index
+from app.wiki_agent.agent.tools.chunker import chunk_markdown
+from app.wiki_agent.agent.tools.vector_store import ChunkRecord, get_vector_store
+from app.wiki_agent.config import settings
+from app.wiki_agent.wiki import git_service, service
+from app.wiki_agent.wiki.schemas import WikiPageCreate, WikiPageUpdate
 
 
 class WikiSyncManager:
     """Wiki 数据库同步管理器"""
 
-    def __init__(self):
-        self._chroma_collection = None
+    def __init__(self) -> None:
         self._embedding_model = None
 
     @property
-    def chroma_collection(self):
-        """延迟初始化 ChromaDB collection"""
-        if self._chroma_collection is None:
-            try:
-                import chromadb
-                client = chromadb.PersistentClient(path=settings.CHROMA_DIR)
-                self._chroma_collection = client.get_or_create_collection(
-                    name="wiki_knowledge",
-                    metadata={"hnsw:space": "cosine"},
-                )
-            except Exception as e:
-                print(f"[WikiSync] ChromaDB 初始化失败: {e}")
-                self._chroma_collection = None
-        return self._chroma_collection
+    def vector_store(self):
+        """延迟初始化 Milvus vector store"""
+        return get_vector_store()
 
     @property
     def embedding_model(self):
@@ -45,6 +34,7 @@ class WikiSyncManager:
         if self._embedding_model is None:
             try:
                 from sentence_transformers import SentenceTransformer
+
                 self._embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_PATH)
                 print("[WikiSync] Embedding 模型已加载")
             except Exception as e:
@@ -64,7 +54,7 @@ class WikiSyncManager:
 
         流程:
         1. 写入 Markdown 文件
-        2. 生成 embedding 并存入 ChromaDB
+        2. 生成 embedding 并存入 Milvus
         3. Git 提交
 
         Args:
@@ -78,7 +68,6 @@ class WikiSyncManager:
             dict: 创建结果
         """
         try:
-            # Step 1: 写入 Markdown 文件
             page = service.create_page(
                 path,
                 WikiPageCreate(
@@ -89,8 +78,7 @@ class WikiSyncManager:
                 ),
             )
 
-            # Step 2: 更新 ChromaDB 向量索引
-            self._sync_to_chroma(path, title, content, tags or [])
+            self._sync_to_vector_store(path, title, content, tags or [])
 
             git_service.commit_changes(
                 git_message or f"创建知识: {title}",
@@ -127,7 +115,7 @@ class WikiSyncManager:
 
         流程:
         1. 更新 Markdown 文件
-        2. 更新 ChromaDB 向量索引
+        2. 更新 Milvus 向量索引
         3. Git 提交
 
         Args:
@@ -140,7 +128,6 @@ class WikiSyncManager:
             dict: 更新结果
         """
         try:
-            # Step 1: 更新 Markdown 文件
             page = service.update_page(
                 path,
                 WikiPageUpdate(
@@ -151,11 +138,10 @@ class WikiSyncManager:
                 ),
             )
 
-            # Step 2: 更新 ChromaDB 向量索引
             updated_content = content or page.content
             updated_title = title or page.title
             updated_tags = tags or page.tags
-            self._sync_to_chroma(path, updated_title, updated_content, updated_tags)
+            self._sync_to_vector_store(path, updated_title, updated_content, updated_tags)
 
             git_service.commit_changes(
                 git_message or f"更新知识: {page.title}",
@@ -184,7 +170,7 @@ class WikiSyncManager:
 
         流程:
         1. 删除 Markdown 文件
-        2. 删除 ChromaDB 向量
+        2. 删除 Milvus 向量
         3. Git 提交
 
         Args:
@@ -194,11 +180,8 @@ class WikiSyncManager:
             dict: 删除结果
         """
         try:
-            # Step 1: 删除 Markdown 文件
             service.delete_page(path)
-
-            # Step 2: 删除 ChromaDB 向量
-            self._delete_from_chroma(path)
+            self._delete_from_vector_store(path)
 
             git_service.commit_changes(
                 git_message or f"删除知识: {path}",
@@ -223,19 +206,19 @@ class WikiSyncManager:
             }
 
     def reindex_page(self, path: str) -> dict:
-        """根据磁盘上的 Markdown 重建 ChromaDB + BM25 索引（用于 Git 回滚等）"""
+        """根据磁盘上的 Markdown 重建 Milvus + BM25 索引（用于 Git 回滚等）"""
         try:
             page = service.get_page(path)
-            self._sync_to_chroma(path, page.title, page.content, page.tags or [])
+            self._sync_to_vector_store(path, page.title, page.content, page.tags or [])
             return {"status": "ok", "path": path, "message": f"已重建索引: {page.title}"}
         except FileNotFoundError:
-            self._delete_from_chroma(path)
+            self._delete_from_vector_store(path)
             return {"status": "ok", "path": path, "message": f"条目已删除，已清理索引: {path}"}
         except Exception as e:
             return {"status": "error", "message": f"索引同步失败: {str(e)}"}
 
     def rollback(self, path: str, commit_hash: str) -> dict:
-        """Git 回滚文件内容，并同步 ChromaDB + BM25"""
+        """Git 回滚文件内容，并同步 Milvus + BM25"""
         ok = git_service.rollback(path, commit_hash)
         if not ok:
             return {"status": "error", "message": "回滚失败"}
@@ -266,14 +249,14 @@ class WikiSyncManager:
             git_message=f"导入条目: {title} (来源: {source})",
         )
 
-    def _sync_to_chroma(
+    def _sync_to_vector_store(
         self,
         path: str,
         title: str,
         content: str,
         tags: list[str],
-    ):
-        """同步到 ChromaDB（带分块）
+    ) -> None:
+        """同步到 Milvus（带分块）
 
         Args:
             path: 知识条目路径
@@ -281,96 +264,55 @@ class WikiSyncManager:
             content: 条目内容
             tags: 标签列表
         """
-        collection = self.chroma_collection
-        if collection is None:
-            print("[WikiSync] ChromaDB 不可用，跳过向量同步")
+        store = self.vector_store
+        if not store.available:
+            print("[WikiSync] Milvus 不可用，跳过向量同步")
             return
 
         try:
-            # 先删除该条目的所有旧分块
-            self._delete_chunks_from_chroma(path)
+            store.delete_by_path(path)
 
-            # 分块
             chunks = chunk_markdown(content, chunk_size=500, chunk_overlap=50)
             if not chunks:
                 chunks = [content]
 
-            # 为每个分块生成 embedding 并存储
-            chunk_ids = []
-            embeddings = []
-            documents = []
-            metadatas = []
-
+            updated_at = datetime.now().isoformat()
+            records: list[ChunkRecord] = []
             for i, chunk in enumerate(chunks):
-                chunk_id = f"{path}#chunk{i}"
-                chunk_ids.append(chunk_id)
+                records.append(
+                    ChunkRecord(
+                        chunk_id=f"{path}#chunk{i}",
+                        vector=self._generate_embedding(f"{title}\n{chunk}"),
+                        path=path,
+                        title=title,
+                        document=chunk,
+                        tags=",".join(tags),
+                        chunk_index=i,
+                        total_chunks=len(chunks),
+                        updated_at=updated_at,
+                    )
+                )
 
-                embedding = self._generate_embedding(f"{title}\n{chunk}")
-                embeddings.append(embedding)
+            store.insert_chunks(records)
+            print(f"[WikiSync] Milvus 已同步: {path} ({len(chunks)} 块)")
 
-                documents.append(chunk)
-                metadatas.append({
-                    "path": path,
-                    "title": title,
-                    "tags": ",".join(tags),
-                    "chunk_index": i,
-                    "total_chunks": len(chunks),
-                    "updated_at": datetime.now().isoformat(),
-                })
-
-            # 批量添加
-            collection.add(
-                ids=chunk_ids,
-                embeddings=embeddings,
-                documents=documents,
-                metadatas=metadatas,
-            )
-
-            print(f"[WikiSync] ChromaDB 已同步: {path} ({len(chunks)} 块)")
-
-            # 同步 BM25 索引
             bm25 = get_bm25_index()
             bm25.add_document(path, title, chunks)
             bm25.save()
             print(f"[WikiSync] BM25 已同步: {path} ({len(chunks)} 块)")
         except Exception as e:
-            print(f"[WikiSync] ChromaDB 同步失败: {e}")
+            print(f"[WikiSync] Milvus 同步失败: {e}")
 
-    def _delete_chunks_from_chroma(self, path: str):
-        """删除指定条目的所有分块
-
-        Args:
-            path: 知识条目路径
-        """
-        collection = self.chroma_collection
-        if collection is None:
-            return
-
-        try:
-            # 查询该条目的所有分块
-            results = collection.get(
-                where={"path": path},
-                include=[],
-            )
-            if results["ids"]:
-                collection.delete(ids=results["ids"])
-                print(f"[WikiSync] 已删除旧分块: {len(results['ids'])} 个")
-        except Exception as e:
-            # 如果 where 查询失败，尝试删除主记录
-            try:
-                collection.delete(ids=[path])
-            except Exception:
-                pass
-
-    def _delete_from_chroma(self, path: str):
-        """从 ChromaDB 和 BM25 删除（包括所有分块）
+    def _delete_from_vector_store(self, path: str) -> None:
+        """从 Milvus 和 BM25 删除（包括所有分块）
 
         Args:
             path: 知识条目路径
         """
-        self._delete_chunks_from_chroma(path)
+        deleted = self.vector_store.delete_by_path(path)
+        if deleted:
+            print(f"[WikiSync] 已删除旧分块: {deleted} 个")
 
-        # 同步删除 BM25 索引
         bm25 = get_bm25_index()
         bm25.remove_document(path)
         bm25.save()
@@ -387,13 +329,13 @@ class WikiSyncManager:
         """
         model = self.embedding_model
         if model is None:
-            return [0.0] * 512
+            return [0.0] * settings.EMBEDDING_DIM
         try:
             embedding = model.encode(text)
             return embedding.tolist()
         except Exception as e:
             print(f"[WikiSync] Embedding 生成失败: {e}")
-            return [0.0] * 512
+            return [0.0] * settings.EMBEDDING_DIM
 
 
 # 全局实例

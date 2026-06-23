@@ -1,6 +1,6 @@
 """CRUD 工具 — 知识条目的增删改查操作
 
-所有操作都通过 WikiSyncManager 执行，确保 Markdown + ChromaDB + Git 一致性
+所有操作都通过 WikiSyncManager 执行，确保 Markdown + Milvus + Git 一致性
 """
 
 from __future__ import annotations

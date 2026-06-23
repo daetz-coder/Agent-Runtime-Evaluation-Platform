@@ -1,4 +1,4 @@
-"""Wiki API 路由 — 写操作经 WikiSyncManager 同步 Markdown + ChromaDB + BM25 + Git"""
+"""Wiki API 路由 — 写操作经 WikiSyncManager 同步 Markdown + Milvus + BM25 + Git"""
 
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ def get_history(path: str, limit: int = 20):
 
 @router.post("/page/{path:path}/rollback")
 def rollback(path: str, commit_hash: str):
-    """回滚条目到指定版本，并同步 ChromaDB + BM25"""
+    """回滚条目到指定版本，并同步 Milvus + BM25"""
     result = sync_manager.rollback(path, commit_hash)
     _raise_on_sync_error(result)
     return {"status": "ok", "message": f"已回滚到 {commit_hash}"}

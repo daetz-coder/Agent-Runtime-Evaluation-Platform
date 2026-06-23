@@ -15,7 +15,9 @@ class WikiAgentSettings(BaseSettings):
 
     # Paths
     KNOWLEDGE_DIR: str = str(WIKI_AGENT_ROOT / "knowledge")
-    CHROMA_DIR: str = str(WIKI_AGENT_ROOT / "chroma_db")
+    MILVUS_URI: str = str(WIKI_AGENT_ROOT / "milvus.db")
+    MILVUS_COLLECTION: str = "wiki_knowledge"
+    EMBEDDING_DIM: int = 512
     EMBEDDING_MODEL_PATH: str = str(WIKI_AGENT_ROOT / "models" / "bge-small-zh-v1.5")
     DB_PATH: str = str(WIKI_DATA_DIR / "chat.db")
     BM25_INDEX_PATH: str = str(WIKI_DATA_DIR / "bm25_index.pkl")

@@ -96,7 +96,7 @@ cd frontend && npm install && cd ..
 **方式一：命令行（推荐）**
 
 ```bash
-# 终端 1: 启动后端（自动初始化 ChromaDB + BM25 索引）
+# 终端 1: 启动后端（自动初始化 Milvus + BM25 索引）
 python -m app.main
 # → 后端运行在 http://localhost:8000
 

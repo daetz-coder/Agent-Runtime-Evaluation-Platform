@@ -49,7 +49,7 @@ class BM25Index:
         self.remove_document(path)
 
         for i, chunk in enumerate(chunks):
-            # 拼接标题 + chunk 内容用于分词（与 ChromaDB 一致）
+            # 拼接标题 + chunk 内容用于分词（与 Milvus 一致）
             text = f"{title}\n{chunk}"
             tokens = _tokenize(text)
             self._tokenized_corpus.append(tokens)

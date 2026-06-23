@@ -45,7 +45,7 @@ htmlcov/
 data/wiki_agent/
 
 # Wiki Agent runtime data
-example/wiki-agent/chroma_db/
+example/wiki-agent/milvus.db/
 example/wiki-agent/knowledge/
 
 # Logs

@@ -12,7 +12,8 @@ langchain-openai>=0.2.0
 langchain-anthropic>=0.3.0
 
 # Wiki Agent
-chromadb>=0.5.0
+pymilvus[milvus_lite]>=2.4.0
+milvus-lite>=2.4.0
 sentence-transformers>=3.0.0
 gitpython>=3.1.0
 jieba>=0.42.1

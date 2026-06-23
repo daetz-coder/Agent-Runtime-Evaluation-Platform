@@ -43,7 +43,7 @@ app/models/            Pydantic schemas (API) + ActionType constants (trajectory
 app/db/                SQLAlchemy ORM models (AgentTask, AgentTrajectory, Evaluation) + async session
 app/adapters/          Pluggable adapters: langgraph (instrument), llm_proxy, callback
 app/collectors/        trajectory.py — trajectory step collection
-app/wiki_agent/        Integrated RAG Wiki Agent (Chromadb, sentence-transformers, BM25)
+app/wiki_agent/        Integrated RAG Wiki Agent (Milvus, sentence-transformers, BM25)
 app/core/config.py     pydantic-settings from .env, case-sensitive
 ```
 
