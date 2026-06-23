@@ -9,6 +9,8 @@ This module defines the evaluation workflow using LangGraph:
 """
 
 from typing import Any, Dict, List, Optional, TypedDict
+import logging
+import traceback
 from langgraph.graph import StateGraph, END
 from langchain_core.language_models import BaseChatModel
 
@@ -21,6 +23,8 @@ from app.models.schemas import (
     MemoryScore,
     ReplanScore,
 )
+logger = logging.getLogger(__name__)
+
 from app.evaluators import (
     PlanningEvaluator,
     TacticalEvaluator,
@@ -99,6 +103,7 @@ async def evaluate_planning(state: EvaluationState) -> EvaluationState:
 
         return {**state, "planning_score": score.model_dump()}
     except Exception as e:
+        logger.error("Evaluation node failed: %s", e, exc_info=True)
         return {**state, "planning_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
@@ -116,6 +121,7 @@ async def evaluate_tactical(state: EvaluationState) -> EvaluationState:
 
         return {**state, "tactical_score": score.model_dump()}
     except Exception as e:
+        logger.error("Evaluation node failed: %s", e, exc_info=True)
         return {**state, "tactical_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
@@ -133,6 +139,7 @@ async def evaluate_tool_use(state: EvaluationState) -> EvaluationState:
 
         return {**state, "tool_use_score": score.model_dump()}
     except Exception as e:
+        logger.error("Evaluation node failed: %s", e, exc_info=True)
         return {**state, "tool_use_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
@@ -150,6 +157,7 @@ async def evaluate_memory(state: EvaluationState) -> EvaluationState:
 
         return {**state, "memory_score": score.model_dump()}
     except Exception as e:
+        logger.error("Evaluation node failed: %s", e, exc_info=True)
         return {**state, "memory_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
@@ -167,6 +175,7 @@ async def evaluate_replan(state: EvaluationState) -> EvaluationState:
 
         return {**state, "replan_score": score.model_dump()}
     except Exception as e:
+        logger.error("Evaluation node failed: %s", e, exc_info=True)
         return {**state, "replan_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 

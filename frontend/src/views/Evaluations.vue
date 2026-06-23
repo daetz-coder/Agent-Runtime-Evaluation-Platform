@@ -157,6 +157,9 @@
         </el-table-column>
       </el-table>
 
+      <!-- 空状态 -->
+      <el-empty v-if="!loading && filteredEvaluations.length === 0" description="暂无评估记录" />
+
       <!-- Pagination -->
       <div class="pagination-wrapper">
         <el-pagination

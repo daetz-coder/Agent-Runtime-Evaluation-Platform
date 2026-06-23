@@ -104,14 +104,27 @@ Evaluate the runtime quality of AI agents across 5 dimensions:
     register_routes(wiki_router.router, "", ["wiki-agent"])
     register_routes(wiki_chat.router, "", ["wiki-agent"])
 
-    # Health check endpoint
+    from app.api.auth_middleware import AuthMiddleware
+    app.add_middleware(AuthMiddleware)
     @app.get("/health")
     async def health_check():
-        """Health check endpoint."""
+        """Health check with database connectivity."""
+        from sqlalchemy import text
+        db_status = "unknown"
+        try:
+            from app.db.database import async_session_factory
+            async with async_session_factory() as session:
+                await session.execute(text("SELECT 1"))
+            db_status = "connected"
+        except Exception:
+            db_status = "disconnected"
+
         return {
-            "status": "healthy",
+            "status": "healthy" if db_status == "connected" else "degraded",
             "app": settings.APP_NAME,
             "version": "0.1.0",
+            "database": db_status,
+            "auth_enabled": settings.AUTH_ENABLED,
         }
 
     # Root endpoint

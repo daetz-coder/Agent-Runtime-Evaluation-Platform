@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
 
+    # Auth
+    AUTH_ENABLED: bool = False
+    API_KEY: str = ""
+
     # Evaluation Adapter
     EVAL_ENABLED: bool = True
     EVAL_AUTO_COLLECT: bool = True
