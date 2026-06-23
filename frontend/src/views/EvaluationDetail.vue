@@ -14,7 +14,7 @@
     <template v-if="evaluation">
       <!-- In-progress: SSE stream progress -->
       <el-card
-        v-if="evaluation.status === 'in_progress' && useStreamMode"
+        v-if="evaluation.status === 'in_progress' && shouldUseStream"
         class="stream-progress-card"
         shadow="hover"
       >
@@ -306,7 +306,7 @@
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { ArrowLeft, Warning, CircleCheck, DataAnalysis, TrendCharts, Tools, Memory, Refresh, Loading } from '@element-plus/icons-vue'
+import { ArrowLeft, Warning, CircleCheck, Loading } from '@element-plus/icons-vue'
 import { evaluationApi, taskApi, withSilent } from '@/api'
 import { connectEvaluationStream } from '@/utils/evaluationStream'
 import dayjs from 'dayjs'
@@ -327,7 +327,11 @@ let streamAbort: AbortController | null = null
 const consensusData = ref<any>(null)
 const consensusChart = ref<HTMLElement>()
 
-const useStreamMode = computed(() => route.query.stream === '1')
+const streamStartedForId = ref<string | null>(null)
+
+const shouldUseStream = computed(
+  () => evaluation.value?.stream_mode === true || route.query.stream === '1',
+)
 const streaming = ref(false)
 const streamError = ref('')
 const streamProgress = ref({
@@ -640,8 +644,11 @@ const fetchData = async () => {
     }
 
     // Stream mode: drive evaluation via SSE instead of polling
-    if (data.status === 'in_progress' && useStreamMode.value && streamProgress.value.completed < streamProgress.value.total) {
-      startEvaluationStream(data.task_id, evalId)
+    if (data.status === 'in_progress' && (data.stream_mode || route.query.stream === '1')) {
+      if (streamStartedForId.value !== evalId) {
+        streamStartedForId.value = evalId
+        startEvaluationStream(data.task_id, evalId)
+      }
     } else if (data.status === 'in_progress') {
       startPolling(evalId)
     }
@@ -683,6 +690,7 @@ const startEvaluationStream = async (taskId: string, evalId: string) => {
         },
         onDone: async () => {
           streaming.value = false
+          streamStartedForId.value = null
           await fetchData()
         },
       },
@@ -747,6 +755,13 @@ onUnmounted(() => {
   radarInstance?.dispose()
   stopPolling()
   stopStream()
+})
+
+watch(() => route.params.id, () => {
+  streamStartedForId.value = null
+  stopPolling()
+  stopStream()
+  fetchData()
 })
 
 watch(selectedDimension, () => {

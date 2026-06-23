@@ -69,7 +69,7 @@ const router = createRouter({
 })
 
 // Navigation guard
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   document.title = `${to.meta.title || 'Agent Evaluation'} - Agent Evaluation Platform`
   next()
 })
