@@ -109,6 +109,14 @@ export const reportApi = {
   getTrends() {
     return api.get('/reports/trends')
   },
+
+  getCompare(taskId: string, limit = 10, config?: ApiRequestConfig) {
+    return api.get(`/reports/compare/${taskId}`, { params: { limit }, ...config })
+  },
+
+  getExportUrl(taskId: string) {
+    return `/api/v1/reports/export/${taskId}`
+  },
 }
 
 export { withSilent }

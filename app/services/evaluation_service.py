@@ -229,7 +229,6 @@ class EvaluationService:
             if use_parallel:
                 from app.graphs.evaluation_graph import evaluate_parallel
                 from app.models.schemas import TrajectoryStep as TS
-                import json
 
                 steps = [TS(
                     step_number=s["step_number"],
@@ -239,10 +238,13 @@ class EvaluationService:
                     timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
                 ) for s in trajectory]
                 parallel_result = await evaluate_parallel(task.goal, steps, context or task.context)
-                result = {"overall_evaluation": parallel_result, "error": None}
+                overall_eval = self._build_overall_from_parallel(parallel_result)
+                overall = overall_eval.model_dump()
+                result = {"overall_evaluation": overall, "error": None}
             else:
                 graph = create_evaluation_graph()
                 result = await graph.ainvoke(state)
+                overall = result.get("overall_evaluation", {})
 
             # Check for errors
             if result.get("error"):
@@ -250,15 +252,19 @@ class EvaluationService:
                 await self.db.flush()
                 return None
 
+            if not overall:
+                evaluation.status = EvaluationStatus.FAILED
+                await self.db.flush()
+                return None
+
             # Update evaluation with results
-            overall = result.get("overall_evaluation", {})
-            evaluation.planning_score = overall.get("planning", {}).get("overall")
-            evaluation.tactical_score = overall.get("tactical", {}).get("overall")
-            evaluation.tool_use_score = overall.get("tool_use", {}).get("overall")
-            evaluation.memory_score = overall.get("memory", {}).get("overall")
-            evaluation.replan_score = overall.get("replan", {}).get("overall")
-            evaluation.retrieval_score = overall.get("retrieval", {}).get("overall")
-            evaluation.overall_score = overall.get("overall_score") or overall.get("overall", {}).get("overall_score") or overall.get("overall", {}).get("overall_score")
+            evaluation.planning_score = self._dim_score(overall, "planning")
+            evaluation.tactical_score = self._dim_score(overall, "tactical")
+            evaluation.tool_use_score = self._dim_score(overall, "tool_use")
+            evaluation.memory_score = self._dim_score(overall, "memory")
+            evaluation.replan_score = self._dim_score(overall, "replan")
+            evaluation.retrieval_score = self._dim_score(overall, "retrieval")
+            evaluation.overall_score = overall.get("overall_score")
 
             # Store detailed feedback
             evaluation.planning_feedback = overall.get("planning")
@@ -283,7 +289,7 @@ class EvaluationService:
                 status=evaluation.status.value,
                 created_at=evaluation.created_at,
                 completed_at=evaluation.completed_at,
-                evaluation=OverallEvaluation(**overall) if overall else None,
+                evaluation=OverallEvaluation(**overall),
             )
 
         except Exception as e:
@@ -483,6 +489,40 @@ class EvaluationService:
             for step in steps
         ]
 
+    @staticmethod
+    def _dim_score(overall: Dict[str, Any], dimension: str) -> Optional[float]:
+        """Extract dimension overall score from normalized evaluation dict."""
+        dim_data = overall.get(dimension)
+        if isinstance(dim_data, dict):
+            return dim_data.get("overall")
+        return None
+
+    def _build_overall_from_parallel(self, parallel_result: Dict[str, Any]) -> OverallEvaluation:
+        """Normalize evaluate_parallel() output into OverallEvaluation."""
+        nested = parallel_result.get("overall")
+        if isinstance(nested, dict):
+            overall_score = float(nested.get("overall_score", 0))
+        else:
+            overall_score = float(parallel_result.get("overall_score", 0))
+
+        feedback = {
+            dim: parallel_result.get(dim) or {}
+            for dim in ("planning", "tactical", "tool_use", "memory", "replan", "retrieval")
+        }
+        retrieval_raw = feedback.get("retrieval") or {}
+
+        return OverallEvaluation(
+            planning=feedback["planning"],
+            tactical=feedback["tactical"],
+            tool_use=feedback["tool_use"],
+            memory=feedback["memory"],
+            replan=feedback["replan"],
+            retrieval=RetrievalScore(**retrieval_raw) if retrieval_raw else None,
+            overall_score=overall_score,
+            summary=self._build_summary(feedback, overall_score),
+            recommendations=self._build_recommendations(feedback),
+        )
+
     def _build_summary(self, feedback: Dict[str, Any], overall_score: float) -> str:
         """Rebuild a useful summary from persisted dimension feedback."""
         scores = {
@@ -508,6 +548,7 @@ class EvaluationService:
             "tool_use": "Improve tool selection, parameters, and result use.",
             "memory": "Improve retention and consistency across context.",
             "replan": "Improve replanning when failures or new facts appear.",
+            "retrieval": "Improve RAG retrieval relevance and evidence grounding.",
         }
         for name, message in labels.items():
             if (feedback.get(name) or {}).get("overall", 0) < 60:

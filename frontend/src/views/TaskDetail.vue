@@ -7,6 +7,10 @@
         <h2>任务详情</h2>
       </div>
       <div class="header-right">
+        <el-button @click="handleExport" :disabled="!hasCompletedEval">
+          <el-icon><Download /></el-icon>
+          导出报告
+        </el-button>
         <el-button type="primary" @click="handleEvaluate" :loading="evaluating">
           <el-icon><VideoPlay /></el-icon>
           运行评估
@@ -91,6 +95,38 @@
             </el-card>
           </el-timeline-item>
         </el-timeline>
+      </el-card>
+
+      <!-- Compare Section -->
+      <el-card v-if="compareData && compareData.history?.length > 0" class="compare-card" shadow="hover">
+        <template #header>
+          <div class="card-header">
+            <span>迭代对比</span>
+            <el-tag :type="compareData.trend === 'improving' ? 'success' : compareData.trend === 'declining' ? 'danger' : 'info'">
+              {{ compareTrendLabel }}
+            </el-tag>
+          </div>
+        </template>
+        <div class="compare-summary">
+          <span>共 {{ compareData.total_evaluations }} 轮评估</span>
+          <span v-if="compareData.score_delta !== 0">
+            综合分变化：{{ compareData.score_delta > 0 ? '+' : '' }}{{ compareData.score_delta }}
+          </span>
+        </div>
+        <el-table :data="compareData.history" style="width: 100%; margin-top: 12px" size="small">
+          <el-table-column prop="created_at" label="时间" width="180">
+            <template #default="{ row }">
+              {{ formatDateTime(row.created_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="overall" label="综合" width="80" />
+          <el-table-column prop="planning" label="规划" width="70" />
+          <el-table-column prop="tactical" label="战术" width="70" />
+          <el-table-column prop="tool_use" label="工具" width="70" />
+          <el-table-column prop="memory" label="记忆" width="70" />
+          <el-table-column prop="replan" label="重规划" width="80" />
+          <el-table-column prop="retrieval" label="检索" width="70" />
+        </el-table>
       </el-card>
 
       <!-- Evaluations History -->
@@ -187,9 +223,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, VideoPlay, Plus } from '@element-plus/icons-vue'
+import { ArrowLeft, VideoPlay, Plus, Download } from '@element-plus/icons-vue'
 import { taskApi, evaluationApi, reportApi, withSilent } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
@@ -204,12 +240,25 @@ const submitting = ref(false)
 const task = ref<any>(null)
 const trajectory = ref<any[]>([])
 const evaluations = ref<any[]>([])
+const compareData = ref<any>(null)
 const showTrajectoryDialog = ref(false)
 const trajectorySteps = ref<{
   action_type: string
   action_detail: string
   observation: string
 }[]>([])
+
+const hasCompletedEval = computed(() =>
+  evaluations.value.some((e) => e.status === 'completed')
+)
+
+const compareTrendLabel = computed(() => {
+  const trend = compareData.value?.trend
+  if (trend === 'improving') return '质量提升'
+  if (trend === 'declining') return '质量下降'
+  if (trend === 'stable') return '质量稳定'
+  return '数据不足'
+})
 
 // Methods
 const getStatusType = (status: string) => {
@@ -301,14 +350,16 @@ const fetchData = async () => {
 
   loading.value = true
   try {
-    const [taskData, history, trajData] = await Promise.all([
+    const [taskData, history, trajData, compare] = await Promise.all([
       taskApi.getById(taskId),
       reportApi.getTaskHistory(taskId, withSilent()).catch(() => ({ evaluations: [] })),
       taskApi.getTrajectory(taskId, withSilent()).catch(() => ({ steps: [] })),
+      reportApi.getCompare(taskId, 10, withSilent()).catch(() => null),
     ])
     task.value = taskData
     evaluations.value = history.evaluations || []
     trajectory.value = trajData.steps || []
+    compareData.value = compare
   } catch (error) {
     console.error('Failed to fetch task:', error)
     if ((error as any)?.response?.status === 404) {
@@ -318,6 +369,11 @@ const fetchData = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const handleExport = () => {
+  if (!task.value?.id) return
+  window.open(reportApi.getExportUrl(task.value.id), '_blank')
 }
 
 const handleEvaluate = async () => {
@@ -516,6 +572,23 @@ onMounted(() => {
           font-size: 12px;
         }
       }
+    }
+  }
+
+  .compare-card {
+    margin-bottom: 20px;
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .compare-summary {
+      display: flex;
+      gap: 16px;
+      color: #606266;
+      font-size: 14px;
     }
   }
 
