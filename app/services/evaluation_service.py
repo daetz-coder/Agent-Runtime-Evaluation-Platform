@@ -258,7 +258,7 @@ class EvaluationService:
             evaluation.memory_score = overall.get("memory", {}).get("overall")
             evaluation.replan_score = overall.get("replan", {}).get("overall")
             evaluation.retrieval_score = overall.get("retrieval", {}).get("overall")
-            evaluation.overall_score = overall.get("overall_score") or overall.get("overall", {}).get("overall_score")
+            evaluation.overall_score = overall.get("overall_score") or overall.get("overall", {}).get("overall_score") or overall.get("overall", {}).get("overall_score")
 
             # Store detailed feedback
             evaluation.planning_feedback = overall.get("planning")
@@ -313,6 +313,7 @@ class EvaluationService:
                 "tool_use": evaluation.tool_use_feedback or {},
                 "memory": evaluation.memory_feedback or {},
                 "replan": evaluation.replan_feedback or {},
+                "retrieval": evaluation.retrieval_feedback or {},
             }
             overall = OverallEvaluation(
                 planning=feedback["planning"],
@@ -320,6 +321,7 @@ class EvaluationService:
                 tool_use=feedback["tool_use"],
                 memory=feedback["memory"],
                 replan=feedback["replan"],
+                retrieval=RetrievalScore(**feedback["retrieval"]) if feedback.get("retrieval") else None,
                 overall_score=evaluation.overall_score,
                 summary=self._build_summary(feedback, evaluation.overall_score),
                 recommendations=self._build_recommendations(feedback),

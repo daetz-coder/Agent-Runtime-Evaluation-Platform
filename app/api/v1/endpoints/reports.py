@@ -37,10 +37,11 @@ async def get_evaluation_summary(
             func.avg(Evaluation.tool_use_score),
             func.avg(Evaluation.memory_score),
             func.avg(Evaluation.replan_score),
+            func.avg(Evaluation.retrieval_score),
             func.avg(Evaluation.overall_score),
         ).where(Evaluation.status == EvaluationStatus.COMPLETED)
     )
-    total, avg_planning, avg_tactical, avg_tool, avg_memory, avg_replan, avg_overall = stats_result.one()
+    total, avg_planning, avg_tactical, avg_tool, avg_memory, avg_replan, avg_retrieval, avg_overall = stats_result.one()
     total = total or 0
 
     if total == 0:
@@ -60,6 +61,7 @@ async def get_evaluation_summary(
                 "tool_use": [],
                 "memory": [],
                 "replan": [],
+                "retrieval": [],
                 "overall": [],
             },
             top_issues=["No evaluations completed yet"],
@@ -73,6 +75,7 @@ async def get_evaluation_summary(
             Evaluation.tool_use_score,
             Evaluation.memory_score,
             Evaluation.replan_score,
+            Evaluation.retrieval_score,
             Evaluation.overall_score,
         ).where(Evaluation.status == EvaluationStatus.COMPLETED)
     )
@@ -84,6 +87,7 @@ async def get_evaluation_summary(
         "tool_use": float(avg_tool or 0),
         "memory": float(avg_memory or 0),
         "replan": float(avg_replan or 0),
+        "retrieval": float(avg_retrieval or 0),
         "overall": float(avg_overall or 0),
     }
 
@@ -93,7 +97,8 @@ async def get_evaluation_summary(
         "tool_use": [r[2] for r in score_rows if r[2] is not None],
         "memory": [r[3] for r in score_rows if r[3] is not None],
         "replan": [r[4] for r in score_rows if r[4] is not None],
-        "overall": [r[5] for r in score_rows if r[5] is not None],
+        "retrieval": [r[5] for r in score_rows if r[5] is not None],
+        "overall": [r[6] for r in score_rows if r[6] is not None],
     }
 
     top_issues = _identify_top_issues(avg_scores)
@@ -347,9 +352,9 @@ async def export_report(task_id: str, db: AsyncSession = Depends(get_db)):
 
 | Dimension | Score | Weight | Feedback |
 |-----------|-------|--------|----------|
-| Planning  | {eval_row.planning_score or 0:.1f} | 25% | {eval_row.planning_feedback or '-'} |
-| Tactical  | {eval_row.tactical_score or 0:.1f} | 25% | {eval_row.tactical_feedback or '-'} |
-| Tool Use  | {eval_row.tool_use_score or 0:.1f} | 20% | {eval_row.tool_use_feedback or '-'} |
+| Planning  | {eval_row.planning_score or 0:.1f} | 20% | {eval_row.planning_feedback or '-'} |
+| Tactical  | {eval_row.tactical_score or 0:.1f} | 20% | {eval_row.tactical_feedback or '-'} |
+| Tool Use  | {eval_row.tool_use_score or 0:.1f} | 15% | {eval_row.tool_use_feedback or '-'} |
 | Memory    | {eval_row.memory_score or 0:.1f} | 15% | {eval_row.memory_feedback or '-'} |
 | Replan    | {eval_row.replan_score or 0:.1f} | 15% | {eval_row.replan_feedback or '-'} |
 | Retrieval | {eval_row.retrieval_score or 0:.1f} | 15% | {eval_row.retrieval_feedback or '-'} |
