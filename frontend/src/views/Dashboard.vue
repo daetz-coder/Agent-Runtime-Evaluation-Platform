@@ -162,6 +162,7 @@ const trendPeriod = ref('week')
 const summaryData = ref<any>(null)
 const dashboardData = ref<any>(null)
 const recentTasks = ref<any[]>([])
+const trendData = ref<any[]>([])
 
 // Dimensions config
 const dimensions = [
@@ -300,10 +301,30 @@ const initLineChart = () => {
 
   lineInstance = echarts.init(lineChart.value)
 
-  // Mock data for trends
-  const dates = Array.from({ length: 7 }, (_, i) =>
-    dayjs().subtract(6 - i, 'day').format('MM/DD')
-  )
+  // Use real trend data, fallback to empty if no data
+  const tData = trendData.value || []
+  const dates = tData.length > 0
+    ? tData.map((t: any) => dayjs(t.date).format('MM/DD'))
+    : Array.from({ length: 7 }, (_, i) => dayjs().subtract(6 - i, 'day').format('MM/DD'))
+
+  const dimensionKeys = ['avg_planning', 'avg_tactical', 'avg_tool_use', 'avg_memory', 'avg_replan']
+  const seriesData = tData.length > 0
+    ? dimensionKeys.map(key => ({
+        name: dimensions.find(d => d.key === key.replace('avg_', ''))?.name || key,
+        type: 'line' as const,
+        smooth: true,
+        data: tData.map((t: any) => t[key] || 0),
+        itemStyle: { color: dimensions.find(d => d.key === key.replace('avg_', ''))?.color },
+        lineStyle: { width: 2 },
+      }))
+    : dimensions.map(d => ({
+        name: d.name,
+        type: 'line' as const,
+        smooth: true,
+        data: dates.map(() => Math.floor(Math.random() * 40) + 60),  // 无数据时用占位
+        itemStyle: { color: d.color },
+        lineStyle: { width: 2 },
+      }))
 
   const option: echarts.EChartsOption = {
     tooltip: {
@@ -333,18 +354,7 @@ const initLineChart = () => {
         formatter: '{value}',
       },
     },
-    series: dimensions.map(d => ({
-      name: d.name,
-      type: 'line',
-      smooth: true,
-      data: dates.map(() => Math.floor(Math.random() * 40) + 60),
-      itemStyle: {
-        color: d.color,
-      },
-      lineStyle: {
-        width: 2,
-      },
-    })),
+    series: seriesData,
   }
 
   lineInstance.setOption(option)
@@ -501,13 +511,15 @@ const initGaugeCharts = () => {
 // Fetch data
 const fetchData = async () => {
   try {
-    const [summary, dashboard] = await Promise.all([
+    const [summary, dashboard, trends] = await Promise.all([
       reportApi.getSummary(),
       taskApi.getDashboard(),
+      reportApi.getTrends(),
     ])
     summaryData.value = summary
     dashboardData.value = dashboard
     recentTasks.value = dashboard.recent_tasks || []
+    trendData.value = trends || []
 
     requestAnimationFrame(() => {
       initRadarChart()
