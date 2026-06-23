@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     EVAL_AUTO_COLLECT: bool = True
     EVAL_API_BASE_URL: str = "http://127.0.0.1:8000"
     EVAL_BATCH_SIZE: int = 10
+    EVAL_WEBHOOK_URL: str = ""
 
     class Config:
         env_file = ".env"

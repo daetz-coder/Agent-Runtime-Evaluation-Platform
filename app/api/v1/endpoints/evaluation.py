@@ -39,11 +39,30 @@ async def _run_evaluation_background(task_id: str, eval_id: str):
     try:
         async with async_session_factory() as db:
             service = EvaluationService(db)
-            await service.run_evaluation(task_id=task_id, context=None)
+            result = await service.run_evaluation(task_id=task_id, context=None)
             await db.commit()
             logger.info(f"Evaluation {eval_id} completed for task {task_id}")
+            # Webhook 通知
+            await _notify_webhook(task_id, eval_id, result)
     except Exception as e:
         logger.error(f"Evaluation {eval_id} failed for task {task_id}: {e}")
+
+
+async def _notify_webhook(task_id: str, eval_id: str, result):
+    """发送 webhook 通知（如果配置了 EVAL_WEBHOOK_URL）。"""
+    webhook_url = settings.EVAL_WEBHOOK_URL if hasattr(settings, 'EVAL_WEBHOOK_URL') else ""
+    if not webhook_url:
+        return
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(webhook_url, json={
+                "event": "evaluation.completed",
+                "task_id": task_id,
+                "evaluation_id": eval_id,
+            })
+    except Exception:
+        logger.debug("Webhook notification failed")
 
 
 @router.post("/", response_model=EvaluationResponse, status_code=202)
@@ -139,6 +158,34 @@ async def quick_evaluation(
         raise HTTPException(status_code=500, detail="Evaluation failed")
 
     return evaluation
+
+
+@router.post("/batch")
+async def batch_evaluation(
+    task_ids: List[str] = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+):
+    """
+    批量评估多个任务（异步）。
+
+    - **task_ids**: 任务 ID 列表
+    """
+    service = EvaluationService(db)
+    results = []
+    for task_id in task_ids:
+        task = await service.get_task(task_id)
+        if not task:
+            results.append({"task_id": task_id, "status": "not_found"})
+            continue
+        evaluation = await service.create_evaluation(task_id)
+        background_tasks.add_task(_run_evaluation_background, task_id, evaluation.id)
+        results.append({
+            "task_id": task_id,
+            "evaluation_id": evaluation.id,
+            "status": "accepted",
+        })
+    return {"batch_size": len(task_ids), "results": results}
 
 
 @router.delete("/{evaluation_id}")
