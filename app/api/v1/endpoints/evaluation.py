@@ -213,6 +213,7 @@ async def evaluation_stream(
         MemoryEvaluator, ReplanEvaluator,
             RetrievalEvaluator,
     )
+    from app.db.models import AgentTrajectory
     from app.models.schemas import TrajectoryStep as TS
     from sse_starlette.sse import EventSourceResponse
     import asyncio
