@@ -536,17 +536,17 @@ function scrollToBottom() {
   });
 }
 
+import { marked } from 'marked'
+
 function renderMarkdown(text) {
   if (!text) return "";
   try {
-    const { marked } = require('marked');
-    if (!renderMarkdown._parser) {
+    if (!renderMarkdown._init) {
       marked.setOptions({ breaks: true, gfm: true });
-      renderMarkdown._parser = marked;
+      renderMarkdown._init = true;
     }
-    return renderMarkdown._parser.parse(text, { async: false });
+    return marked.parse(text);
   } catch {
-    // Fallback to regex
     let html = text
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
