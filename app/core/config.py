@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-v4-flash"
 
+    # ZhipuAI (GLM) Configuration
+    ZHIPUAI_API_KEY: str = ""
+    ZHIPUAI_MODEL: str = "glm-4"
+
+    # Qwen (DashScope) Configuration — OpenAI 兼容 API
+    QWEN_API_KEY: str = ""
+    QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    QWEN_MODEL: str = "qwen-plus"
+
     # Default LLM Configuration
     DEFAULT_LLM_PROVIDER: str = "deepseek"
     DEFAULT_LLM_MODEL: str = "deepseek-v4-flash"
