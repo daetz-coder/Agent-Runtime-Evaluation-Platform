@@ -142,7 +142,7 @@
         <el-table v-else :data="evaluations" style="width: 100%">
           <el-table-column prop="id" label="评估ID" width="280">
             <template #default="{ row }">
-              <el-button type="primary" link @click="router.push(`/evaluations/${row.id}`)">
+              <el-button type="primary" link @click="router.push(`/evaluations/${row.id}${row.stream_mode ? '?stream=1' : ''}`)">
                 {{ row.id.substring(0, 8) }}...
               </el-button>
             </template>

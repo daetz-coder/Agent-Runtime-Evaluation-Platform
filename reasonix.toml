@@ -4,7 +4,25 @@
 
 config_version = 3   # schema marker for diagnostics; old versions may ignore it
 default_model = "deepseek-pro"
-# language      = "zh"   # ui/model language; empty = auto-detect from $LANG / $REASONIX_LANG
+language      = "zh"   # ui/model language; empty = auto-detect from $LANG / $REASONIX_LANG
+
+[ui]
+theme = "auto"   # auto|dark|light; CLI colors only; REASONIX_THEME can override per run
+# theme_style = "graphite"   # graphite|aurora|slate|carbon|nocturne|amber and legacy aliases
+# shortcut_layout = "desktop"   # classic|desktop; compatibility setting; Shift+Tab toggles Plan, Ctrl+Y toggles YOLO
+show_reasoning = true   # CLI: show thinking text by default; false = collapsed (toggle with Ctrl+O)
+
+[network]
+proxy_mode = "auto"   # auto|env|custom|off; auto currently uses env proxy
+# proxy_url  = "socks5://127.0.0.1:7890"   # optional custom override
+# no_proxy   = "localhost,127.0.0.1,.local"   # honored for proxy_mode = "custom"
+
+[network.proxy]
+type = "socks5"   # http|https|socks5|socks5h
+# server = "127.0.0.1"
+# port = 7890
+# username = ""
+# password = "${REASONIX_PROXY_PASSWORD}"   # optional; supports ${VAR} expansion
 
 [agent]
 # system_prompt = """..."""   # omit to use the built-in prompt for this version
@@ -49,19 +67,14 @@ enabled = true   # language server tools; servers launch lazily when used
 # disabled_skills = ["review"]   # hide noisy or unwanted skills
 
 [permissions]
-mode = "allow"
-allow = [
-    "Bash(*)",
-    "Edit",
-    "Read",
-    "explore",
-    "glob",
-    "grep",
-    "ls"
-]
-deny = [
-    "Bash(rm -rf*)"
-]
+# Per-call gating. mode = writer fallback when no rule matches: ask|allow|deny.
+# Readers always default to allow. Precedence: deny > ask > allow > fallback.
+# Rules are "Tool" or "Tool(specifier)"; e.g. Bash(go test:*), Edit(src/**).
+mode  = "allow"
+deny = ["Bash(rm -rf*)"]
+allow = ["Bash(*)", "Edit", "Read", "explore", "glob", "grep", "ls"]
+# ask = ["Edit(src/**)"]   # force a prompt even if otherwise allowed
+
 [sandbox]
 # Confine tool blast radius. File-writers (write_file/edit_file/multi_edit/move_file)
 # may only write under workspace_root (empty = current dir) and allow_write extras.
@@ -76,6 +89,46 @@ network = true
 # A custom status line: a command whose first stdout line replaces the built-in
 # data row. It receives {"model","contextUsed","contextWindow","cwd"} as JSON on stdin.
 # command = "my-statusline.sh"
+
+# Bot gateway: multi-channel IM bot for QQ, Feishu/Lark, and WeChat.
+[bot]
+enabled = false
+# model = ""   # empty = default_model
+tool_approval_mode = "ask"   # ask|auto|yolo; yolo skips tool approvals only
+max_steps = 25
+debounce_ms = 1500
+
+[bot.allowlist]
+enabled = true
+allow_all = false
+qq_users = []
+feishu_users = []
+weixin_users = []
+qq_groups = []
+feishu_groups = []
+weixin_groups = []
+
+[bot.qq]
+enabled = false
+app_id = ""
+app_secret_env = "QQ_BOT_APP_SECRET"
+sandbox = false
+
+[bot.feishu]
+enabled = false
+app_id = ""
+domain = "feishu"
+app_secret_env = "FEISHU_BOT_APP_SECRET"
+verification_token = ""
+mode = "webhook"
+webhook_port = 8080
+require_mention = true
+
+[bot.weixin]
+enabled = false
+account_id = "default"
+token_env = "WEIXIN_BOT_TOKEN"
+api_base = "https://ilinkai.weixin.qq.com"
 
 # External MCP servers. type: "stdio" (default, a subprocess) | "http" | "sse".
 # ${VAR} / ${VAR:-default} are expanded from the environment in command/args/env/url/headers.
