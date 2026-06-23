@@ -222,6 +222,49 @@
           </el-col>
         </el-row>
       </el-card>
+
+      <!-- Retrieval Quality / Hallucination Inspector -->
+      <el-card class="retrieval-card" shadow="hover" v-if="retrievalFeedback">
+        <template #header>
+          <div class="card-header">
+            <span>检索质量分析</span>
+            <el-tag v-if="retrievalFeedback.hallucination_detected" type="danger" size="small" effect="dark">
+              幻觉告警
+            </el-tag>
+            <el-tag v-else type="success" size="small">无幻觉</el-tag>
+          </div>
+        </template>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <div class="retrieval-scores">
+              <div class="retrieval-score-item">
+                <span class="label">相关性 (Relevance)</span>
+                <el-progress :percentage="retrievalFeedback.relevance || 0" :stroke-width="10" color="#409eff" />
+              </div>
+              <div class="retrieval-score-item">
+                <span class="label">证据准确性 (Evidence Accuracy)</span>
+                <el-progress :percentage="retrievalFeedback.evidence_accuracy || 0" :stroke-width="10" color="#67c23a" />
+              </div>
+              <div class="retrieval-score-item">
+                <span class="label">覆盖度 (Coverage)</span>
+                <el-progress :percentage="retrievalFeedback.coverage || 0" :stroke-width="10" color="#e6a23c" />
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="12">
+            <div v-if="retrievalFeedback.missing_info?.length" class="missing-info">
+              <h4>缺失信息</h4>
+              <el-tag v-for="info in retrievalFeedback.missing_info" :key="info" type="warning" style="margin:2px">
+                {{ info }}
+              </el-tag>
+            </div>
+            <div v-if="retrievalFeedback.feedback" class="feedback-section" style="margin-top:12px">
+              <h4>评估反馈</h4>
+              <p>{{ retrievalFeedback.feedback }}</p>
+            </div>
+          </el-col>
+        </el-row>
+      </el-card>
     </template>
   </div>
 </template>
@@ -329,6 +372,10 @@ const dimensions = [
 // Computed
 const overallScore = computed(() => {
   return Math.round(evaluation.value?.evaluation?.overall_score || 0)
+})
+
+const retrievalFeedback = computed(() => {
+  return evaluation.value?.evaluation?.retrieval || null
 })
 
 const currentDimensionData = computed(() => {
@@ -877,6 +924,40 @@ watch(selectedDimension, () => {
         font-weight: 600;
         font-size: 14px;
       }
+    }
+  }
+}
+
+.retrieval-card {
+  margin-top: 20px;
+  .retrieval-scores {
+    .retrieval-score-item {
+      margin-bottom: 12px;
+      .label {
+        display: block;
+        font-size: 13px;
+        color: #606266;
+        margin-bottom: 4px;
+      }
+    }
+  }
+  .missing-info {
+    h4 {
+      font-size: 14px;
+      margin: 0 0 8px 0;
+      color: #303133;
+    }
+  }
+  .feedback-section {
+    h4 {
+      font-size: 14px;
+      margin: 0 0 8px 0;
+      color: #303133;
+    }
+    p {
+      font-size: 13px;
+      color: #606266;
+      line-height: 1.6;
     }
   }
 }

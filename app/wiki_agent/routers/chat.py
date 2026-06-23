@@ -101,7 +101,7 @@ async def stream_response(session_id: str, user_message: str) -> AsyncGenerator[
         extraction=extraction_data,
     )
 
-    yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'evaluation_task_id': eval_task_id}, ensure_ascii=False)}\n\n"
 
 
 @router.post("/stream")
@@ -147,6 +147,7 @@ async def chat_message(req: ChatRequest):
             "wiki_results": result.get("wiki_text"),
             "extraction": result.get("extraction"),
             "evaluation_task_id": result.get("evaluation_task_id"),
+            "evaluation_link": result.get("evaluation_task_id") and f"/evaluations?task_id={result['evaluation_task_id']}" or None,
         }
     except Exception as e:
         raise HTTPException(500, f"LLM 调用失败: {e}")
