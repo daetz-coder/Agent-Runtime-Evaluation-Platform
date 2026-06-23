@@ -201,6 +201,7 @@ const dimensions = [
   { key: 'tool_use', name: '工具', color: '#e6a23c' },
   { key: 'memory', name: '记忆', color: '#f56c6c' },
   { key: 'replan', name: '重规划', color: '#909399' },
+  { key: 'retrieval', name: '检索', color: '#9b59b6' },
 ]
 
 // Computed

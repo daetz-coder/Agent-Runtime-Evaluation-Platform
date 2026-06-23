@@ -312,6 +312,18 @@ const dimensions = [
       learning_from_failure: '学习能力',
     },
   },
+  {
+    key: 'retrieval',
+    name: '检索质量',
+    icon: 'Search',
+    color: '#9b59b6',
+    bgColor: 'rgba(155, 89, 182, 0.1)',
+    metrics: {
+      relevance: '相关性',
+      evidence_accuracy: '证据准确性',
+      coverage: '覆盖度',
+    },
+  },
 ]
 
 // Computed
