@@ -3,7 +3,7 @@ LangGraph evaluation workflow graph.
 
 This module defines the evaluation workflow using LangGraph:
 1. Validate input
-2. Run parallel evaluations (Planning, Tactical, Tool Use, Memory, Replan)
+2. Run parallel evaluations (Planning, Tactical, Tool Use, Memory, Replan, Retrieval)
 3. Aggregate results
 4. Generate final report
 """
@@ -22,6 +22,7 @@ from app.models.schemas import (
     ToolUseScore,
     MemoryScore,
     ReplanScore,
+    RetrievalScore,
 )
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class EvaluationState(TypedDict):
     tool_use_score: Optional[Dict[str, Any]]
     memory_score: Optional[Dict[str, Any]]
     replan_score: Optional[Dict[str, Any]]
+    retrieval_score: Optional[Dict[str, Any]]
 
     # Output
     overall_evaluation: Optional[Dict[str, Any]]
@@ -180,15 +182,34 @@ async def evaluate_replan(state: EvaluationState) -> EvaluationState:
         return {**state, "replan_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
+async def evaluate_retrieval(state: EvaluationState) -> EvaluationState:
+    """Evaluate retrieval / RAG quality."""
+    try:
+        evaluator = RetrievalEvaluator()
+        trajectory = _convert_trajectory_steps(state["trajectory"])
+
+        score = await evaluator.evaluate(
+            goal=state["goal"],
+            trajectory=trajectory,
+            context=state.get("context"),
+        )
+
+        return {**state, "retrieval_score": score.model_dump()}
+    except Exception as e:
+        logger.error("Evaluation node failed: %s", e, exc_info=True)
+        return {**state, "retrieval_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
+
+
 async def aggregate_results(state: EvaluationState) -> EvaluationState:
     """Aggregate all evaluation results."""
     # Weight configuration for overall score
     WEIGHTS = {
-        "planning": 0.25,
-        "tactical": 0.25,
-        "tool_use": 0.20,
+        "planning": 0.20,
+        "tactical": 0.20,
+        "tool_use": 0.15,
         "memory": 0.15,
         "replan": 0.15,
+        "retrieval": 0.15,
     }
 
     # Extract scores
@@ -197,6 +218,7 @@ async def aggregate_results(state: EvaluationState) -> EvaluationState:
     tool_use = state.get("tool_use_score", {})
     memory = state.get("memory_score", {})
     replan = state.get("replan_score", {})
+    retrieval = state.get("retrieval_score", {})
 
     # Calculate overall score
     scores = {
@@ -205,6 +227,7 @@ async def aggregate_results(state: EvaluationState) -> EvaluationState:
         "tool_use": tool_use.get("overall", 0),
         "memory": memory.get("overall", 0),
         "replan": replan.get("overall", 0),
+        "retrieval": retrieval.get("overall", 0),
     }
 
     overall_score = sum(scores[k] * WEIGHTS[k] for k in WEIGHTS)
@@ -213,7 +236,7 @@ async def aggregate_results(state: EvaluationState) -> EvaluationState:
     summary = _generate_summary(scores)
 
     # Generate recommendations
-    recommendations = _generate_recommendations(planning, tactical, tool_use, memory, replan)
+    recommendations = _generate_recommendations(planning, tactical, tool_use, memory, replan, retrieval)
 
     planning = _with_defaults(
         planning,
@@ -235,6 +258,10 @@ async def aggregate_results(state: EvaluationState) -> EvaluationState:
         replan,
         {"trigger_appropriateness": 0, "adaptation_quality": 0, "learning_from_failure": 0},
     )
+    retrieval = _with_defaults(
+        retrieval,
+        {"relevance": 0, "evidence_accuracy": 0, "coverage": 0},
+    )
 
     # Create overall evaluation
     overall_evaluation = OverallEvaluation(
@@ -243,6 +270,7 @@ async def aggregate_results(state: EvaluationState) -> EvaluationState:
         tool_use=ToolUseScore(**tool_use),
         memory=MemoryScore(**memory),
         replan=ReplanScore(**replan),
+        retrieval=RetrievalScore(**retrieval),
         overall_score=overall_score,
         summary=summary,
         recommendations=recommendations,
@@ -281,6 +309,7 @@ def _generate_recommendations(
     tool_use: Dict,
     memory: Dict,
     replan: Dict,
+    retrieval: Dict,
 ) -> List[str]:
     """Generate improvement recommendations."""
     recommendations = []
@@ -305,6 +334,10 @@ def _generate_recommendations(
     if replan.get("overall", 0) < 60:
         recommendations.append("Improve replanning: Trigger replan earlier when facing repeated failures.")
 
+    # Retrieval recommendations
+    if retrieval.get("overall", 0) < 60:
+        recommendations.append("Improve retrieval: Ground answers in retrieved evidence and reduce hallucinations.")
+
     if not recommendations:
         recommendations.append("Continue maintaining high performance across all evaluation dimensions.")
 
@@ -317,7 +350,7 @@ def create_evaluation_graph(llm: Optional[BaseChatModel] = None) -> StateGraph:
 
     The graph follows this flow:
     1. validate_input -> Check if input is valid
-    2. Parallel evaluation of 5 dimensions
+    2. Parallel evaluation of 6 dimensions
     3. aggregate_results -> Combine all scores
     4. END
 
@@ -337,6 +370,7 @@ def create_evaluation_graph(llm: Optional[BaseChatModel] = None) -> StateGraph:
     workflow.add_node("evaluate_tool_use", evaluate_tool_use)
     workflow.add_node("evaluate_memory", evaluate_memory)
     workflow.add_node("evaluate_replan", evaluate_replan)
+    workflow.add_node("evaluate_retrieval", evaluate_retrieval)
     workflow.add_node("aggregate_results", aggregate_results)
 
     # Define edges
@@ -348,7 +382,8 @@ def create_evaluation_graph(llm: Optional[BaseChatModel] = None) -> StateGraph:
     workflow.add_edge("evaluate_tactical", "evaluate_tool_use")
     workflow.add_edge("evaluate_tool_use", "evaluate_memory")
     workflow.add_edge("evaluate_memory", "evaluate_replan")
-    workflow.add_edge("evaluate_replan", "aggregate_results")
+    workflow.add_edge("evaluate_replan", "evaluate_retrieval")
+    workflow.add_edge("evaluate_retrieval", "aggregate_results")
 
     # After aggregation, end
     workflow.add_edge("aggregate_results", END)
@@ -362,7 +397,7 @@ async def evaluate_parallel(
     trajectory: List[TrajectoryStep],
     context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """并行评估 — 5 个评估器同时运行，使用 asyncio.gather。
+    """并行评估 — 6 个评估器同时运行，使用 asyncio.gather。
 
     比串行快约 5 倍（71s → ~15s）。
     不依赖 LangGraph StateGraph，直接并发调用。
