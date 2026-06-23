@@ -4,7 +4,7 @@ Evaluation endpoints.
 
 import logging
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db, async_session_factory
@@ -25,7 +25,13 @@ async def list_evaluations(
 ):
     """List evaluations with pagination."""
     service = EvaluationService(db)
-    return await service.list_evaluations(skip=skip, limit=limit, status=status)
+    evaluations, total = await service.list_evaluations_with_count(skip=skip, limit=limit, status=status)
+    # 通过 response header 返回总数
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content=[e.model_dump(mode="json") for e in evaluations],
+        headers={"X-Total-Count": str(total)},
+    )
 
 
 async def _run_evaluation_background(task_id: str, eval_id: str):
@@ -103,8 +109,8 @@ async def get_evaluation(
 
 @router.post("/quick", response_model=EvaluationResponse)
 async def quick_evaluation(
-    task_id: str,
-    context: Optional[Dict[str, Any]] = None,
+    task_id: str = Body(..., embed=True),
+    context: Optional[Dict[str, Any]] = Body(None, embed=True),
     db: AsyncSession = Depends(get_db),
 ):
     """

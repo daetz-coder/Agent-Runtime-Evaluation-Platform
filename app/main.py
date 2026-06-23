@@ -6,6 +6,7 @@ Agent Runtime Evaluation Platform
 - Built with LangGraph, FastAPI, and Python
 """
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -20,25 +21,22 @@ from app.wiki_agent.bootstrap import startup as wiki_agent_startup
 from app.wiki_agent.routers import chat as wiki_chat
 from app.wiki_agent.routers import wiki as wiki_router
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
-    # Startup
-    print(f"Starting {settings.APP_NAME}...")
+    logger.info("Starting %s...", settings.APP_NAME)
     await init_db()
-    print("Database initialized")
-
-    print("Starting Wiki Agent...")
+    logger.info("Database initialized")
+    logger.info("Starting Wiki Agent...")
     await wiki_agent_startup()
-    print("Wiki Agent initialized")
-
+    logger.info("Wiki Agent initialized")
     yield
-
-    # Shutdown
-    print("Shutting down...")
+    logger.info("Shutting down...")
     await close_db()
-    print("Database connections closed")
+    logger.info("Database connections closed")
 
 
 def create_app() -> FastAPI:
