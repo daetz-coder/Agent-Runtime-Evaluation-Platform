@@ -223,9 +223,25 @@ class EvaluationService:
                 "error": None,
             }
 
-            # Run evaluation graph
-            graph = create_evaluation_graph()
-            result = await graph.ainvoke(state)
+            # Run evaluation graph (parallel if configured)
+            use_parallel = getattr(settings, 'EVAL_PARALLEL', True)  # 默认并行
+            if use_parallel:
+                from app.graphs.evaluation_graph import evaluate_parallel
+                from app.models.schemas import TrajectoryStep as TS
+                import json
+
+                steps = [TS(
+                    step_number=s["step_number"],
+                    action_type=s["action_type"],
+                    action_detail=s.get("action_detail", {}),
+                    observation=s.get("observation"),
+                    timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                ) for s in trajectory]
+                parallel_result = await evaluate_parallel(task.goal, steps, context or task.context)
+                result = {"overall_evaluation": parallel_result, "error": None}
+            else:
+                graph = create_evaluation_graph()
+                result = await graph.ainvoke(state)
 
             # Check for errors
             if result.get("error"):
