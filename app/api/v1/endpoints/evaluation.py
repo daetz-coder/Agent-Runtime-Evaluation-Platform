@@ -6,9 +6,10 @@ import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.db.database import get_db, async_session_factory
-from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem
+from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem, TrajectoryStep
 from app.services.evaluation_service import EvaluationService
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,67 @@ async def batch_evaluation(
             "status": "accepted",
         })
     return {"batch_size": len(task_ids), "results": results}
+
+
+@router.post("/consensus")
+async def consensus_evaluation(
+    task_id: str = Body(..., embed=True),
+    include_all: bool = Body(False, embed=True),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    多模型共识评估 — DeepSeek + OpenAI + Anthropic 独立评分。
+
+    - **task_id**: 任务 UUID
+    - **include_all**: 是否返回所有 5 个维度的共识结果
+
+    返回均值 (mean_score)、标准差 (std_score，一致性指标，越小越可信)、各模型分数。
+    """
+    from app.evaluators.consensus import ConsensusEvaluator
+
+    # 获取任务和轨迹
+    service = EvaluationService(db)
+    task = await service.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 获取轨迹步骤
+    from app.db.models import AgentTrajectory
+    result = await db.execute(
+        select(AgentTrajectory).where(AgentTrajectory.task_id == task_id)
+        .order_by(AgentTrajectory.step_number)
+    )
+    trajectory_rows = result.scalars().all()
+
+    trajectory = [
+        TrajectoryStep(
+            step_number=t.step_number,
+            action_type=t.action_type,
+            action_detail=t.action_detail or {},
+            observation=t.observation,
+            timestamp=t.created_at,
+        )
+        for t in trajectory_rows
+    ]
+
+    evaluator = ConsensusEvaluator()
+
+    if include_all:
+        results = await evaluator.evaluate_all_dimensions(task.goal, trajectory, task.context)
+        return {
+            "task_id": task_id,
+            "available_providers": evaluator.available_providers,
+            "dimensions": {
+                dim: r.model_dump() for dim, r in results.items()
+            },
+        }
+    else:
+        result = await evaluator.evaluate(task.goal, trajectory, task.context)
+        return {
+            "task_id": task_id,
+            "available_providers": evaluator.available_providers,
+            "result": result.model_dump(),
+        }
 
 
 @router.delete("/{evaluation_id}")

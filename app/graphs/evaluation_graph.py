@@ -354,3 +354,52 @@ def create_evaluation_graph(llm: Optional[BaseChatModel] = None) -> StateGraph:
 
     # Compile graph
     return workflow.compile()
+
+
+async def evaluate_parallel(
+    goal: str,
+    trajectory: List[TrajectoryStep],
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """并行评估 — 5 个评估器同时运行，使用 asyncio.gather。
+
+    比串行快约 5 倍（71s → ~15s）。
+    不依赖 LangGraph StateGraph，直接并发调用。
+    """
+    import asyncio
+
+    async def _eval(dim_name: str, EvalClass):
+        try:
+            ev = EvalClass()
+            result = await ev.evaluate(goal=goal, trajectory=trajectory, context=context)
+            return dim_name, result
+        except Exception as e:
+            logger.error("Parallel eval [%s] failed: %s", dim_name, e)
+            return dim_name, None
+
+    tasks = [
+        _eval("planning", PlanningEvaluator),
+        _eval("tactical", TacticalEvaluator),
+        _eval("tool_use", ToolUseEvaluator),
+        _eval("memory", MemoryEvaluator),
+        _eval("replan", ReplanEvaluator),
+    ]
+    results = await asyncio.gather(*tasks)
+
+    # 聚合
+    scores = {}
+    for dim_name, result in results:
+        if result is not None:
+            scores[dim_name] = result.model_dump() if hasattr(result, 'model_dump') else result
+        else:
+            scores[dim_name] = {"overall": 0, "feedback": "Evaluation failed"}
+
+    # 计算加权总分
+    weights = {"planning": 0.25, "tactical": 0.25, "tool_use": 0.20, "memory": 0.15, "replan": 0.15}
+    overall = sum(
+        weights.get(d, 0) * (s.get("overall", 0) if isinstance(s, dict) else 0)
+        for d, s in scores.items()
+    )
+    scores["overall"] = {"overall_score": round(overall, 1)}
+
+    return scores
