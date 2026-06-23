@@ -112,6 +112,17 @@ async def run_evaluation(
     return evaluation
 
 
+@router.get("/settings")
+async def get_eval_settings():
+    """返回评估公开配置（不含密钥）。"""
+    return {
+        "default_provider": settings.DEFAULT_LLM_PROVIDER,
+        "parallel_enabled": settings.EVAL_PARALLEL,
+        "auth_enabled": settings.AUTH_ENABLED,
+        "webhook_configured": bool(settings.EVAL_WEBHOOK_URL),
+    }
+
+
 @router.get("/{evaluation_id}", response_model=EvaluationResponse)
 async def get_evaluation(
     evaluation_id: str,
