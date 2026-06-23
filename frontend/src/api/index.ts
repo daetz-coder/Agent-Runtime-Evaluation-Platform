@@ -101,6 +101,10 @@ export const reportApi = {
   getDimensionStats(dimension: string) {
     return api.get(`/reports/dimensions/${dimension}`)
   },
+
+  getTrends() {
+    return api.get('/reports/trends')
+  },
 }
 
 export { withSilent }
