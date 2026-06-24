@@ -61,7 +61,7 @@ const router = createRouter({
           path: 'vector-admin',
           name: 'VectorAdmin',
           component: () => import('@/views/VectorAdmin.vue'),
-          meta: { title: '向量管理', icon: 'Database' },
+          meta: { title: '向量管理', icon: 'Collection' },
         },
         {
           path: 'settings',
