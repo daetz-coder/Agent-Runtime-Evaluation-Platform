@@ -108,30 +108,18 @@ Evaluate the runtime quality of AI agents across 6 dimensions:
     register_routes(wiki_router.router, "", ["wiki-agent"])
     register_routes(wiki_chat.router, "", ["wiki-agent"])
     register_routes(wiki_vector_api.api_router, "", ["wiki-agent"])
+    register_routes(wiki_vector_api.page_router, "", ["wiki-agent"])
     register_routes(workspace_router, "/api/v1", ["workspaces"])
 
     from app.api.auth_middleware import AuthMiddleware
     app.add_middleware(AuthMiddleware)
+
     @app.get("/health")
     async def health_check():
-        """Health check with database connectivity."""
-        from sqlalchemy import text
-        db_status = "unknown"
-        try:
-            from app.db.database import async_session_factory
-            async with async_session_factory() as session:
-                await session.execute(text("SELECT 1"))
-            db_status = "connected"
-        except Exception:
-            db_status = "disconnected"
+        """Health check with database and Wiki Agent index status."""
+        from app.services.system_health import get_system_health
 
-        return {
-            "status": "healthy" if db_status == "connected" else "degraded",
-            "app": settings.APP_NAME,
-            "version": "0.1.0",
-            "database": db_status,
-            "auth_enabled": settings.AUTH_ENABLED,
-        }
+        return await get_system_health()
 
     # Root endpoint
     @app.get("/")
@@ -146,6 +134,7 @@ Evaluate the runtime quality of AI agents across 6 dimensions:
             "api": "/api/v1",
             "wiki_agent": "/api/wiki",
             "wiki_chat": "/api/chat",
+            "vector_admin": "/vector-admin",
         }
 
     return app

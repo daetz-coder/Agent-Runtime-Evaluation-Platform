@@ -23,7 +23,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # 不需要认证的路径
-_SKIP_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
+_SKIP_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json", "/wiki-admin", "/vector-admin"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
