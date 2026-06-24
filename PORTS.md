@@ -20,6 +20,8 @@
 | API 文档 | http://localhost:8000/docs |
 | Wiki API | http://localhost:8000/api/wiki |
 | Chat API | http://localhost:8000/api/chat |
+| 向量管理 | http://localhost:3000/vector-admin |
+| 健康检查 | http://localhost:8000/health |
 
 ## 一键启动
 

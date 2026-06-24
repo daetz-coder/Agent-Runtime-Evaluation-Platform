@@ -1,5 +1,8 @@
 <div align="center">
 
+> **注意：** 本目录为早期独立版 Wiki Agent 参考实现（ChromaDB）。  
+> 生产集成请使用根目录 `app/wiki_agent/`（Milvus + 统一 FastAPI 后端）。
+
 # Wiki Agent
 
 > *你的个人知识库，会自己长大。*

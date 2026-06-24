@@ -58,7 +58,7 @@ app/core/config.py     pydantic-settings from .env, case-sensitive
 - **DB models**: SQLAlchemy 2.0 `Mapped[]` style, `DeclarativeBase`, UTC timestamps via `_utcnow()`, use `datetime.now(timezone.utc)` not `datetime.utcnow()`
 - **Trajectory steps**: use `ActionType` constants (`ActionType.PLAN`, `ActionType.TOOL_CALL`, etc.) — never raw strings
 - **Frontend**: Vue 3 Composition API `<script setup>`, auto-imports for Element Plus components, route-based code splitting, Pinia for state
-- **Config**: `.env` file, `pydantic-settings`, field names UPPER_CASE. `DEFAULT_LLM_PROVIDER` selects which LLM evaluators use
+- **Config**: `.env` file, `pydantic-settings`, field names UPPER_CASE. Wiki data defaults under `data/wiki_agent/`; sample knowledge seeded from `app/wiki_agent/seed/knowledge/` on first run.
 
 ## Notes
 
