@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_PATH: str = str(
         Path(__file__).parent.parent.parent / "models" / "bge-small-zh-v1.5"
     )
+    RERANKER_MODEL_PATH: str = str(
+        Path(__file__).parent.parent.parent / "models" / "bge-reranker-base"
+    )
     DB_PATH: str = str(Path(__file__).parent.parent / "data" / "chat.db")
     BM25_INDEX_PATH: str = str(Path(__file__).parent.parent / "data" / "bm25_index.pkl")
 

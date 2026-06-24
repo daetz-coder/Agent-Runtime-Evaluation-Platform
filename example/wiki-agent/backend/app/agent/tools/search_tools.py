@@ -1,4 +1,4 @@
-"""搜索工具 — 语义搜索、BM25 搜索、RRF 混合搜索"""
+"""搜索工具 — 语义搜索、BM25 搜索、RRF 混合搜索、Reranker 精排"""
 
 from __future__ import annotations
 
@@ -6,6 +6,26 @@ from app.config import settings
 
 # 缓存 embedding 模型
 _embedding_model = None
+
+# 缓存 reranker 模型
+_reranker = None
+
+
+def _get_reranker():
+    """获取或加载 Reranker 模型（单例，懒加载）"""
+    global _reranker
+    if _reranker is None:
+        try:
+            from FlagEmbedding import FlagReranker
+            _reranker = FlagReranker(
+                settings.RERANKER_MODEL_PATH,
+                use_fp16=True,
+            )
+            print("[Rerank] 模型加载成功")
+        except Exception as e:
+            print(f"[Rerank] 模型加载失败，将跳过 rerank 步骤: {e}")
+            return None
+    return _reranker
 
 
 def _get_embedding_model():
@@ -91,21 +111,60 @@ def keyword_search(query: str, limit: int = 5) -> list[dict]:
     return bm25.search(query, limit)
 
 
+def rerank(query: str, results: list[dict], top_k: int = 5) -> list[dict]:
+    """Reranker 精排 — 用交叉编码器对候选结果重新打分排序
+
+    Args:
+        query: 搜索查询
+        results: RRF 融合后的候选结果
+        top_k: 返回结果数量
+
+    Returns:
+        list[dict]: 精排后的结果列表
+    """
+    reranker = _get_reranker()
+    if reranker is None or not results:
+        return results[:top_k]
+
+    try:
+        # 构造 [query, passage] pairs
+        pairs = [[query, r.get("snippet", "")] for r in results]
+
+        # 批量打分（normalize=True 将分数映射到 [0,1]）
+        scores = reranker.compute_score(pairs, normalize=True)
+
+        # 如果是单条结果，compute_score 返回 float 而非 list
+        if isinstance(scores, float):
+            scores = [scores]
+
+        # 更新分数并排序
+        for r, score in zip(results, scores):
+            r["score"] = score
+            r["search_type"] = "hybrid+rerank"
+
+        results.sort(key=lambda x: x["score"], reverse=True)
+        print(f"[Rerank] 精排完成: {len(results)} 候选 -> {top_k} 结果")
+        return results[:top_k]
+    except Exception as e:
+        print(f"[Rerank] 精排失败，退化为 RRF 排序: {e}")
+        return results[:top_k]
+
+
 def hybrid_search(query: str, limit: int = 5) -> list[dict]:
-    """混合搜索 — RRF（倒数秩融合）结合语义搜索和 BM25 搜索
+    """混合搜索 — RRF（倒数秩融合）结合语义搜索和 BM25 搜索，再用 Reranker 精排
 
     Args:
         query: 搜索查询
         limit: 返回结果数量
 
     Returns:
-        list[dict]: 搜索结果列表（RRF 融合排序）
+        list[dict]: 搜索结果列表（RRF 融合 + Reranker 精排）
     """
     RRF_K = 60  # RRF 平滑常数
 
-    # 获取两路搜索结果
-    semantic_results = semantic_search(query, limit * 2)
-    keyword_results = keyword_search(query, limit * 2)
+    # 获取两路搜索结果（多取候选给 reranker 精排）
+    semantic_results = semantic_search(query, limit * 3)
+    keyword_results = keyword_search(query, limit * 3)
 
     # 收集所有 path 对应的最佳结果（用于最终输出）
     best_result: dict[str, dict] = {}
@@ -132,6 +191,11 @@ def hybrid_search(query: str, limit: int = 5) -> list[dict]:
         merged.append(entry)
 
     merged.sort(key=lambda x: x["score"], reverse=True)
+
+    # Reranker 精排（取 RRF top-N 候选，用交叉编码器重新打分）
+    candidates = merged[: limit * 3]
+    merged = rerank(query, candidates, top_k=limit)
+
     return merged[:limit]
 
 
