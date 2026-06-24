@@ -16,7 +16,7 @@ from fastapi.routing import APIRoute
 
 from app.core.config import settings
 from app.db.database import init_db, close_db
-from app.api.v1.endpoints import benchmark, evaluation, reports, tasks
+from app.api.v1.endpoints import benchmark, evaluation, reports, system, tasks
 from app.wiki_agent.bootstrap import startup as wiki_agent_startup
 from app.wiki_agent.routers import chat as wiki_chat
 from app.wiki_agent.routers import vector_admin as wiki_vector_api
@@ -105,6 +105,7 @@ Evaluate the runtime quality of AI agents across 6 dimensions:
     register_routes(evaluation.router, "/api/v1/evaluations", ["evaluations"])
     register_routes(reports.router, "/api/v1/reports", ["reports"])
     register_routes(benchmark.router, "/api/v1/benchmark", ["benchmark"])
+    register_routes(system.router, "/api/v1/system", ["system"])
     register_routes(wiki_router.router, "", ["wiki-agent"])
     register_routes(wiki_chat.router, "", ["wiki-agent"])
     register_routes(wiki_vector_api.api_router, "", ["wiki-agent"])

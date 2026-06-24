@@ -125,6 +125,13 @@ export const reportApi = {
   },
 }
 
+// System API
+export const systemApi = {
+  getHealth() {
+    return api.get('/system/health')
+  },
+}
+
 // Benchmark API
 export const benchmarkApi = {
   getMonotonicity() {

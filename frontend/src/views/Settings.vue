@@ -186,6 +186,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Cpu, CircleCheck } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { systemApi } from '@/api'
 
 const router = useRouter()
 const activeTab = ref('general')
@@ -211,9 +212,7 @@ const notificationForm = reactive({
 const loadSystemStatus = async () => {
   statusLoading.value = true
   try {
-    const res = await fetch('/health')
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    systemStatus.value = await res.json()
+    systemStatus.value = await systemApi.getHealth()
   } catch (err: any) {
     ElMessage.error(err.message || '加载系统状态失败')
   } finally {
@@ -240,17 +239,22 @@ const saveNotificationSettings = () => {
 
 // Load settings from localStorage
 const loadSettings = () => {
-  const general = localStorage.getItem('generalSettings')
-  if (general) {
-    const parsed = JSON.parse(general)
-    if (parsed.refreshInterval !== undefined) {
-      generalForm.refreshInterval = parsed.refreshInterval
+  try {
+    const general = localStorage.getItem('generalSettings')
+    if (general) {
+      const parsed = JSON.parse(general)
+      if (parsed.refreshInterval !== undefined) {
+        generalForm.refreshInterval = parsed.refreshInterval
+      }
     }
-  }
 
-  const notification = localStorage.getItem('notificationSettings')
-  if (notification) {
-    Object.assign(notificationForm, JSON.parse(notification))
+    const notification = localStorage.getItem('notificationSettings')
+    if (notification) {
+      Object.assign(notificationForm, JSON.parse(notification))
+    }
+  } catch {
+    localStorage.removeItem('generalSettings')
+    localStorage.removeItem('notificationSettings')
   }
 }
 
