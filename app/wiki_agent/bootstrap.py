@@ -12,6 +12,8 @@ warnings.filterwarnings("ignore", message=".*InsecureKeyLength.*")  # ZhipuAI GL
 
 from app.wiki_agent.config import settings
 
+SEED_KNOWLEDGE_DIR = Path(__file__).resolve().parent / "seed" / "knowledge"
+
 
 def ensure_directories() -> None:
     """Create wiki-agent runtime directories if missing."""
@@ -19,6 +21,24 @@ def ensure_directories() -> None:
     if not settings.MILVUS_URI.startswith("http"):
         Path(settings.MILVUS_URI).parent.mkdir(parents=True, exist_ok=True)
     Path(settings.DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+
+
+def seed_knowledge_if_empty() -> None:
+    """Copy bundled sample pages when the knowledge base is empty."""
+    knowledge_dir = Path(settings.KNOWLEDGE_DIR)
+    if any(knowledge_dir.rglob("*.md")):
+        return
+    if not SEED_KNOWLEDGE_DIR.exists():
+        return
+
+    import shutil
+
+    for src in SEED_KNOWLEDGE_DIR.rglob("*.md"):
+        rel = src.relative_to(SEED_KNOWLEDGE_DIR)
+        dest = knowledge_dir / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+    print(f"[Wiki Agent] Seeded sample knowledge from {SEED_KNOWLEDGE_DIR}")
 
 
 def sync_indexes_if_needed() -> None:
@@ -118,5 +138,6 @@ async def startup() -> None:
     from app.wiki_agent.database import init_db
 
     ensure_directories()
+    seed_knowledge_if_empty()
     await init_db()
     sync_indexes_if_needed()

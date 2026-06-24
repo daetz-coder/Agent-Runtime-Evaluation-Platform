@@ -42,11 +42,9 @@ htmlcov/
 # Database
 *.db
 *.sqlite3
-data/wiki_agent/
-
-# Wiki Agent runtime data
+data/
+test_milvus.db
 example/wiki-agent/milvus.db/
-example/wiki-agent/knowledge/
 
 # Logs
 *.log

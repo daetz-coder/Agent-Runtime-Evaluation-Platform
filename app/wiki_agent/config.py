@@ -13,11 +13,12 @@ class WikiAgentSettings(BaseSettings):
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-chat"
 
-    # Paths
-    KNOWLEDGE_DIR: str = str(WIKI_AGENT_ROOT / "knowledge")
-    MILVUS_URI: str = str(WIKI_AGENT_ROOT / "milvus.db")
+    # Paths — runtime data under data/wiki_agent/, seed content under app/wiki_agent/seed/
+    KNOWLEDGE_DIR: str = str(WIKI_DATA_DIR / "knowledge")
+    MILVUS_URI: str = str(WIKI_DATA_DIR / "milvus.db")
     MILVUS_COLLECTION: str = "wiki_knowledge"
     EMBEDDING_DIM: int = 512
+    EMBEDDING_MODEL: str = "BAAI/bge-small-zh-v1.5"
     EMBEDDING_MODEL_PATH: str = str(WIKI_AGENT_ROOT / "models" / "bge-small-zh-v1.5")
     DB_PATH: str = str(WIKI_DATA_DIR / "chat.db")
     BM25_INDEX_PATH: str = str(WIKI_DATA_DIR / "bm25_index.pkl")
