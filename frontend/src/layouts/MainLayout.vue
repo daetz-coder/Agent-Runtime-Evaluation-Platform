@@ -14,7 +14,7 @@
         class="sidebar-menu"
       >
         <template v-for="item in menuItems" :key="item.path">
-          <el-menu-item :index="item.path" v-if="!item.meta?.hidden">
+          <el-menu-item :index="menuPath(item.path)" v-if="!item.meta?.hidden">
             <el-icon><component :is="item.meta?.icon" /></el-icon>
             <template #title>{{ item.meta?.title }}</template>
           </el-menu-item>
@@ -54,8 +54,7 @@
             </el-avatar>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item>个人设置</el-dropdown-item>
-                <el-dropdown-item divided>退出登录</el-dropdown-item>
+                <el-dropdown-item @click="router.push('/settings')">系统设置</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -77,11 +76,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Refresh, Link, User, Cpu, Fold, Expand, Database } from '@element-plus/icons-vue'
+import { Refresh, Link, User, Cpu, Fold, Expand } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const isCollapse = ref(false)
+
+const menuPath = (path: string) => (path.startsWith('/') ? path : `/${path}`)
 
 // Menu items from router
 const menuItems = computed(() => {

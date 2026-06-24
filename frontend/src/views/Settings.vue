@@ -60,65 +60,45 @@
         </el-card>
       </el-tab-pane>
 
-      <!-- Evaluation Settings -->
-      <el-tab-pane label="评估设置" name="evaluation">
-        <el-card shadow="never">
+      <!-- System Status -->
+      <el-tab-pane label="系统状态" name="status">
+        <el-card shadow="never" v-loading="statusLoading">
+          <div class="status-actions">
+            <el-button type="primary" @click="loadSystemStatus">刷新状态</el-button>
+            <el-button @click="router.push('/vector-admin')">打开向量管理</el-button>
+          </div>
+
+          <el-descriptions v-if="systemStatus" :column="2" border style="margin-top: 16px">
+            <el-descriptions-item label="整体状态">
+              <el-tag :type="systemStatus.status === 'healthy' ? 'success' : 'warning'">
+                {{ systemStatus.status }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="数据库">{{ systemStatus.database }}</el-descriptions-item>
+            <el-descriptions-item label="Milvus">
+              <el-tag :type="systemStatus.wiki?.milvus?.available ? 'success' : 'danger'" size="small">
+                {{ systemStatus.wiki?.milvus?.available ? '可用' : '不可用' }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="向量分块">{{ systemStatus.wiki?.milvus?.total_chunks ?? 0 }}</el-descriptions-item>
+            <el-descriptions-item label="BM25 分块">{{ systemStatus.wiki?.bm25_chunks ?? 0 }}</el-descriptions-item>
+            <el-descriptions-item label="知识页数">{{ systemStatus.wiki?.knowledge_pages ?? 0 }}</el-descriptions-item>
+            <el-descriptions-item label="Milvus URI" :span="2">
+              <code>{{ systemStatus.wiki?.milvus?.uri }}</code>
+            </el-descriptions-item>
+            <el-descriptions-item label="知识库目录" :span="2">
+              <code>{{ systemStatus.wiki?.knowledge_dir }}</code>
+            </el-descriptions-item>
+          </el-descriptions>
+
           <el-alert
-            title="评估参数只读"
-            description="六维权重与阈值当前由后端 evaluate_parallel() 硬编码，以下配置仅供参考展示。"
-            type="warning"
-            :closable="false"
+            v-if="systemStatus?.wiki?.milvus?.error"
+            :title="systemStatus.wiki.milvus.error"
+            type="error"
             show-icon
-            style="margin-bottom: 16px"
+            :closable="false"
+            style="margin-top: 16px"
           />
-          <el-form :model="evaluationForm" label-width="150px">
-            <el-form-item label="评估权重配置">
-              <div class="weight-config">
-                <div v-for="dim in dimensions" :key="dim.key" class="weight-item">
-                  <span class="dim-name">{{ dim.name }}</span>
-                  <el-slider
-                    v-model="evaluationForm.weights[dim.key]"
-                    :min="0"
-                    :max="100"
-                    :step="5"
-                    show-input
-                    style="width: 300px"
-                    disabled
-                  />
-                </div>
-              </div>
-            </el-form-item>
-
-            <el-form-item label="评分阈值">
-              <div class="threshold-config">
-                <div class="threshold-item">
-                  <span class="threshold-label">优秀</span>
-                  <el-input-number v-model="evaluationForm.thresholds.excellent" :min="0" :max="100" />
-                  <span class="threshold-unit">分以上</span>
-                </div>
-                <div class="threshold-item">
-                  <span class="threshold-label">良好</span>
-                  <el-input-number v-model="evaluationForm.thresholds.good" :min="0" :max="100" />
-                  <span class="threshold-unit">分以上</span>
-                </div>
-                <div class="threshold-item">
-                  <span class="threshold-label">及格</span>
-                  <el-input-number v-model="evaluationForm.thresholds.pass" :min="0" :max="100" />
-                  <span class="threshold-unit">分以上</span>
-                </div>
-              </div>
-            </el-form-item>
-
-            <el-form-item label="并发评估数">
-              <el-input-number v-model="evaluationForm.maxConcurrent" :min="1" :max="10" disabled />
-              <span class="form-hint">并行评估由 EVAL_PARALLEL 环境变量控制</span>
-            </el-form-item>
-
-            <el-form-item label="超时时间">
-              <el-input-number v-model="evaluationForm.timeout" :min="30" :max="600" :step="30" disabled />
-              <span class="form-hint">秒</span>
-            </el-form-item>
-          </el-form>
         </el-card>
       </el-tab-pane>
 
@@ -191,7 +171,7 @@
                 <el-tag>LangGraph</el-tag>
                 <el-tag>ECharts</el-tag>
                 <el-tag>Element Plus</el-tag>
-                <el-tag>Python</el-tag>
+                <el-tag>Milvus</el-tag>
               </div>
             </div>
           </div>
@@ -202,21 +182,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Cpu, CircleCheck } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
+const router = useRouter()
 const activeTab = ref('general')
-
-// Dimensions config
-const dimensions = [
-  { key: 'planning', name: '规划质量' },
-  { key: 'tactical', name: '战术决策' },
-  { key: 'tool_use', name: '工具使用' },
-  { key: 'memory', name: '记忆保持' },
-  { key: 'replan', name: '重规划' },
-  { key: 'retrieval', name: '检索质量' },
-]
+const statusLoading = ref(false)
+const systemStatus = ref<any>(null)
 
 // General settings form (local UI preferences only)
 const generalForm = reactive({
@@ -226,25 +200,6 @@ const generalForm = reactive({
   refreshInterval: 60,
 })
 
-// Evaluation settings form (read-only reference values)
-const evaluationForm = reactive({
-  weights: {
-    planning: 20,
-    tactical: 20,
-    tool_use: 15,
-    memory: 15,
-    replan: 15,
-    retrieval: 15,
-  } as Record<string, number>,
-  thresholds: {
-    excellent: 80,
-    good: 60,
-    pass: 40,
-  },
-  maxConcurrent: 3,
-  timeout: 120,
-})
-
 // Notification settings form
 const notificationForm = reactive({
   onComplete: true,
@@ -252,6 +207,19 @@ const notificationForm = reactive({
   onLowScore: true,
   lowScoreThreshold: 60,
 })
+
+const loadSystemStatus = async () => {
+  statusLoading.value = true
+  try {
+    const res = await fetch('/health')
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    systemStatus.value = await res.json()
+  } catch (err: any) {
+    ElMessage.error(err.message || '加载系统状态失败')
+  } finally {
+    statusLoading.value = false
+  }
+}
 
 // Methods
 const saveGeneralSettings = () => {
@@ -288,6 +256,7 @@ const loadSettings = () => {
 
 // Lifecycle
 loadSettings()
+onMounted(loadSystemStatus)
 </script>
 
 <style scoped lang="scss">
@@ -346,6 +315,11 @@ loadSettings()
     margin-left: 12px;
     font-size: 12px;
     color: var(--text-color-secondary);
+  }
+
+  .status-actions {
+    display: flex;
+    gap: 8px;
   }
 
   .about-content {

@@ -1,12 +1,33 @@
 <template>
   <div class="vector-admin" v-loading="loading">
-    <!-- Header -->
+    <el-alert
+      v-if="errorMessage"
+      :title="errorMessage"
+      type="error"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px"
+    />
+
+    <el-alert
+      v-if="stats && !stats.available"
+      title="Milvus 不可用"
+      :description="stats.error || '向量索引未就绪，语义搜索将降级为 BM25。'"
+      type="warning"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px"
+    />
+
     <div class="page-header">
       <div class="header-left">
         <h2>Milvus 向量管理</h2>
         <span class="subtitle">查看 Wiki Agent 写入 Milvus 的分块向量与元数据</span>
       </div>
       <div class="header-right">
+        <el-button type="warning" @click="rebuildIndex" :loading="rebuilding">
+          重建索引
+        </el-button>
         <el-button @click="refreshAll" :loading="loading">
           <el-icon><Refresh /></el-icon>
           刷新
@@ -14,7 +35,6 @@
       </div>
     </div>
 
-    <!-- Stats Cards -->
     <el-row :gutter="16" class="stats-row">
       <el-col :span="4" v-for="stat in statCards" :key="stat.label">
         <el-card shadow="hover" class="stat-card">
@@ -29,7 +49,6 @@
       </el-col>
     </el-row>
 
-    <!-- Filters -->
     <el-card shadow="hover" class="filter-card">
       <el-row :gutter="12" align="bottom">
         <el-col :span="10">
@@ -49,9 +68,8 @@
       </el-row>
     </el-card>
 
-    <!-- Chunks Table -->
     <el-card shadow="hover" class="table-card">
-      <el-table :data="chunks" stripe max-height="520" style="width:100%">
+      <el-table :data="chunks" stripe max-height="520" style="width:100%" empty-text="暂无分块数据">
         <el-table-column prop="chunk_id" label="Chunk ID" width="200">
           <template #default="{ row }">
             <code>{{ row.chunk_id }}</code>
@@ -102,8 +120,22 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+
+interface VectorStats {
+  available: boolean
+  uri: string
+  collection: string
+  embedding_dim: number
+  total_chunks: number
+  unique_pages: number
+  error?: string | null
+}
 
 const loading = ref(false)
+const rebuilding = ref(false)
+const errorMessage = ref('')
+const stats = ref<VectorStats | null>(null)
 const pathFilter = ref('')
 const keywordFilter = ref('')
 const currentPage = ref(1)
@@ -127,7 +159,10 @@ const statCards = ref([
 async function loadStats() {
   try {
     const res = await fetch('/api/wiki/vector-stats')
+    if (!res.ok) throw new Error(`统计接口 HTTP ${res.status}`)
     const data = await res.json()
+    stats.value = data
+    errorMessage.value = ''
     statCards.value = [
       { label: '集合', value: data.collection, small: true },
       { label: 'URI', value: data.uri, small: true },
@@ -136,15 +171,20 @@ async function loadStats() {
       { label: '页面数', value: String(data.unique_pages) },
       { label: '状态', value: '', badge: data.available },
     ]
-  } catch {}
+  } catch (err: any) {
+    errorMessage.value = err.message || '加载统计失败'
+  }
 }
 
 async function loadPaths() {
   try {
     const res = await fetch('/api/wiki/vector-paths')
+    if (!res.ok) throw new Error(`路径列表 HTTP ${res.status}`)
     const data = await res.json()
     paths.value = data.items || []
-  } catch {}
+  } catch (err: any) {
+    errorMessage.value = err.message || '加载路径列表失败'
+  }
 }
 
 async function loadChunks(page = 1) {
@@ -156,10 +196,15 @@ async function loadChunks(page = 1) {
 
   try {
     const res = await fetch(`/api/wiki/vector-chunks?${params}`)
+    if (!res.ok) throw new Error(`分块列表 HTTP ${res.status}`)
     const data = await res.json()
+    if (data.error) {
+      errorMessage.value = data.error
+    }
     chunks.value = data.items || []
     total.value = data.total
-  } catch {
+  } catch (err: any) {
+    errorMessage.value = err.message || '加载分块失败'
     chunks.value = []
     total.value = 0
   }
@@ -168,6 +213,31 @@ async function loadChunks(page = 1) {
 function search() {
   currentPage.value = 1
   loadChunks(1)
+}
+
+async function rebuildIndex() {
+  try {
+    await ElMessageBox.confirm(
+      '将清空 Milvus 与 BM25 索引，并从 knowledge/ 目录全量重建。是否继续？',
+      '重建索引',
+      { type: 'warning', confirmButtonText: '重建', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  rebuilding.value = true
+  try {
+    const res = await fetch('/api/wiki/vector-rebuild', { method: 'POST' })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || data.message || `HTTP ${res.status}`)
+    ElMessage.success(data.message || `已重建 ${data.reindexed ?? 0} 篇`)
+    await refreshAll()
+  } catch (err: any) {
+    ElMessage.error(err.message || '重建失败')
+  } finally {
+    rebuilding.value = false
+  }
 }
 
 async function refreshAll() {
@@ -192,6 +262,11 @@ onMounted(refreshAll)
     .header-left {
       h2 { margin: 0; font-size: 1.5rem; }
       .subtitle { color: #909399; font-size: 0.875rem; margin-top: 4px; display: block; }
+    }
+
+    .header-right {
+      display: flex;
+      gap: 8px;
     }
   }
 

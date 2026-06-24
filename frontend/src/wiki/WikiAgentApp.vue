@@ -26,6 +26,14 @@
         <button
           v-if="mode === 'wiki'"
           class="nav-action"
+          @click="openVectorAdmin"
+          title="向量管理"
+        >
+          🗄️ 向量
+        </button>
+        <button
+          v-if="mode === 'wiki'"
+          class="nav-action"
           :class="{ active: showHistory }"
           @click="showHistory = !showHistory; if (showHistory) { currentPage = null; searchResults = []; }"
           title="变更流"
@@ -140,6 +148,10 @@ const searchResults = ref([]);
 const showImport = ref(false);
 const showCreate = ref(false);
 const showHistory = ref(false);
+
+function openVectorAdmin() {
+  window.open("/vector-admin", "_blank");
+}
 
 async function loadCategories() {
   try {
