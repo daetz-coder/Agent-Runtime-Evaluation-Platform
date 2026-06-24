@@ -2,24 +2,17 @@
 
 from __future__ import annotations
 
+from app.wiki_agent.agent.tools.embeddings import generate_embedding, get_embedding_model
 from app.wiki_agent.agent.tools.vector_store import get_vector_store
 from app.wiki_agent.config import settings
 
-# 缓存 embedding 模型
+# 缓存 embedding 模型（兼容旧引用）
 _embedding_model = None
 
 
 def _get_embedding_model():
     """获取或加载 Embedding 模型（单例）"""
-    global _embedding_model
-    if _embedding_model is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-
-            _embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_PATH)
-        except Exception as e:
-            print(f"[搜索] Embedding 模型加载失败: {e}")
-    return _embedding_model
+    return get_embedding_model()
 
 
 def semantic_search(query: str, limit: int = 5) -> list[dict]:
@@ -117,20 +110,5 @@ def hybrid_search(query: str, limit: int = 5) -> list[dict]:
 
 
 def _generate_embedding(text: str) -> list[float]:
-    """生成文本的向量嵌入
-
-    Args:
-        text: 输入文本
-
-    Returns:
-        list[float]: 向量嵌入
-    """
-    model = _get_embedding_model()
-    if model is None:
-        return [0.0] * settings.EMBEDDING_DIM
-    try:
-        embedding = model.encode(text)
-        return embedding.tolist()
-    except Exception as e:
-        print(f"[搜索] Embedding 生成失败: {e}")
-        return [0.0] * settings.EMBEDDING_DIM
+    """生成文本的向量嵌入"""
+    return generate_embedding(text)

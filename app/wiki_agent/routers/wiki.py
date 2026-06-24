@@ -184,9 +184,9 @@ async def auto_tag_page(data: AutoTagRequest):
             )
             content = f"---{new_frontmatter}---{parts[2]}"
 
-    from app.wiki_agent.agent.tools.sync_manager import get_sync_manager
-    sm = get_sync_manager()
-    sm.update(path=page.path, title=page.title, content=content, tags=tags)
+    from app.wiki_agent.agent.tools.sync_manager import sync_manager
+
+    sync_manager.update(path=page.path, title=page.title, content=content, tags=tags)
 
     return {"path": data.path, "tags": tags, "auto_generated": True}
 
