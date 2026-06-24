@@ -1,8 +1,9 @@
-"""搜索工具 — 语义搜索、BM25 搜索、RRF 混合搜索"""
+"""搜索工具 — 语义搜索、BM25 搜索、RRF 混合搜索、Cross-Encoder 重排"""
 
 from __future__ import annotations
 
 from app.wiki_agent.agent.tools.embeddings import generate_embedding, get_embedding_model
+from app.wiki_agent.agent.tools.reranker import rerank_results
 from app.wiki_agent.agent.tools.vector_store import get_vector_store
 from app.wiki_agent.config import settings
 
@@ -37,11 +38,13 @@ def semantic_search(query: str, limit: int = 5) -> list[dict]:
         for hit in results:
             path = hit.get("path") or hit.get("chunk_id", "")
             score = hit.get("score", 0.0)
+            document = hit.get("document") or ""
             if path not in seen_paths or score > seen_paths[path]["score"]:
                 seen_paths[path] = {
                     "path": path,
                     "title": hit.get("title", ""),
-                    "snippet": (hit.get("document") or "")[:200],
+                    "snippet": document[:200],
+                    "content": document[:2000],
                     "score": score,
                     "search_type": "semantic",
                 }
@@ -69,44 +72,60 @@ def keyword_search(query: str, limit: int = 5) -> list[dict]:
     return bm25.search(query, limit)
 
 
+def _rrf_merge(
+    semantic_results: list[dict],
+    keyword_results: list[dict],
+    *,
+    rrf_k: int = 60,
+) -> list[dict]:
+    """Fuse semantic and BM25 rankings with reciprocal rank fusion."""
+    best_result: dict[str, dict] = {}
+    for result in semantic_results:
+        if result["path"] not in best_result:
+            best_result[result["path"]] = result
+    for result in keyword_results:
+        if result["path"] not in best_result:
+            best_result[result["path"]] = result
+
+    rrf_scores: dict[str, float] = {}
+    for rank, result in enumerate(semantic_results):
+        rrf_scores.setdefault(result["path"], 0.0)
+        rrf_scores[result["path"]] += 1.0 / (rrf_k + rank + 1)
+    for rank, result in enumerate(keyword_results):
+        rrf_scores.setdefault(result["path"], 0.0)
+        rrf_scores[result["path"]] += 1.0 / (rrf_k + rank + 1)
+
+    merged: list[dict] = []
+    for path, rrf_score in rrf_scores.items():
+        entry = {**best_result[path], "score": rrf_score, "search_type": "hybrid"}
+        merged.append(entry)
+
+    merged.sort(key=lambda x: x["score"], reverse=True)
+    return merged
+
+
 def hybrid_search(query: str, limit: int = 5) -> list[dict]:
-    """混合搜索 — RRF（倒数秩融合）结合语义搜索和 BM25 搜索
+    """混合搜索 — RRF 融合语义 + BM25，再经 Cross-Encoder 重排
+
+    Pipeline:
+        1. semantic_search / keyword_search 召回候选
+        2. RRF 倒数秩融合
+        3. Cross-Encoder rerank（可通过 RERANK_ENABLED 关闭）
 
     Args:
         query: 搜索查询
         limit: 返回结果数量
 
     Returns:
-        list[dict]: 搜索结果列表（RRF 融合排序）
+        list[dict]: 重排后的搜索结果
     """
-    rrf_k = 60
+    recall_limit = max(limit * settings.RERANK_CANDIDATE_MULTIPLIER, limit * 2)
 
-    semantic_results = semantic_search(query, limit * 2)
-    keyword_results = keyword_search(query, limit * 2)
+    semantic_results = semantic_search(query, recall_limit)
+    keyword_results = keyword_search(query, recall_limit)
+    merged = _rrf_merge(semantic_results, keyword_results)
 
-    best_result: dict[str, dict] = {}
-    for r in semantic_results:
-        if r["path"] not in best_result:
-            best_result[r["path"]] = r
-    for r in keyword_results:
-        if r["path"] not in best_result:
-            best_result[r["path"]] = r
-
-    rrf_scores: dict[str, float] = {}
-    for rank, r in enumerate(semantic_results):
-        rrf_scores.setdefault(r["path"], 0.0)
-        rrf_scores[r["path"]] += 1.0 / (rrf_k + rank + 1)
-    for rank, r in enumerate(keyword_results):
-        rrf_scores.setdefault(r["path"], 0.0)
-        rrf_scores[r["path"]] += 1.0 / (rrf_k + rank + 1)
-
-    merged = []
-    for path, rrf_score in rrf_scores.items():
-        entry = {**best_result[path], "score": rrf_score, "search_type": "hybrid"}
-        merged.append(entry)
-
-    merged.sort(key=lambda x: x["score"], reverse=True)
-    return merged[:limit]
+    return rerank_results(query, merged, top_k=limit)
 
 
 def _generate_embedding(text: str) -> list[float]:

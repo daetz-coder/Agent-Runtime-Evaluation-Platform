@@ -23,6 +23,13 @@ class WikiAgentSettings(BaseSettings):
     DB_PATH: str = str(WIKI_DATA_DIR / "chat.db")
     BM25_INDEX_PATH: str = str(WIKI_DATA_DIR / "bm25_index.pkl")
 
+    # Rerank (cross-encoder after RRF)
+    RERANK_ENABLED: bool = True
+    RERANK_MODEL: str = "BAAI/bge-reranker-base"
+    RERANK_MODEL_PATH: str = str(WIKI_AGENT_ROOT / "models" / "bge-reranker-base")
+    RERANK_CANDIDATE_MULTIPLIER: int = 3
+    RERANK_MAX_LENGTH: int = 512
+
     # Git
     GIT_ENABLED: bool = True
 

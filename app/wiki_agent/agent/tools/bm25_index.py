@@ -57,6 +57,7 @@ class BM25Index:
                 "path": path,
                 "title": title,
                 "snippet": chunk[:200],
+                "content": chunk,
                 "chunk_index": i,
             })
 
@@ -110,6 +111,7 @@ class BM25Index:
                     "path": path,
                     "title": meta["title"],
                     "snippet": meta["snippet"],
+                    "content": meta.get("content", meta["snippet"]),
                     "score": float(score),
                     "search_type": "bm25",
                 }
@@ -192,6 +194,7 @@ class BM25Index:
                     "path": rel_path,
                     "title": title,
                     "snippet": chunk[:200],
+                    "content": chunk,
                     "chunk_index": i,
                 })
             count += 1
