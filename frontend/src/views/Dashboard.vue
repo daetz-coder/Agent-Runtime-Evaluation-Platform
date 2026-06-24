@@ -93,7 +93,7 @@
     <!-- Second Row -->
     <el-row :gutter="20" class="chart-row">
       <!-- Bar Chart - Dimension Comparison -->
-      <el-col :span="12">
+      <el-col :span="24">
         <el-card class="chart-card" shadow="hover">
           <template #header>
             <div class="card-header">
@@ -104,20 +104,6 @@
             </div>
           </template>
           <div ref="barChart" class="chart-container"></div>
-        </el-card>
-      </el-col>
-
-      <!-- Gauge Charts -->
-      <el-col :span="12">
-        <el-card class="chart-card" shadow="hover">
-          <template #header>
-            <div class="card-header">
-              <span>维度详细得分</span>
-            </div>
-          </template>
-          <div class="gauge-grid">
-            <div v-for="dim in dimensions" :key="dim.key" ref="gaugeCharts" class="gauge-item"></div>
-          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -193,13 +179,11 @@ const router = useRouter()
 const radarChart = ref<HTMLElement>()
 const lineChart = ref<HTMLElement>()
 const barChart = ref<HTMLElement>()
-const gaugeCharts = ref<HTMLElement[]>([])
 
 // Chart instances
 let radarInstance: echarts.ECharts | null = null
 let lineInstance: echarts.ECharts | null = null
 let barInstance: echarts.ECharts | null = null
-let gaugeInstances: echarts.ECharts[] = []
 
 // Data
 const trendPeriod = ref('week')
@@ -470,92 +454,6 @@ const initBarChart = () => {
   barInstance.setOption(option)
 }
 
-const initGaugeCharts = () => {
-  gaugeInstances.forEach(instance => instance.dispose())
-  gaugeInstances = []
-
-  const avgScores = summaryData.value?.average_scores || {}
-
-  gaugeCharts.value.forEach((el, index) => {
-    if (!el) return
-
-    const dim = dimensions[index]
-    const score = avgScores[dim.key] || 0
-
-    const instance = echarts.init(el)
-    gaugeInstances.push(instance)
-
-    const option: echarts.EChartsOption = {
-      series: [
-        {
-          type: 'gauge',
-          startAngle: 200,
-          endAngle: -20,
-          min: 0,
-          max: 100,
-          splitNumber: 10,
-          axisLine: {
-            lineStyle: {
-              width: 12,
-              color: [
-                [0.3, '#f56c6c'],
-                [0.7, '#e6a23c'],
-                [1, '#67c23a'],
-              ],
-            },
-          },
-          pointer: {
-            itemStyle: {
-              color: 'auto',
-            },
-          },
-          axisTick: {
-            distance: -12,
-            length: 4,
-            lineStyle: {
-              color: '#fff',
-              width: 1,
-            },
-          },
-          splitLine: {
-            distance: -14,
-            length: 8,
-            lineStyle: {
-              color: '#fff',
-              width: 2,
-            },
-          },
-          axisLabel: {
-            color: 'inherit',
-            distance: 20,
-            fontSize: 10,
-          },
-          detail: {
-            valueAnimation: true,
-            formatter: '{value}',
-            color: 'inherit',
-            fontSize: 16,
-            offsetCenter: [0, '70%'],
-          },
-          title: {
-            offsetCenter: [0, '90%'],
-            fontSize: 12,
-            color: '#666',
-          },
-          data: [
-            {
-              value: score,
-              name: dim.name,
-            },
-          ],
-        },
-      ],
-    }
-
-    instance.setOption(option)
-  })
-}
-
 // Fetch data
 const fetchData = async () => {
   try {
@@ -587,7 +485,6 @@ const fetchData = async () => {
       initRadarChart()
       initLineChart()
       initBarChart()
-      initGaugeCharts()
     })
   } catch (error) {
     console.error('Failed to fetch data:', error)
@@ -599,7 +496,6 @@ const handleResize = () => {
   radarInstance?.resize()
   lineInstance?.resize()
   barInstance?.resize()
-  gaugeInstances.forEach(instance => instance.resize())
 }
 
 // Lifecycle
@@ -613,7 +509,6 @@ onUnmounted(() => {
   radarInstance?.dispose()
   lineInstance?.dispose()
   barInstance?.dispose()
-  gaugeInstances.forEach(instance => instance.dispose())
 })
 
 // Watch for period change
@@ -677,17 +572,6 @@ watch(trendPeriod, () => {
 
   .chart-container {
     height: 300px;
-  }
-
-  .gauge-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    height: 300px;
-
-    .gauge-item {
-      height: 100%;
-    }
   }
 
   .task-list {
