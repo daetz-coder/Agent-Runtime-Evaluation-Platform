@@ -18,22 +18,22 @@
         <el-table :data="sessions" stripe @expand-change="onSessionExpand" row-key="id">
           <el-table-column type="expand">
             <template #default="{ row }">
-              <div class="expand-content" v-if="row._detail">
-                <h4>Key Facts ({{ row._detail.key_facts?.length || 0 }})</h4>
-                <el-tag v-for="(fact, i) in row._detail.key_facts" :key="i" class="fact-tag">
+              <div class="expand-content" v-if="sessionDetails[row.id]">
+                <h4>Key Facts ({{ sessionDetails[row.id].key_facts?.length || 0 }})</h4>
+                <el-tag v-for="(fact, i) in sessionDetails[row.id].key_facts" :key="i" class="fact-tag">
                   {{ fact }}
                 </el-tag>
-                <span v-if="!row._detail.key_facts?.length" class="text-muted">无</span>
+                <span v-if="!sessionDetails[row.id].key_facts?.length" class="text-muted">无</span>
 
-                <div v-if="row._detail.active_eval_task_id" class="eval-link">
+                <div v-if="sessionDetails[row.id].active_eval_task_id" class="eval-link">
                   活跃评估任务:
-                  <router-link :to="`/tasks/${row._detail.active_eval_task_id}`">
-                    {{ row._detail.active_eval_task_id.slice(0, 8) }}...
+                  <router-link :to="`/tasks/${sessionDetails[row.id].active_eval_task_id}`">
+                    {{ sessionDetails[row.id].active_eval_task_id.slice(0, 8) }}...
                   </router-link>
                 </div>
 
-                <h4>Messages ({{ row._detail.messages?.length || 0 }})</h4>
-                <div v-for="msg in row._detail.messages" :key="msg.id" class="msg-item">
+                <h4>Messages ({{ sessionDetails[row.id].messages?.length || 0 }})</h4>
+                <div v-for="msg in sessionDetails[row.id].messages" :key="msg.id" class="msg-item">
                   <el-tag :type="msg.role === 'user' ? 'primary' : 'success'" size="small">
                     {{ msg.role }}
                   </el-tag>
@@ -42,7 +42,8 @@
                   <span v-if="msg.extraction" class="msg-meta">📝 extraction</span>
                 </div>
               </div>
-              <el-skeleton v-else :rows="3" animated />
+              <el-skeleton v-else-if="loadingDetails[row.id]" :rows="3" animated />
+              <div v-else class="text-muted" style="padding: 12px">加载中...</div>
             </template>
           </el-table-column>
           <el-table-column prop="name" label="名称" min-width="150" />
@@ -70,8 +71,8 @@
         <el-table :data="checkpoints" stripe @expand-change="onCheckpointExpand" row-key="thread_id">
           <el-table-column type="expand">
             <template #default="{ row }">
-              <div class="expand-content" v-if="row._detail">
-                <div v-for="(cp, i) in row._detail.checkpoints" :key="cp.checkpoint_id" class="cp-item">
+              <div class="expand-content" v-if="checkpointDetails[row.thread_id]">
+                <div v-for="(cp, i) in checkpointDetails[row.thread_id].checkpoints" :key="cp.checkpoint_id" class="cp-item">
                   <div class="cp-header">
                     <el-tag size="small">#{{ i + 1 }}</el-tag>
                     <code class="cp-id">{{ cp.checkpoint_id?.slice(0, 16) }}...</code>
@@ -100,7 +101,8 @@
                   </div>
                 </div>
               </div>
-              <el-skeleton v-else :rows="4" animated />
+              <el-skeleton v-else-if="loadingCpDetails[row.thread_id]" :rows="4" animated />
+              <div v-else class="text-muted" style="padding: 12px">加载中...</div>
             </template>
           </el-table-column>
           <el-table-column prop="thread_id" label="Thread ID" min-width="200">
@@ -197,6 +199,12 @@ const sessions = ref<any[]>([])
 const checkpoints = ref<any[]>([])
 const bm25 = ref<any>(null)
 
+// 响应式详情数据（用 Map 存储，key 为 id/thread_id）
+const sessionDetails = reactive<Record<string, any>>({})
+const loadingDetails = reactive<Record<string, boolean>>({})
+const checkpointDetails = reactive<Record<string, any>>({})
+const loadingCpDetails = reactive<Record<string, boolean>>({})
+
 const overviewCards = [
   { key: 'sessions', label: 'Sessions' },
   { key: 'messages', label: 'Messages' },
@@ -226,22 +234,30 @@ async function loadBm25() {
   try { bm25.value = await debugApi.getBm25Stats() } catch { /* */ }
 }
 
-async function onSessionExpand({ row, expanded }: any) {
-  if (expanded && !row._detail) {
+async function onSessionExpand(row: any, expandedRows: any[]) {
+  const isExpanded = expandedRows.some((r: any) => r.id === row.id)
+  if (isExpanded && !sessionDetails[row.id]) {
+    loadingDetails[row.id] = true
     try {
-      row._detail = await debugApi.getSessionDetail(row.id)
+      sessionDetails[row.id] = await debugApi.getSessionDetail(row.id)
     } catch {
-      row._detail = { messages: [], key_facts: [] }
+      sessionDetails[row.id] = { messages: [], key_facts: [] }
+    } finally {
+      loadingDetails[row.id] = false
     }
   }
 }
 
-async function onCheckpointExpand({ row, expanded }: any) {
-  if (expanded && !row._detail) {
+async function onCheckpointExpand(row: any, expandedRows: any[]) {
+  const isExpanded = expandedRows.some((r: any) => r.thread_id === row.thread_id)
+  if (isExpanded && !checkpointDetails[row.thread_id]) {
+    loadingCpDetails[row.thread_id] = true
     try {
-      row._detail = await debugApi.getCheckpointDetail(row.thread_id)
+      checkpointDetails[row.thread_id] = await debugApi.getCheckpointDetail(row.thread_id)
     } catch {
-      row._detail = { checkpoints: [] }
+      checkpointDetails[row.thread_id] = { checkpoints: [] }
+    } finally {
+      loadingCpDetails[row.thread_id] = false
     }
   }
 }
