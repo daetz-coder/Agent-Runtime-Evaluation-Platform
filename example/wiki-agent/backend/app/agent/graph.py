@@ -1,4 +1,7 @@
-"""Wiki Agent — LangGraph 编排（search → respond → decide → execute）"""
+"""Wiki Agent — LangGraph 编排（search → respond → decide → execute）
+
+纯业务逻辑，不包含任何评估代码。评估由 eval_middleware + SDK 自动采集。
+"""
 
 from __future__ import annotations
 
@@ -17,10 +20,17 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Command, interrupt
 
 from app.agent import knowledge_agent
+from app.agent.context_retriever import RetrievedContext, build_context_block, retrieve_context
+from app.agent.eval_middleware import (
+    finish_session,
+    instrument_graph,
+    record_retrieval,
+    start_session,
+    update_context,
+    wrap_llm,
+)
 from app.agent.tools import crud_tools, search_tools
-from app.agent.context_retriever import RetrievedContext, retrieve_context, build_context_block
 from app.config import settings
-from app.evaluation import EvaluationTrace, get_eval_trace
 from app.session import store as session_store
 
 _CHECKPOINT_DB = os.path.join(os.path.dirname(settings.DB_PATH), "checkpoints.db")
@@ -60,27 +70,14 @@ KEY_FACTS_PROMPT = """从以下对话上下文提取 Agent 必须记住的关键
 ["事实1", "事实2", ...]
 """
 
-TASK_CONTINUITY_PROMPT = """判断用户的新消息是对当前任务的「继续/追问/修改」还是一个「全新的任务」。
-
-## 当前任务目标
-{current_goal}
-
-## 用户新消息
-{new_message}
-
-## 输出
-仅返回一个词：
-- "continue" — 如果新消息是在追问、补充、修改当前任务
-- "new" — 如果新消息是一个完全不同的话题/任务
-"""
-
-chat_llm = ChatOpenAI(
+# 创建 LLM 并用 SDK 包裹（自动采集 LLM 调用）
+chat_llm = wrap_llm(ChatOpenAI(
     model=settings.ZHIPUAI_CHAT_MODEL,
     api_key=settings.ZHIPUAI_API_KEY,
     base_url=settings.ZHIPUAI_BASE_URL,
     temperature=0.7,
     streaming=True,
-)
+))
 
 
 class WikiState(TypedDict, total=False):
@@ -96,11 +93,6 @@ class WikiState(TypedDict, total=False):
 
 
 def _get_configurable(config: RunnableConfig) -> dict:
-    """
-    Get the configurable from the config.
-    :param config: The config.
-    :return: The configurable.
-    """
     return (config or {}).get("configurable") or {}
 
 
@@ -108,14 +100,12 @@ def _build_llm_messages(state: WikiState, chat_history: list[BaseMessage]) -> li
     """根据图状态与会话历史构建 LLM 消息列表（统一上下文块）"""
     user_message = state["user_message"]
 
-    # 历史消息（去掉与当前 user_message 重复的最后一条）
     history = list(chat_history)
     if history and isinstance(history[-1], HumanMessage) and history[-1].content == user_message:
         prior = history[:-1]
     else:
         prior = history
 
-    # 构建统一上下文块
     ctx_data = state.get("retrieved_context")
     if ctx_data:
         ctx = RetrievedContext(
@@ -125,7 +115,6 @@ def _build_llm_messages(state: WikiState, chat_history: list[BaseMessage]) -> li
         )
         context_block = build_context_block(ctx)
     else:
-        # 向后兼容：无 retrieved_context 时用旧 wiki_text
         context_block = ""
         wiki_text = state.get("wiki_text")
         if wiki_text:
@@ -151,36 +140,7 @@ async def _emit(queue: asyncio.Queue | None, event: dict) -> None:
         await queue.put(event)
 
 
-# ── key_facts 提取 ────────────────────────────────────────────
-
-
-async def _check_task_continuity(
-    current_goal: str,
-    new_message: str,
-) -> bool:
-    """判断新消息是继续当前任务（True）还是新任务（False）。"""
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import HumanMessage as HM
-
-    prompt = TASK_CONTINUITY_PROMPT.format(
-        current_goal=current_goal,
-        new_message=new_message,
-    )
-
-    try:
-        llm = ChatOpenAI(
-            model=settings.ZHIPUAI_CHAT_MODEL,
-            api_key=settings.ZHIPUAI_API_KEY,
-            base_url=settings.ZHIPUAI_BASE_URL,
-            temperature=0,
-            max_tokens=10,
-        )
-        response = await llm.ainvoke([HM(content=prompt)])
-        result = (response.content or "").strip().lower()
-        return "continue" in result
-    except Exception as exc:
-        print(f"[continuity] 判断失败，默认新任务: {exc}")
-        return False
+# ── key_facts 提取（业务逻辑，非评估） ────────────────────────
 
 
 async def _extract_key_facts(
@@ -191,7 +151,6 @@ async def _extract_key_facts(
     """用 LLM 从对话上下文中提取 key_facts（轻量调用）。"""
     import json as _json
 
-    # 构建历史摘要（最近 6 条）
     history_summary = ""
     if chat_history:
         recent = chat_history[-6:]
@@ -202,7 +161,6 @@ async def _extract_key_facts(
             parts.append(f"{role}: {content}")
         history_summary = "\n".join(parts)
 
-    # 搜索结果摘要
     search_text = ""
     if search_results:
         search_text = "\n".join(
@@ -217,11 +175,10 @@ async def _extract_key_facts(
     )
 
     try:
-        # 使用轻量 LLM（temperature=0，短回复）
-        from langchain_openai import ChatOpenAI
+        from langchain_openai import ChatOpenAI as _RawLLM
         from langchain_core.messages import HumanMessage as HM
 
-        llm = ChatOpenAI(
+        llm = _RawLLM(
             model=settings.ZHIPUAI_CHAT_MODEL,
             api_key=settings.ZHIPUAI_API_KEY,
             base_url=settings.ZHIPUAI_BASE_URL,
@@ -231,7 +188,6 @@ async def _extract_key_facts(
         response = await llm.ainvoke([HM(content=prompt)])
         content = response.content or ""
 
-        # 解析 JSON 数组
         start = content.find("[")
         end = content.rfind("]") + 1
         if start != -1 and end > start:
@@ -244,7 +200,7 @@ async def _extract_key_facts(
     return []
 
 
-# ── 节点 ──────────────────────────────────────────────────────
+# ── 节点（纯业务逻辑） ──────────────────────────────────────
 
 
 async def search(state: WikiState, config: RunnableConfig) -> WikiState:
@@ -254,11 +210,14 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     configurable = _get_configurable(config)
     chat_history: list[BaseMessage] = configurable.get("chat_history") or []
     session_id = configurable.get("session_id")
-    trace = get_eval_trace(config)
     started = asyncio.get_running_loop().time()
 
     # 统一检索
     ctx = await retrieve_context(user_message, chat_history, session_id)
+    duration_ms = round((asyncio.get_running_loop().time() - started) * 1000, 2)
+
+    # 记录检索事件（SDK 无法自动采集检索细节）
+    record_retrieval(user_message, ctx.wiki_results, duration_ms)
 
     # wiki_text 向后兼容
     wiki_text = None
@@ -266,27 +225,14 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         lines = [f"- {r['title']} ({r['path']}): {r['snippet']}" for r in ctx.wiki_results[:3]]
         wiki_text = "\n".join(lines)
 
-    if trace:
-        trace.record_tool_call(
-            "hybrid_search",
-            {"query": user_message, "limit": 3},
-            {
-                "result_count": len(ctx.wiki_results),
-                "results": ctx.wiki_results,
-                "wiki_text": wiki_text,
-            },
-            duration_ms=round((asyncio.get_running_loop().time() - started) * 1000, 2),
-            call_id=f"hybrid_search:{user_message}",
-        )
-
-        # 提取新 key_facts 并累积到 session
-        new_facts = await _extract_key_facts(user_message, ctx.wiki_results, chat_history)
-        if session_id:
-            all_facts = await session_store.merge_session_key_facts(session_id, new_facts)
-            ctx.key_facts = all_facts  # 更新为完整列表
-            await trace.update_context({"key_facts": all_facts})
-            if new_facts:
-                print(f"[key_facts] 新增 {len(new_facts)} 条，累积 {len(all_facts)} 条")
+    # 提取新 key_facts 并累积到 session
+    new_facts = await _extract_key_facts(user_message, ctx.wiki_results, chat_history)
+    if session_id:
+        all_facts = await session_store.merge_session_key_facts(session_id, new_facts)
+        ctx.key_facts = all_facts
+        update_context({"key_facts": all_facts})
+        if new_facts:
+            print(f"[key_facts] 新增 {len(new_facts)} 条，累积 {len(all_facts)} 条")
 
     # 日志
     context_block = build_context_block(ctx)
@@ -312,7 +258,6 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     configurable = _get_configurable(config)
     queue: asyncio.Queue | None = configurable.get("event_queue")
     chat_history: list[BaseMessage] = configurable.get("chat_history") or []
-    trace = get_eval_trace(config)
 
     wiki_text = state.get("wiki_text")
     if wiki_text:
@@ -320,36 +265,15 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
 
     messages = _build_llm_messages(state, chat_history)
     collected = ""
-    started = asyncio.get_running_loop().time()
 
-    try:
-        if queue is not None:
-            async for chunk in chat_llm.astream(messages):
-                if chunk.content:
-                    collected += chunk.content
-                    await _emit(queue, {"type": "content", "text": chunk.content})
-        else:
-            response = await chat_llm.ainvoke(messages)
-            collected = response.content or ""
-    finally:
-        if trace:
-            trace.record(
-                "llm_call",
-                {
-                    "model": settings.ZHIPUAI_CHAT_MODEL,
-                    "streaming": queue is not None,
-                    "messages": [
-                        {
-                            "role": getattr(message, "type", "unknown"),
-                            "content": str(getattr(message, "content", "")),
-                        }
-                        for message in messages
-                    ],
-                    "duration_ms": round((asyncio.get_running_loop().time() - started) * 1000, 2),
-                    "response_chars": len(collected),
-                },
-                observation=collected,
-            )
+    if queue is not None:
+        async for chunk in chat_llm.astream(messages):
+            if chunk.content:
+                collected += chunk.content
+                await _emit(queue, {"type": "content", "text": chunk.content})
+    else:
+        response = await chat_llm.ainvoke(messages)
+        collected = response.content or ""
 
     return {**state, "ai_response": collected, "stage": "respond"}
 
@@ -359,7 +283,6 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
     print("[Wiki Agent] 分析对话...")
     configurable = _get_configurable(config)
     queue: asyncio.Queue | None = configurable.get("event_queue")
-    trace = get_eval_trace(config)
 
     user_message = state["user_message"]
     ai_response = state.get("ai_response", "")
@@ -373,7 +296,6 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
 
     await _emit(queue, {"type": "status", "message": "正在分析对话内容..."})
 
-    started = asyncio.get_running_loop().time()
     decision = await knowledge_agent.decide_action(user_message, ai_response)
     decision_dict = decision.to_dict()
 
@@ -381,29 +303,15 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
         stem = decision_dict["path"].replace(".md", "").split("/")[-1]
         decision_dict["title"] = stem
 
-    if trace:
-        trace.record(
-            "think",
-            {
-                "thought": "Knowledge update decision completed",
-                "decision": decision_dict,
-                "duration_ms": round((asyncio.get_running_loop().time() - started) * 1000, 2),
-            },
-            observation=decision_dict.get("reason"),
-        )
-
     return {**state, "decision": decision_dict, "stage": "decide"}
 
 
 async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
     """Human-in-the-Loop：等待用户确认后执行 CRUD"""
-    trace = get_eval_trace(config)
     user_confirmed = interrupt({})
 
     if not user_confirmed:
         print("[Wiki Agent] 用户取消操作")
-        if trace:
-            trace.record("think", {"thought": "User cancelled knowledge-base action"})
         return {
             **state,
             "action_result": {"status": "cancelled", "message": "用户取消"},
@@ -417,7 +325,6 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
     action = decision.get("action")
     print(f"[Wiki Agent] 用户确认，执行操作: {action}")
 
-    started = asyncio.get_running_loop().time()
     result = None
     if action == "create":
         result = crud_tools.create_knowledge(
@@ -436,19 +343,6 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
         result = crud_tools.delete_knowledge(decision.get("path", ""))
 
     print(f"[Wiki Agent] 执行结果: {result}")
-    if trace:
-        trace.record_tool_call(
-            f"wiki_{action}",
-            {
-                "title": decision.get("title"),
-                "path": decision.get("path"),
-                "category": decision.get("category"),
-                "tags": decision.get("tags") or [],
-            },
-            result,
-            duration_ms=round((asyncio.get_running_loop().time() - started) * 1000, 2),
-            call_id=f"{action}:{decision.get('path') or decision.get('title')}",
-        )
     return {**state, "action_result": result, "stage": "execute"}
 
 
@@ -467,11 +361,7 @@ def should_execute(state: WikiState) -> Literal["execute", "end"]:
 
 
 def create_wiki_graph(checkpointer):
-    """
-    Create the wiki agent graph.
-    :param checkpointer: The checkpointer.
-    :return: The wiki agent graph.
-    """
+    """创建 wiki agent graph（用 SDK 自动采集包裹）"""
     graph = StateGraph(WikiState)
     graph.add_node("search", search)
     graph.add_node("respond", respond)
@@ -482,17 +372,14 @@ def create_wiki_graph(checkpointer):
     graph.add_conditional_edges("respond", should_decide, {"decide": "decide", "end": END})
     graph.add_conditional_edges("decide", should_execute, {"execute": "execute", "end": END})
     graph.add_edge("execute", END)
-    return graph.compile(checkpointer=checkpointer)
+    compiled = graph.compile(checkpointer=checkpointer)
+    return instrument_graph(compiled)
 
 
 _wiki_graph = None
 
 
 async def get_wiki_graph():
-    """
-    Get the wiki agent graph.
-    :return: The wiki agent graph.
-    """
     global _wiki_graph
     if _wiki_graph is None:
         conn = await aiosqlite.connect(_CHECKPOINT_DB)
@@ -502,57 +389,13 @@ async def get_wiki_graph():
 
 
 def _extraction_from_result(result: dict, thread_id: str) -> dict | None:
-    """
-    Get the extraction from the result.
-    :param result: The result.
-    :param thread_id: The thread id.
-    :return: The extraction.
-    """
     decision = result.get("decision")
     if not decision or decision.get("action") == "none":
         return None
     return {**decision, "thread_id": thread_id}
 
 
-async def _setup_eval_trace(
-    user_message: str,
-    session_id: str | None,
-    mode: str,
-    **extra_context,
-) -> tuple[EvaluationTrace, str]:
-    """创建或续接评估 trace，返回 (trace, eval_task_id)。"""
-    trace = EvaluationTrace()
-
-    # 检查是否有活跃的 task 可以续接
-    if session_id:
-        active_task_id = await session_store.get_active_eval_task_id(session_id)
-        if active_task_id:
-            # 用最近一条用户消息作为 current_goal 的近似
-            is_continuation = await _check_task_continuity(
-                current_goal="previous conversation",
-                new_message=user_message,
-            )
-            if is_continuation:
-                trace.resume(active_task_id)
-                print(f"[Eval] 续接任务 {active_task_id[:8]}...")
-                return trace, active_task_id
-
-    # 新任务
-    eval_task_id = await trace.start(
-        user_message,
-        {
-            "agent": "example/wiki-agent",
-            "mode": mode,
-            "session_id": session_id,
-            **extra_context,
-        },
-    )
-
-    # 记录为 session 的活跃 task
-    if session_id and eval_task_id:
-        await session_store.set_active_eval_task_id(session_id, eval_task_id)
-
-    return trace, eval_task_id
+# ── 运行入口 ────────────────────────────────────────────────
 
 
 async def run_chat_stream(
@@ -566,7 +409,7 @@ async def run_chat_stream(
     thread_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
 
-    trace, eval_task_id = await _setup_eval_trace(
+    eval_task_id = await start_session(
         user_message, session_id, "stream",
         thread_id=thread_id,
         history_count=len(chat_history),
@@ -577,7 +420,6 @@ async def run_chat_stream(
             "thread_id": thread_id,
             "event_queue": queue,
             "chat_history": chat_history,
-            "eval_trace": trace,
             "session_id": session_id,
         }
     }
@@ -600,11 +442,10 @@ async def run_chat_stream(
             extraction = _extraction_from_result(result, thread_id)
             if extraction:
                 await queue.put({"type": "extraction", "data": extraction})
-            await trace.finish()
+            finish_session(auto_run=True)
             await queue.put({"type": "_done", "result": result})
         except Exception as e:
-            trace.record("think", {"thought": "Wiki graph failed", "error_type": type(e).__name__}, str(e))
-            await trace.finish(auto_run=False)
+            finish_session(auto_run=False)
             await queue.put({"type": "error", "message": str(e)})
         finally:
             await queue.put(None)
@@ -638,7 +479,7 @@ async def run_chat_invoke(
     graph = await get_wiki_graph()
     thread_id = str(uuid.uuid4())
 
-    trace, eval_task_id = await _setup_eval_trace(
+    eval_task_id = await start_session(
         user_message, session_id, "invoke",
         thread_id=thread_id,
         history_count=len(chat_history),
@@ -649,7 +490,6 @@ async def run_chat_invoke(
             "thread_id": thread_id,
             "event_queue": None,
             "chat_history": chat_history,
-            "eval_trace": trace,
             "session_id": session_id,
         }
     }
@@ -665,11 +505,10 @@ async def run_chat_invoke(
     }
     try:
         result = await graph.ainvoke(initial_state, config)
-    except Exception as exc:
-        trace.record("think", {"thought": "Wiki graph failed", "error_type": type(exc).__name__}, str(exc))
-        await trace.finish(auto_run=False)
+    except Exception:
+        finish_session(auto_run=False)
         raise
-    await trace.finish()
+    finish_session(auto_run=True)
     return {
         "content": result.get("ai_response", ""),
         "wiki_text": result.get("wiki_text"),
@@ -681,25 +520,22 @@ async def run_chat_invoke(
 async def resume_and_execute(thread_id: str, confirm: bool) -> dict:
     """从 checkpoint 恢复，执行或取消知识库操作"""
     graph = await get_wiki_graph()
-    trace = EvaluationTrace()
-    eval_task_id = await trace.start(
+
+    eval_task_id = await start_session(
         f"{'Confirm' if confirm else 'Cancel'} pending wiki knowledge-base action",
-        {
-            "agent": "example/wiki-agent",
-            "mode": "resume",
-            "thread_id": thread_id,
-            "confirm": confirm,
-        },
+        None, "resume",
+        thread_id=thread_id,
+        confirm=confirm,
     )
-    config: RunnableConfig = {"configurable": {"thread_id": thread_id, "eval_trace": trace}}
+
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
     try:
         result = await graph.ainvoke(Command(resume=confirm), config)
-    except Exception as exc:
-        trace.record("think", {"thought": "Wiki resume failed", "error_type": type(exc).__name__}, str(exc))
-        await trace.finish(auto_run=False)
+    except Exception:
+        finish_session(auto_run=False)
         raise
-    await trace.finish()
+    finish_session(auto_run=True)
 
     action_result = result.get("action_result")
     decision = result.get("decision", {})

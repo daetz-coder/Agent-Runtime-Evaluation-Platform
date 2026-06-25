@@ -17,3 +17,5 @@ jieba
 rank_bm25
 FlagEmbedding
 onnxruntime
+# SDK: install from project root → pip install -e ../../..
+# or add project root to PYTHONPATH

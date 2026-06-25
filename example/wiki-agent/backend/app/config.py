@@ -23,11 +23,8 @@ class Settings(BaseSettings):
     # Git
     GIT_ENABLED: bool = True
 
-    # Runtime evaluation platform
-    EVAL_ENABLED: bool = True
-    EVAL_API_BASE_URL: str = "http://127.0.0.1:8000"
-    EVAL_AUTO_RUN: bool = False
-    EVAL_BATCH_SIZE: int = 8
+    # Note: Evaluation settings (EVAL_ENABLED, EVAL_API_BASE_URL, EVAL_BATCH_SIZE)
+    # are now managed by the SDK via environment variables.
 
     class Config:
         env_file = str(Path(__file__).parent.parent / ".env")
