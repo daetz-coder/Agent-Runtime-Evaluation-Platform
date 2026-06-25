@@ -190,3 +190,78 @@ async def session_exists(session_id: str) -> bool:
         return row is not None
     finally:
         await db.close()
+
+
+async def get_session_key_facts(session_id: str) -> list[str]:
+    """获取会话累积的 key_facts"""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT key_facts FROM sessions WHERE id = ?", (session_id,),
+        )
+        row = await cursor.fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+        return []
+    except (json.JSONDecodeError, TypeError):
+        return []
+    finally:
+        await db.close()
+
+
+async def merge_session_key_facts(session_id: str, new_facts: list[str]) -> list[str]:
+    """将新 facts 合并到会话的 key_facts 中（去重），返回合并后的完整列表"""
+    existing = await get_session_key_facts(session_id)
+
+    # 去重（大小写不敏感 + 去除前后空格）
+    seen = {f.strip().lower() for f in existing}
+    merged = list(existing)
+    for fact in new_facts:
+        normalized = fact.strip().lower()
+        if normalized and normalized not in seen:
+            merged.append(fact.strip())
+            seen.add(normalized)
+
+    # 上限 20 条，保留最新的
+    if len(merged) > 20:
+        merged = merged[-20:]
+
+    # 写回
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE sessions SET key_facts = ? WHERE id = ?",
+            (json.dumps(merged, ensure_ascii=False), session_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+    return merged
+
+
+async def get_active_eval_task_id(session_id: str) -> str | None:
+    """获取会话当前活跃的评估 task_id"""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT active_eval_task_id FROM sessions WHERE id = ?",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        return row[0] if row and row[0] else None
+    finally:
+        await db.close()
+
+
+async def set_active_eval_task_id(session_id: str, task_id: str | None) -> None:
+    """设置会话当前活跃的评估 task_id（None 表示结束）"""
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE sessions SET active_eval_task_id = ? WHERE id = ?",
+            (task_id, session_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()

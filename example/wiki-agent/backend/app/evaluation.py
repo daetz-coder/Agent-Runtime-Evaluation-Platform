@@ -99,6 +99,21 @@ class EvaluationTrace:
         )
         return self.task_id
 
+    def resume(self, task_id: str) -> None:
+        """继续已有的 task（不创建新 task，step_number 从 0 续接）。"""
+        self.task_id = task_id
+        self.remote_task_created = True  # 假设远端已存在
+        self._step_counter = 0
+        self._steps = []
+        self._seen_events = set()
+        self.record(
+            "plan_update",
+            {
+                "reason": "User sent a follow-up message in the same task",
+                "next_action": "Continue with follow-up",
+            },
+        )
+
     def record(
         self,
         action_type: str,
@@ -186,6 +201,19 @@ class EvaluationTrace:
             logger.warning("Evaluation trajectory upload failed: %s", exc)
             with self._lock:
                 self._steps = steps + self._steps
+
+    async def update_context(self, extra: dict[str, Any]) -> None:
+        """Merge *extra* into the remote task's context (PATCH-style)."""
+        if not self.enabled or not self.remote_task_created or not self.task_id:
+            return
+        try:
+            response = await self._http().put(
+                f"/api/v1/tasks/{self.task_id}",
+                json={"context": _short(extra)},
+            )
+            response.raise_for_status()
+        except Exception as exc:
+            logger.warning("Evaluation context update failed: %s", exc)
 
     async def finish(self, *, auto_run: bool | None = None) -> str | None:
         if not self.task_id:

@@ -37,6 +37,14 @@ CREATE_MESSAGES_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)
 """
 
+ALTER_SESSIONS_KEY_FACTS = """
+ALTER TABLE sessions ADD COLUMN key_facts TEXT DEFAULT '[]'
+"""
+
+ALTER_SESSIONS_ACTIVE_TASK = """
+ALTER TABLE sessions ADD COLUMN active_eval_task_id TEXT
+"""
+
 
 async def init_db():
     """初始化数据库，创建表"""
@@ -44,6 +52,16 @@ async def init_db():
         await db.execute(CREATE_SESSIONS_TABLE)
         await db.execute(CREATE_MESSAGES_TABLE)
         await db.execute(CREATE_MESSAGES_INDEX)
+        # 迁移：sessions 表增加 key_facts 列
+        try:
+            await db.execute(ALTER_SESSIONS_KEY_FACTS)
+        except Exception:
+            pass  # 列已存在
+        # 迁移：sessions 表增加 active_eval_task_id 列
+        try:
+            await db.execute(ALTER_SESSIONS_ACTIVE_TASK)
+        except Exception:
+            pass  # 列已存在
         await db.commit()
     print(f"[数据库] 初始化完成: {DB_PATH}")
 

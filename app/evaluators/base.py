@@ -20,6 +20,7 @@ from langchain_anthropic import ChatAnthropic
 from app.core.config import settings
 from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep
+from app.evaluators.trajectory_compressor import TrajectoryCompressor
 
 
 class BaseEvaluator(ABC):
@@ -88,8 +89,26 @@ class BaseEvaluator(ABC):
         """
         pass
 
-    def _format_trajectory(self, trajectory: List[TrajectoryStep]) -> str:
-        """Format trajectory steps into readable text."""
+    def _format_trajectory(
+        self,
+        trajectory: List[TrajectoryStep],
+        compress: bool = True,
+    ) -> str:
+        """Format trajectory steps into readable text.
+
+        Args:
+            trajectory: List of trajectory steps.
+            compress: If True (default), run through the 4-stage compression
+                      pipeline. Set to False to get raw full-concatenation output.
+        """
+        if compress:
+            compressor = TrajectoryCompressor()
+            return compressor.compress(trajectory)
+        return self._format_trajectory_raw(trajectory)
+
+    @staticmethod
+    def _format_trajectory_raw(trajectory: List[TrajectoryStep]) -> str:
+        """Full concatenation — no compression (opt-out fallback)."""
         lines = []
         for step in trajectory:
             lines.append(f"Step {step.step_number} [{step.action_type}]:")
