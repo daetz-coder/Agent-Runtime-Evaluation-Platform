@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import wiki, chat
+from app.routers import wiki, chat, debug
 
 
 def _sync_indexes_if_needed():
@@ -139,6 +139,7 @@ app.add_middleware(
 # 挂载路由
 app.include_router(wiki.router)
 app.include_router(chat.router)
+app.include_router(debug.router)
 
 # 确保 knowledge 目录存在
 knowledge_dir = Path(settings.KNOWLEDGE_DIR)

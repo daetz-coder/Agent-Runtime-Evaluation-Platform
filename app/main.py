@@ -21,6 +21,7 @@ from app.wiki_agent.bootstrap import startup as wiki_agent_startup
 from app.wiki_agent.routers import chat as wiki_chat
 from app.wiki_agent.routers import vector_admin as wiki_vector_api
 from app.wiki_agent.routers import wiki as wiki_router
+from app.wiki_agent.routers import debug as wiki_debug
 from app.api.workspace_endpoints import router as workspace_router
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ Evaluate the runtime quality of AI agents across 6 dimensions:
     register_routes(wiki_chat.router, "", ["wiki-agent"])
     register_routes(wiki_vector_api.api_router, "", ["wiki-agent"])
     register_routes(wiki_vector_api.page_router, "", ["wiki-agent"])
+    register_routes(wiki_debug.router, "", ["debug"])
     register_routes(workspace_router, "/api/v1", ["workspaces"])
 
     from app.api.auth_middleware import AuthMiddleware

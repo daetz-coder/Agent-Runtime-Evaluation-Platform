@@ -64,6 +64,12 @@ const router = createRouter({
           meta: { title: '向量管理', icon: 'Collection' },
         },
         {
+          path: 'system-inspector',
+          name: 'SystemInspector',
+          component: () => import('@/views/SystemInspector.vue'),
+          meta: { title: '系统检查器', icon: 'Monitor' },
+        },
+        {
           path: 'settings',
           name: 'Settings',
           component: () => import('@/views/Settings.vue'),

@@ -139,5 +139,41 @@ export const benchmarkApi = {
   },
 }
 
+// Debug / System Inspector API (served at /api/debug, not /api/v1)
+const debugAxios = axios.create({ baseURL: '/api/debug', timeout: 15000 })
+debugAxios.interceptors.response.use(
+  (response: AxiosResponse) => response.data,
+  (error) => {
+    const silent = (error.config as ApiRequestConfig | undefined)?.silent
+    if (!silent) {
+      const message = error.response?.data?.detail || error.message || '请求失败'
+      ElMessage.error(message)
+    }
+    return Promise.reject(error)
+  }
+)
+const debugClient = debugAxios as ApiClient
+
+export const debugApi = {
+  getOverview() {
+    return debugClient.get('/overview')
+  },
+  getSessions() {
+    return debugClient.get('/sessions')
+  },
+  getSessionDetail(id: string) {
+    return debugClient.get(`/sessions/${id}`)
+  },
+  getCheckpoints() {
+    return debugClient.get('/checkpoints')
+  },
+  getCheckpointDetail(threadId: string) {
+    return debugClient.get(`/checkpoints/${threadId}`)
+  },
+  getBm25Stats() {
+    return debugClient.get('/bm25')
+  },
+}
+
 export { withSilent }
 export default api
