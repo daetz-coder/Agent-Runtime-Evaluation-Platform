@@ -1,8 +1,18 @@
-"""Wiki Agent 后端入口"""
+"""Wiki Agent 独立后端入口
 
+唯一源码在 app/wiki_agent/（平台包）。
+本文件仅做启动配置，通过 import 平台包实现零重复。
+"""
+
+import sys
 import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# 将项目根目录加入 sys.path，使 app.wiki_agent 可导入
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 # 抑制 LangChain/LangGraph 弃用警告
 warnings.filterwarnings("ignore", message=".*allowed_objects.*")
@@ -11,15 +21,16 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="langgraph
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
-from app.database import init_db
-from app.routers import wiki, chat, debug
+# 从平台包导入（唯一源码）
+from app.wiki_agent.config import settings
+from app.wiki_agent.database import init_db
+from app.wiki_agent.routers import wiki, chat, debug
 
 
 def _sync_indexes_if_needed():
-    """检查并自动同步 ChromaDB 和 BM25 索引 — 首次启动或数据为空时触发"""
-    from app.agent.tools.sync_manager import sync_manager
-    from app.agent.tools.bm25_index import get_bm25_index
+    """检查并自动同步 ChromaDB 和 BM25 索引"""
+    from app.wiki_agent.agent.tools.sync_manager import sync_manager
+    from app.wiki_agent.agent.tools.bm25_index import get_bm25_index
 
     collection = sync_manager.chroma_collection
     chroma_ok = collection is not None and collection.count() > 0
@@ -33,9 +44,8 @@ def _sync_indexes_if_needed():
 
     print("[启动] 索引不完整，开始自动同步知识库...")
 
-    from app.wiki import service
+    from app.wiki_agent.wiki import service
 
-    # 收集所有知识条目
     def collect_pages(node):
         result = []
         if not node.is_dir:
@@ -56,8 +66,7 @@ def _sync_indexes_if_needed():
         print("[启动] 知识库为空，跳过同步")
         return
 
-    # 同步每个条目（带分块）
-    from app.agent.tools.chunker import chunk_markdown
+    from app.wiki_agent.agent.tools.chunker import chunk_markdown
     from datetime import datetime
 
     success = 0
@@ -68,12 +77,10 @@ def _sync_indexes_if_needed():
             title = page.title
             tags = page.tags or []
 
-            # 分块
             chunks = chunk_markdown(content, chunk_size=500, chunk_overlap=50)
             if not chunks:
                 chunks = [content]
 
-            # ChromaDB: 为每个分块生成 embedding 并存储
             if not chroma_ok and collection is not None:
                 chunk_ids = []
                 embeddings = []
@@ -102,7 +109,6 @@ def _sync_indexes_if_needed():
                     metadatas=metadatas,
                 )
 
-            # BM25: 添加到倒排索引
             if not bm25_ok:
                 bm25.add_document(path, title, chunks)
 
@@ -110,19 +116,16 @@ def _sync_indexes_if_needed():
         except Exception as e:
             print(f"[启动] 同步失败 {path}: {e}")
 
-    # 持久化 BM25 索引
     if not bm25_ok:
         bm25.save()
 
-    print(f"[启动] 索引同步完成: {success}/{len(paths)} 条 (ChromaDB: {'跳过' if chroma_ok else '已同步'}, BM25: {'跳过' if bm25_ok else '已同步'})")
+    print(f"[启动] 索引同步完成: {success}/{len(paths)} 条")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    # 启动时初始化数据库
     await init_db()
-    # 自动同步 ChromaDB 和 BM25 索引
     _sync_indexes_if_needed()
     yield
 
