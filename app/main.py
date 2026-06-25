@@ -6,6 +6,14 @@ Agent Runtime Evaluation Platform
 - Built with LangGraph, FastAPI, and Python
 """
 
+import os
+
+# Fix gRPC "too_many_pings" GOAWAY from ChromaDB/Milvus — set before any gRPC client
+os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIME_MS", "120000")
+os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIMEOUT_MS", "20000")
+os.environ.setdefault("GRPC_HTTP2_MAX_PINGS_WITHOUT_DATA", "0")
+os.environ.setdefault("GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS", "5000")
+
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
