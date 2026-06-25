@@ -243,7 +243,7 @@ async def get_checkpoint_detail(thread_id: str):
         async with aiosqlite.connect(_CHECKPOINT_DB) as db:
             # 所有 checkpoints
             cursor = await db.execute(
-                "SELECT checkpoint_id, parent_checkpoint_id, checkpoint, metadata "
+                "SELECT checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata "
                 "FROM checkpoints WHERE thread_id = ? ORDER BY checkpoint_id",
                 (thread_id,),
             )
@@ -251,8 +251,11 @@ async def get_checkpoint_detail(thread_id: str):
 
             checkpoints = []
             for cp in cp_rows:
-                checkpoint_data = _safe_deserialize(serde, cp[2]) if cp[2] else None
-                metadata = _safe_deserialize(serde, cp[3]) if cp[3] else None
+                cp_type = cp[2]
+                cp_blob = cp[3]
+                meta_blob = cp[4]
+                checkpoint_data = _safe_deserialize_typed(serde, cp_type, cp_blob) if cp_blob else None
+                metadata = _safe_deserialize(serde, meta_blob) if meta_blob else None
 
                 # 获取该 checkpoint 的 writes（channel 值）
                 cursor2 = await db.execute(

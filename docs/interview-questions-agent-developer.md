@@ -361,6 +361,8 @@
 ### Q10.5 在流式模式下，HITL 确认请求是怎么插入到流中的？
 **考察点：** 中断时在 SSE 流中发送确认请求事件
 
+>在流式模式下，Human-in-the-loop 并不是通过 LLM 输出文本请求用户确认，而是由 LangGraph 在执行到 `interrupt()` 时暂停 Graph，并在 SSE 流中插入一个 `interrupt` 类型事件。前端收到该事件后弹出确认界面，用户选择 Approve 或 Reject 后，通过携带相同 `thread_id` 调用 Resume 接口。后端利用 Checkpointer 恢复 Graph State，从中断节点继续执行，并重新开启后续 SSE 流。因此，HITL 实际上是 **Graph 控制流事件插入到 SSE 流**，而不是普通 Token 流的一部分，同时 Trajectory 中还会记录 `interrupt`、`human_input` 和 `state_change` 等事件，便于后续评估和恢复。
+
 ---
 
 ## 11. SDK 设计与可观测性

@@ -233,15 +233,18 @@ async def get_checkpoint_detail(thread_id: str):
 
         async with aiosqlite.connect(_CHECKPOINT_DB) as db:
             cursor = await db.execute(
-                "SELECT checkpoint_id, parent_checkpoint_id, checkpoint, metadata "
+                "SELECT checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata "
                 "FROM checkpoints WHERE thread_id = ? ORDER BY checkpoint_id",
                 (thread_id,),
             )
             cp_rows = await cursor.fetchall()
             checkpoints = []
             for cp in cp_rows:
-                cp_data = _safe_deser(serde, cp[2])
-                metadata = _safe_deser(serde, cp[3])
+                cp_type = cp[2]
+                cp_blob = cp[3]
+                meta_blob = cp[4]
+                cp_data = _safe_deser_typed(serde, cp_type, cp_blob) if cp_blob else None
+                metadata = _safe_deser(serde, meta_blob) if meta_blob else None
 
                 cursor2 = await db.execute(
                     "SELECT channel, type, value FROM writes WHERE thread_id = ? AND checkpoint_id = ?",
