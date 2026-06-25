@@ -47,7 +47,7 @@ def run_tests(test_path: str) -> str:
     return f"Running tests in {test_path}...\n3 passed, 1 failed"
 
 
-PLANNING_PROMPT = You are a helpful planning assistant.
+PLANNING_PROMPT = """You are a helpful planning assistant.
 
 ## Goal
 {goal}
@@ -64,6 +64,7 @@ Example:
 3. Identify the issue
 4. Implement the fix
 5. Run tests to verify
+"""
 
 
 class ExampleAgent(BaseAgent):

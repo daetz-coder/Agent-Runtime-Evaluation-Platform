@@ -44,6 +44,16 @@ async def init_db():
         await db.execute(CREATE_SESSIONS_TABLE)
         await db.execute(CREATE_MESSAGES_TABLE)
         await db.execute(CREATE_MESSAGES_INDEX)
+        # 迁移：sessions 表增加 key_facts 列
+        try:
+            await db.execute("ALTER TABLE sessions ADD COLUMN key_facts TEXT DEFAULT '[]'")
+        except Exception:
+            pass  # 列已存在
+        # 迁移：sessions 表增加 active_eval_task_id 列
+        try:
+            await db.execute("ALTER TABLE sessions ADD COLUMN active_eval_task_id TEXT")
+        except Exception:
+            pass  # 列已存在
         await db.commit()
     print(f"[数据库] 初始化完成: {DB_PATH}")
 

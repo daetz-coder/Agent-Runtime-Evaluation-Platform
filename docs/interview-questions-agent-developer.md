@@ -355,6 +355,8 @@
 ### Q10.3 流式输出时，如果网络中断了怎么办？客户端怎么恢复？
 **考察点：** SSE 的 Last-Event-ID 重连机制
 
+>SSE（Server-Sent Events）是一种基于 HTTP 的服务器单向推送协议，服务端通过 `text/event-stream` 持续向客户端发送事件，每个事件可以包含 `id`、`event`、`data` 等字段。其中 `id` 用于唯一标识事件，当网络中断时，客户端会记录最近收到的 `Last-Event-ID`，重连时自动携带该值，服务端即可从下一事件继续发送，实现事件流的断点续传。需要注意的是，Last-Event-ID 恢复的是 **SSE 数据流**，而 LangGraph Checkpointer 恢复的是 **Graph 执行状态**，两者分别解决网络中断和执行恢复两个不同层面的问题。
+
 ### Q10.4 流式 chat 的 LLM 输出是怎么和 SSE 对接的？LangChain 的 streaming 是怎么用的？
 **考察点：** ChatOpenAI 的 stream() 方法 + 逐 token 推入 Queue
 
