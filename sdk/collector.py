@@ -3,20 +3,26 @@
 
 特性：
 - 线程安全（threading.Lock）
-- 批量上传 + 失败回退缓冲
+- 批量上传 + 失败回退缓冲 + 指数退避重试
 - 离线模式：不配置 EVAL_API_BASE_URL 时纯内存缓冲
 - 支持全部 14 种轨迹动作类型
+- 错误日志（不静默吞异常）
+- 单例模式 + reset()/close() 生命周期管理
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("sdk.collector")
 
 
 # ── 配置（纯环境变量，不依赖 pydantic-settings） ──
@@ -59,6 +65,13 @@ class ActionType:
     RETRIEVAL = "retrieval"
     EVIDENCE = "evidence"
 
+    ALL_TYPES = {
+        PLAN, PLAN_UPDATE, TOOL_CALL, TOOL_RESULT,
+        MEMORY_WRITE, MEMORY_READ, STATE_CHANGE,
+        THINK, REPLAN, FAILURE, NODE_EXECUTE, TOOL_DECISION,
+        RETRIEVAL, EVIDENCE,
+    }
+
 
 def _short(value: Any, limit: int = 4000) -> Any:
     if value is None or isinstance(value, (int, float, bool)):
@@ -80,14 +93,41 @@ def _observation_text(value: Any, limit: int = 4000) -> Optional[str]:
     return _short(json.dumps(value, ensure_ascii=False, default=str), limit)
 
 
+class _BoundedSet:
+    """有上限的去重集合，超出时淘汰最早的键。"""
+
+    def __init__(self, max_size: int = 5000):
+        self._max = max_size
+        self._od: OrderedDict[str, None] = OrderedDict()
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._od
+
+    def add(self, key: str) -> None:
+        if key in self._od:
+            self._od.move_to_end(key)
+        else:
+            if len(self._od) >= self._max:
+                self._od.popitem(last=False)
+            self._od[key] = None
+
+    def clear(self) -> None:
+        self._od.clear()
+
+
 class TrajectoryCollector:
     """线程安全轨迹收集器。
 
     单例模式，通过 get_collector() 获取。
+    支持 reset() 重置状态和 close() 释放资源。
     """
 
     _instance: Optional["TrajectoryCollector"] = None
     _instance_lock = threading.Lock()
+
+    # 重试配置
+    _MAX_RETRIES = 3
+    _RETRY_BASE_DELAY = 0.5  # 秒
 
     def __new__(cls) -> "TrajectoryCollector":
         if cls._instance is None:
@@ -108,7 +148,7 @@ class TrajectoryCollector:
         self._steps: List[Dict[str, Any]] = []
         self._buffer_lock = threading.Lock()
         self._flush_lock = threading.Lock()
-        self._seen_events: set = set()
+        self._seen_events = _BoundedSet(max_size=5000)
 
         self._enabled = _env_bool("EVAL_ENABLED", True)
         self._api_base = _env_str("EVAL_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
@@ -125,29 +165,64 @@ class TrajectoryCollector:
     def task_id(self) -> Optional[str]:
         return self._task_id
 
+    # ── 生命周期管理 ──
+
+    def reset(self) -> None:
+        """重置收集器状态（保留单例，清空任务数据）。"""
+        with self._buffer_lock:
+            self._task_id = None
+            self._remote_task_created = False
+            self._step_counter = 0
+            self._steps = []
+            self._seen_events.clear()
+
+    def close(self) -> None:
+        """关闭 HTTP 客户端，释放资源。"""
+        if self._client is not None:
+            try:
+                self._client.close()
+            except Exception:
+                pass
+            self._client = None
+
+    @classmethod
+    def _reset_singleton(cls) -> None:
+        """测试用：销毁单例，下次 get_collector() 会重新创建。"""
+        with cls._instance_lock:
+            if cls._instance is not None:
+                cls._instance.close()
+            cls._instance = None
+
     # ── 任务生命周期 ──
 
     def start(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """创建评估任务，返回 task_id。"""
         self._task_id = str(uuid.uuid4())
         self._remote_task_created = False
         self._step_counter = 0
         self._steps = []
-        self._seen_events = set()
+        self._seen_events.clear()
 
         if not self._enabled:
             return self._task_id
 
         try:
-            r = self._http().post(
+            r = self._http_with_retry(
+                "POST",
                 f"{self._api_base}/api/v1/tasks/",
                 json={"goal": goal, "context": _short(context or {})},
-                timeout=10.0,
             )
-            r.raise_for_status()
-            self._task_id = r.json()["id"]
-            self._remote_task_created = True
-        except Exception:
-            pass
+            if r is not None:
+                self._task_id = r.json()["id"]
+                self._remote_task_created = True
+            else:
+                logger.warning(
+                    "Failed to create remote task (platform at %s unreachable). "
+                    "Trajectory will be buffered locally only.",
+                    self._api_base,
+                )
+        except Exception as exc:
+            logger.warning("Task creation failed: %s", exc)
 
         self.record(
             ActionType.PLAN,
@@ -156,22 +231,64 @@ class TrajectoryCollector:
         return self._task_id
 
     def finish(self, *, auto_run: bool = False) -> Optional[str]:
+        """结束任务，flush 轨迹，可选触发评估。"""
         if not self._task_id:
             return None
         self.record(ActionType.THINK, {"thought": "Run finished"})
         self._flush(block=True)
 
+        # 更新状态为 completed
+        if self._remote_task_created:
+            self.update_task(status="completed")
+
         if auto_run and self._remote_task_created:
             try:
-                r = self._http().post(
+                r = self._http_with_retry(
+                    "POST",
                     f"{self._api_base}/api/v1/evaluations/",
                     json={"task_id": self._task_id},
-                    timeout=10.0,
                 )
-                r.raise_for_status()
-            except Exception:
-                pass
+                if r is None:
+                    logger.warning("Failed to trigger evaluation for task %s", self._task_id)
+            except Exception as exc:
+                logger.warning("Evaluation trigger failed: %s", exc)
         return self._task_id
+
+    def update_task(
+        self,
+        *,
+        goal: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+        status: Optional[str] = None,
+    ) -> bool:
+        """更新已创建的任务（PUT /tasks/{id}）。
+
+        可更新 goal、context、status。返回是否成功。
+        """
+        if not self._task_id or not self._remote_task_created:
+            return False
+
+        payload: Dict[str, Any] = {}
+        if goal is not None:
+            payload["goal"] = goal
+        if context is not None:
+            payload["context"] = _short(context)
+        if status is not None:
+            payload["status"] = status
+
+        if not payload:
+            return False
+
+        try:
+            r = self._http_with_retry(
+                "PUT",
+                f"{self._api_base}/api/v1/tasks/{self._task_id}",
+                json=payload,
+            )
+            return r is not None
+        except Exception as exc:
+            logger.warning("Task update failed: %s", exc)
+            return False
 
     # ── 核心记录方法 ──
 
@@ -208,7 +325,7 @@ class TrajectoryCollector:
 
             return step
 
-    # ── 便捷记录方法 ──
+    # ── 便捷记录方法（14 种 action type） ──
 
     def record_node_execute(self, node_name: str, input_data: Any = None, output_data: Any = None) -> None:
         self.record(ActionType.NODE_EXECUTE, {
@@ -236,7 +353,9 @@ class TrajectoryCollector:
         self.record(ActionType.THINK, {"thought": thought})
 
     def record_llm_call(self, model: str, messages: Any = None, response: Any = None, duration_ms: Optional[float] = None) -> None:
-        self.record(ActionType.TOOL_DECISION, {
+        """记录 LLM 调用（同时记录为 THINK 以保留 LLM 内容语义）。"""
+        self.record(ActionType.THINK, {
+            "thought": f"LLM call to {model}",
             "model": model,
             "messages": _short(messages, 1000),
             "response": _short(response, 1000),
@@ -287,6 +406,14 @@ class TrajectoryCollector:
             "next_action": next_action,
             "reason": reason,
             "remaining_steps": remaining_steps or [],
+        })
+
+    def record_replan(self, reason: str, new_plan: str = "", trigger: str = "") -> None:
+        """记录重规划事件（ReplanEvaluator 依赖此方法）。"""
+        self.record(ActionType.REPLAN, {
+            "reason": reason,
+            "new_plan": new_plan,
+            "trigger": trigger,
         })
 
     def record_memory_write(self, key: str, value: Any, source: str = "", memory_type: str = "fact") -> None:
@@ -346,6 +473,40 @@ class TrajectoryCollector:
 
     # ── 内部方法 ──
 
+    def _http_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        json: Any = None,
+        timeout: float = 10.0,
+    ) -> Any:
+        """带指数退避重试的 HTTP 请求。失败返回 None。"""
+        import httpx
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(self._MAX_RETRIES):
+            try:
+                r = self._http().request(method, url, json=json, timeout=timeout)
+                r.raise_for_status()
+                return r
+            except httpx.TimeoutException as exc:
+                last_exc = exc
+                logger.debug("HTTP %s %s timeout (attempt %d/%d)", method, url, attempt + 1, self._MAX_RETRIES)
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                logger.debug("HTTP %s %s returned %d (attempt %d/%d)", method, url, exc.response.status_code, attempt + 1, self._MAX_RETRIES)
+            except Exception as exc:
+                last_exc = exc
+                logger.debug("HTTP %s %s failed: %s (attempt %d/%d)", method, url, exc, attempt + 1, self._MAX_RETRIES)
+
+            if attempt < self._MAX_RETRIES - 1:
+                delay = self._RETRY_BASE_DELAY * (2 ** attempt)
+                time.sleep(delay)
+
+        logger.warning("HTTP %s %s failed after %d retries: %s", method, url, self._MAX_RETRIES, last_exc)
+        return None
+
     def _flush(self, block: bool = False) -> None:
         if not self._flush_lock.acquire(blocking=block):
             return
@@ -357,16 +518,19 @@ class TrajectoryCollector:
                 self._steps = []
 
             if not self._remote_task_created or not self._task_id:
+                # 远端未创建，保留在本地缓冲
+                with self._buffer_lock:
+                    self._steps = steps_to_send + self._steps
                 return
 
-            try:
-                r = self._http().post(
-                    f"{self._api_base}/api/v1/tasks/{self._task_id}/trajectory",
-                    json=steps_to_send,
-                    timeout=10.0,
-                )
-                r.raise_for_status()
-            except Exception:
+            r = self._http_with_retry(
+                "POST",
+                f"{self._api_base}/api/v1/tasks/{self._task_id}/trajectory",
+                json=steps_to_send,
+            )
+            if r is None:
+                # 上传失败，回退缓冲
+                logger.warning("Trajectory flush failed, %d steps re-buffered", len(steps_to_send))
                 with self._buffer_lock:
                     self._steps = steps_to_send + self._steps
         finally:

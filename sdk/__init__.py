@@ -23,7 +23,7 @@ Agent Eval SDK — 零侵入 Agent 运行时轨迹收集。
     EVAL_BATCH_SIZE    — 批量上传大小（默认 10）
 """
 
-from sdk.collector import TrajectoryCollector, get_collector
+from sdk.collector import TrajectoryCollector, get_collector, ActionType
 from sdk.adapters.langgraph import instrument_langgraph, InstrumentedStateGraph
 from sdk.adapters.llm_proxy import create_proxy_llm, ProxyChatModel
 from sdk.adapters.callback import create_callback_handler, EvalCallbackHandler
@@ -41,4 +41,5 @@ __all__ = [
     # Collector
     "TrajectoryCollector",
     "get_collector",
+    "ActionType",
 ]

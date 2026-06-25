@@ -15,7 +15,7 @@
 \contactInfo{(+86) 188-5660-3434}{3446914219@qq.com}{GitHub | CSDN @daetz-coder}{浙江-杭州}
 
 \section{个人简介}
-计算机技术硕士在读，聚焦 \textbf{AI Agent 系统设计、RAG 与 LLM 应用工程化}。独立完成 Agent 运行时评估平台、RAG 知识库系统等全栈项目，熟悉 LangGraph 工作流编排、混合检索增强与 LLM-as-Judge 评估方法。
+计算机技术硕士在读，聚焦 \textbf{AI Agent 系统设计、RAG 与 LLM 应用工程化}。独立完成 Agent 运行时评估平台、RAG 知识库系统（Milvus 向量检索 + BM25 混合搜索）等全栈项目，熟悉 LangGraph 工作流编排、混合检索增强与 LLM-as-Judge 评估方法。
 
 \section{教育背景}
 \datedsubsection{\textbf{浙江理工大学}, 计算机技术硕士（在读）}{2024.9 - 至今}
@@ -31,25 +31,25 @@
 
 \section{技术能力}
 \begin{itemize}[parsep=0.1ex,topsep=0ex]
-  \item \textbf{Agent / RAG}: LangGraph、StateGraph、Human-in-the-Loop、Checkpoint、Tool Calling、LLM-as-Judge、BM25、BGE-M3、RRF、ChromaDB
-  \item \textbf{LLM 应用}: Prompt/Context/Harness Engineering、多模型评估对比、SSE 流式输出、Token 优化
-  \item \textbf{全栈工程}: Python / FastAPI / Async SQLAlchemy / Pydantic / Vue3 / TypeScript / ElementPlus / ECharts / Git / Docker
+  \item \textbf{Agent / RAG}: LangGraph、StateGraph、Human-in-the-Loop、Checkpoint、Tool Calling、LLM-as-Judge、Milvus 向量检索、BM25、BGE-M3、RRF、RecursiveCharacterTextSplitter
+  \item \textbf{LLM 应用}: DeepSeek / GLM-4 / Qwen-Plus 多模型共识、Prompt/Context Engineering、SSE 流式输出、Token 优化
+  \item \textbf{全栈工程}: Python / FastAPI / Async SQLAlchemy / Pydantic / Vue3 / TypeScript / ElementPlus / ECharts / Milvus / Docker
 \end{itemize}
 
 \section{项目经历}
 \datedsubsection{\textbf{Agent Runtime Evaluation Platform：AI Agent 运行时质量评估平台} \quad \textit{Python / FastAPI / LangGraph / Vue3}}{2025.3 - 至今}
 \begin{itemize}[parsep=0.15ex,topsep=0ex]
-  \item \textbf{五维评估体系（17 项子指标）：}Planning（覆盖度/顺序/粒度/完整性）、Tactical（相关性/效率/正确性）、Tool Use（选择质量/参数准确性/结果利用）、Memory（保持力/相关性/一致性）、Replan（触发适当性/适应质量/学习能力），加权聚合 + 四档标定（$\geq$80/$\geq$60/$\geq$40 优秀至较差），6 条不同质量轨迹 $\times$ 5 评估器实测：综合分 \textbf{93.1 $\rightarrow$ 92.0 $\rightarrow$ 81.0 $\rightarrow$ 54.4 $\rightarrow$ 27.8 $\rightarrow$ 20.0} 单调递减，Planning 最敏感（0.0–80.0），单次全评估耗时 \textbf{71.1s}/成本 \textbf{¥0.012}（DeepSeek，对比 GPT-4o 低 27x）
-  \item \textbf{三种零侵入接入模式：}LangGraph Instrument（node 函数包装 + 自动 tool\_calls 提取）、LLM Proxy（BaseChatModel 透明代理）、LangChain Callback（on\_llm/tool 生命周期钩子），均一行代码；14 种轨迹动作类型（plan/tool\_call/state\_change/replan 等），状态变化自动 diff 计算
-  \item \textbf{全链路可观测：}线程安全轨迹采集器（批量上传 + 失败回退缓冲），ECharts 雷达图/趋势线/热力图/相关性矩阵 4 种可视化，SQL 按维度聚合分析（AVG/MIN/MAX/分布）；对抗轨迹检测（15 步纯 tool\_call 得分仅 27.8），Replan 场景评分 \textbf{85.2}
+  \item \textbf{六维评估体系（17 项子指标 + 幻觉检测）：}Planning（覆盖度/顺序/粒度/完整性）、Tactical（相关性/效率/正确性）、Tool Use（选择质量/参数准确性/结果利用）、Memory（保持力/相关性/一致性）、Replan（触发适当性/适应质量/学习能力）、Retrieval（相关性/证据准确性/覆盖度 + hallucination\_detected），加权聚合 + 四档标定（$\geq$80/$\geq$60/$\geq$40 优秀至较差），6 条不同质量轨迹 $\times$ 6 评估器实测：综合分 \textbf{93.1 $\rightarrow$ 92.0 $\rightarrow$ 81.0 $\rightarrow$ 54.4 $\rightarrow$ 27.8 $\rightarrow$ 20.0} 单调递减，Planning 最敏感（0.0–80.0），并行评估耗时 \textbf{$\sim$15s}（asyncio.gather），成本 \textbf{¥0.012}（DeepSeek，对比 GPT-4o 低 27x）
+  \item \textbf{多模型共识评估：}支持 DeepSeek + GLM-4 + Qwen-Plus 三厂商独立评分，输出 mean $\pm$ std（一致性指标），std $>$ 15 告警高分歧；提供 Consensus API + EvaluationDetail 前端多模型对比柱状图
+  \item \textbf{三种零侵入接入模式：}LangGraph Instrument（node 函数包装 + 自动 tool\_calls 提取）、LLM Proxy（BaseChatModel 透明代理）、LangChain Callback（on\_llm/tool 生命周期钩子），均一行代码；独立 SDK 包（sdk/），外部项目仅需 httpx + langchain-core
 \end{itemize}
 
-\datedsubsection{\textbf{Wiki-Agent：AI 驱动的智能知识库系统} \quad \textit{LangGraph / FastAPI / Vue3 / ChromaDB}}{2025.5 - 至今}
+\datedsubsection{\textbf{Wiki-Agent：AI 驱动的智能知识库系统} \quad \textit{LangGraph / FastAPI / Vue3 / Milvus}}{2025.5 - 至今}
 \begin{itemize}[parsep=0.15ex,topsep=0ex]
-  \item \textbf{三级混合检索（20 条查询评估）：}Semantic（BGE-M3 + cosine）Top-1=\textbf{85.0\%}/MRR=\textbf{0.91}，BM25（jieba + rank\_bm25 + 25 词停用词表）Top-1=80.0\%/MRR=0.85，Hybrid RRF 融合（k=60）Top-1=85.0\%/MRR=0.87；三路并行按文档去重保留最高分 chunk
+  \item \textbf{多格式文档解析 + RecursiveCharacterTextSplitter 分块：}支持 Markdown/PDF/Word/TXT 自动识别与解析，LangChain RecursiveCharacterTextSplitter 分层分隔符（段落→句子→标点）分块（500 字符/50 重叠），替代手写 chunker，更稳健的语义边界保持
+  \item \textbf{三级混合检索（20 条查询评估）：}Milvus 语义搜索（BGE-M3 + cosine）Top-1=\textbf{85.0\%}/MRR=\textbf{0.91}，BM25 关键词（jieba + rank\_bm25 + 25 词停用词表）Top-1=80.0\%/MRR=0.85，Hybrid RRF 融合（k=60）Top-1=85.0\%/MRR=0.87
   \item \textbf{4-Node StateGraph Agent：}search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，条件路由 + LangGraph interrupt 实现 Human-in-the-Loop CRUD 确认，AsyncSqliteSaver Checkpoint 中断恢复；PydanticOutputParser 驱动从对话自动提取知识（create/update/delete）
-  \item \textbf{四路实时同步：}Markdown $\rightarrow$ 句边界感知 chunk（500 字符/50 重叠）$\rightarrow$ ChromaDB Embedding $\rightarrow$ BM25 倒排索引 $\rightarrow$ Git 版本记录，增/改/删保持四路一致性，支持 commit 级回滚 + 自动重索引
-  \item \textbf{全栈交付：}FastAPI async + SSE 流式（7 种事件类型），Vue3 + Element Plus 前端集成 Markdown 渲染 + Git 版本历史浏览，Session 持久化（SQLite 会话 + 消息 JSON）
+  \item \textbf{四路实时同步 + 向量管理后台：}Markdown $\rightarrow$ RecursiveCharacterTextSplitter 分块 $\rightarrow$ BGE-M3 Embedding $\rightarrow$ Milvus 向量库 + BM25 倒排索引 + Git 版本记录，增/改/删保持四路一致性，支持 commit 级回滚 + 一键全量重建；Vue3 + Element Plus 向量管理后台，可视化管理 Milvus 分块与元数据
 \end{itemize}
 
 \end{document}
