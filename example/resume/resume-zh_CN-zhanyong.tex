@@ -39,17 +39,15 @@
 \section{项目经历}
 \datedsubsection{\textbf{Agent Runtime Evaluation Platform：AI Agent 运行时质量评估平台} \quad \textit{Python / FastAPI / LangGraph / Vue3}}{2025.3 - 至今}
 \begin{itemize}[parsep=0.15ex,topsep=0ex]
-  \item \textbf{六维评估体系（17 项子指标 + 幻觉检测）：}Planning（覆盖度/顺序/粒度/完整性）、Tactical（相关性/效率/正确性）、Tool Use（选择质量/参数准确性/结果利用）、Memory（保持力/相关性/一致性）、Replan（触发适当性/适应质量/学习能力）、Retrieval（相关性/证据准确性/覆盖度 + hallucination\_detected），加权聚合 + 四档标定（$\geq$80/$\geq$60/$\geq$40 优秀至较差），6 条不同质量轨迹 $\times$ 6 评估器实测：综合分 \textbf{93.1 $\rightarrow$ 92.0 $\rightarrow$ 81.0 $\rightarrow$ 54.4 $\rightarrow$ 27.8 $\rightarrow$ 20.0} 单调递减，Planning 最敏感（0.0–80.0），并行评估耗时 \textbf{$\sim$15s}（asyncio.gather），成本 \textbf{¥0.012}（DeepSeek，对比 GPT-4o 低 27x）
-  \item \textbf{多模型共识评估：}支持 DeepSeek + GLM-4 + Qwen-Plus 三厂商独立评分，输出 mean $\pm$ std（一致性指标），std $>$ 15 告警高分歧；提供 Consensus API + EvaluationDetail 前端多模型对比柱状图
-  \item \textbf{三种零侵入接入模式：}LangGraph Instrument（node 函数包装 + 自动 tool\_calls 提取）、LLM Proxy（BaseChatModel 透明代理）、LangChain Callback（on\_llm/tool 生命周期钩子），均一行代码；独立 SDK 包（sdk/），外部项目仅需 httpx + langchain-core
+  \item \textbf{六维评估体系（17 项子指标 + 幻觉检测）：}Planning / Tactical / Tool Use / Memory / Replan / Retrieval（relevance/evidence\_accuracy/coverage + hallucination\_detected），加权聚合 + 四档标定，6 条轨迹 $\times$ 6 评估器并行（asyncio.gather，$\sim$\textbf{15s}），综合分单调递减 \textbf{93.1 $\rightarrow$ 92.0 $\rightarrow$ 81.0 $\rightarrow$ 54.4 $\rightarrow$ 27.8 $\rightarrow$ 20.0}，成本 \textbf{¥0.012}（DeepSeek vs GPT-4o 低 27x）
+  \item \textbf{多模型共识 + 零侵入 SDK：}DeepSeek / GLM-4 / Qwen-Plus 三厂商独立评分，输出 mean $\pm$ std 一致性指标，前端多模型对比柱状图；LangGraph Instrument / LLM Proxy / Callback 三种接入，独立 SDK 包（sdk/），外部项目仅需 httpx + langchain-core，均一行代码；14 种轨迹动作类型，状态变化自动 diff
 \end{itemize}
 
 \datedsubsection{\textbf{Wiki-Agent：AI 驱动的智能知识库系统} \quad \textit{LangGraph / FastAPI / Vue3 / Milvus}}{2025.5 - 至今}
 \begin{itemize}[parsep=0.15ex,topsep=0ex]
-  \item \textbf{多格式文档解析 + RecursiveCharacterTextSplitter 分块：}支持 Markdown/PDF/Word/TXT 自动识别与解析，LangChain RecursiveCharacterTextSplitter 分层分隔符（段落→句子→标点）分块（500 字符/50 重叠），替代手写 chunker，更稳健的语义边界保持
-  \item \textbf{三级混合检索（20 条查询评估）：}Milvus 语义搜索（BGE-M3 + cosine）Top-1=\textbf{85.0\%}/MRR=\textbf{0.91}，BM25 关键词（jieba + rank\_bm25 + 25 词停用词表）Top-1=80.0\%/MRR=0.85，Hybrid RRF 融合（k=60）Top-1=85.0\%/MRR=0.87
-  \item \textbf{4-Node StateGraph Agent：}search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，条件路由 + LangGraph interrupt 实现 Human-in-the-Loop CRUD 确认，AsyncSqliteSaver Checkpoint 中断恢复；PydanticOutputParser 驱动从对话自动提取知识（create/update/delete）
-  \item \textbf{四路实时同步 + 向量管理后台：}Markdown $\rightarrow$ RecursiveCharacterTextSplitter 分块 $\rightarrow$ BGE-M3 Embedding $\rightarrow$ Milvus 向量库 + BM25 倒排索引 + Git 版本记录，增/改/删保持四路一致性，支持 commit 级回滚 + 一键全量重建；Vue3 + Element Plus 向量管理后台，可视化管理 Milvus 分块与元数据
+  \item \textbf{多格式解析 + RecursiveCharacterTextSplitter：}支持 Markdown/PDF/Word/TXT 自动解析，LangChain RecursiveCharacterTextSplitter 分层分隔符分块（500 字符/50 重叠），替代手写 chunker
+  \item \textbf{三级混合检索（20 条查询）：}Milvus 语义搜索（BGE-M3 + cosine）Top-1=\textbf{85.0\%}/MRR=\textbf{0.91}，BM25 关键词 Top-1=80.0\%/MRR=0.85，RRF 融合（k=60）Top-1=85.0\%/MRR=0.87
+  \item \textbf{4-Node StateGraph + 四路同步：}search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，LangGraph interrupt + Checkpoint 中断恢复，PydanticOutputParser 自动提取知识；Markdown $\rightarrow$ Milvus + BM25 + Git 实时同步，commit 级回滚 + 一键全量重建，Vue3 向量管理后台
 \end{itemize}
 
 \end{document}
