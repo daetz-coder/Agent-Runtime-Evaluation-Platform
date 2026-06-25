@@ -244,12 +244,12 @@ async def get_checkpoint_detail(thread_id: str):
                 metadata = _safe_deser(serde, cp[3])
 
                 cursor2 = await db.execute(
-                    "SELECT channel, value FROM writes WHERE thread_id = ? AND checkpoint_id = ?",
+                    "SELECT channel, type, value FROM writes WHERE thread_id = ? AND checkpoint_id = ?",
                     (thread_id, cp[0]),
                 )
                 channels = {}
                 for w in await cursor2.fetchall():
-                    val = _safe_deser(serde, w[1])
+                    val = _safe_deser_typed(serde, w[1], w[2])
                     channels[w[0]] = _trunc(val)
 
                 checkpoints.append({
@@ -298,6 +298,21 @@ def _safe_deser(serde, blob):
         return serde.loads(blob)
     except Exception:
         return {"_error": True, "size": len(blob)}
+
+
+def _safe_deser_typed(serde, type_str, value_blob):
+    """反序列化 writes 表的 (type, value) 元组"""
+    if not value_blob:
+        return None
+    try:
+        # loads_typed 接受 (type, value) 元组
+        return serde.loads_typed((type_str, value_blob))
+    except Exception:
+        # 退化为普通 loads
+        try:
+            return serde.loads(value_blob)
+        except Exception:
+            return {"_error": True, "type": type_str, "size": len(value_blob)}
 
 
 def _summary(data):

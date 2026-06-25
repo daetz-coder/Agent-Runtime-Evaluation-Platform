@@ -256,7 +256,7 @@ async def get_checkpoint_detail(thread_id: str):
 
                 # 获取该 checkpoint 的 writes（channel 值）
                 cursor2 = await db.execute(
-                    "SELECT channel, value FROM writes "
+                    "SELECT channel, type, value FROM writes "
                     "WHERE thread_id = ? AND checkpoint_id = ?",
                     (thread_id, cp[0]),
                 )
@@ -265,7 +265,7 @@ async def get_checkpoint_detail(thread_id: str):
                 channels = {}
                 for w in write_rows:
                     channel_name = w[0]
-                    channel_value = _safe_deserialize(serde, w[1]) if w[1] else None
+                    channel_value = _safe_deserialize_typed(serde, w[1], w[2]) if w[2] else None
                     # 截断过长的值
                     channels[channel_name] = _truncate_value(channel_value)
 
@@ -342,6 +342,19 @@ def _safe_deserialize(serde, blob):
         return serde.loads(blob)
     except Exception:
         return {"_deserialize_error": True, "blob_size": len(blob)}
+
+
+def _safe_deserialize_typed(serde, type_str, value_blob):
+    """反序列化 writes 表的 (type, value) 元组"""
+    if not value_blob:
+        return None
+    try:
+        return serde.loads_typed((type_str, value_blob))
+    except Exception:
+        try:
+            return serde.loads(value_blob)
+        except Exception:
+            return {"_deserialize_error": True, "type": type_str, "blob_size": len(value_blob)}
 
 
 def _summarize_checkpoint(data):
