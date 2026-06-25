@@ -3,6 +3,7 @@ Application configuration using pydantic-settings.
 """
 
 from typing import List
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -14,7 +15,14 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = True
     SQL_ECHO: bool = False
-    SECRET_KEY: str = "change-me-in-production"
+    SECRET_KEY: str = ""
+
+    @model_validator(mode="after")
+    def _ensure_secret_key(self):
+        if not self.SECRET_KEY:
+            import secrets
+            self.SECRET_KEY = secrets.token_hex(32)  # 64 hex chars = 32 bytes
+        return self
 
     # Server
     HOST: str = "0.0.0.0"
