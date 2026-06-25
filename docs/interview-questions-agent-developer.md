@@ -84,6 +84,8 @@
 ### Q2.13 你们的 Agent 有没有做"多轮对话"？对话历史是怎么管理的？
 **考察点：** chat history 的存取、上下文窗口管理、token 限制处理
 
+> 在 LangGraph 架构中，session_id 通常表示用户的一段连续使用范围，thread_id 表示其中某一条具体对话线程，而 checkpointer 实际以 thread_id 为粒度保存和恢复 Graph State。多轮对话发生在同一个 thread 内，依赖 state 累积实现上下文连续；而新 thread 则代表全新的 state 初始化，因此上下文完全隔离，不共享 messages、tool results 或 retrieval history。
+
 ### Q2.14 你们的 Agent 有没有"规划（Planning）"能力？如果没有，你会怎么加？
 **考察点：** 对 ReAct、Plan-and-Execute 等 Agent 范式的理解
 
