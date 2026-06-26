@@ -7,9 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
+from app.api.workspace_context import WorkspaceContext, get_workspace_context, require_role
+from app.api.workspace import WorkspaceRole
 from app.db.database import get_db
 from app.db.models import AgentTask, Evaluation, TaskStatus, EvaluationStatus
 from app.models.schemas import EvaluationSummary
+from app.core.cache import cache_get, cache_set
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -17,30 +21,33 @@ router = APIRouter()
 @router.get("/summary", response_model=EvaluationSummary)
 async def get_evaluation_summary(
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Get summary of all evaluations.
-
-    Returns aggregated statistics including:
-    - Total number of evaluations
-    - Average scores across all dimensions
-    - Score distributions
-    - Top issues identified
-    - Recommendations
     """
-    # Aggregate averages in SQL (avoid loading full evaluation rows)
-    stats_result = await db.execute(
-        select(
-            func.count(Evaluation.id),
-            func.avg(Evaluation.planning_score),
-            func.avg(Evaluation.tactical_score),
-            func.avg(Evaluation.tool_use_score),
-            func.avg(Evaluation.memory_score),
-            func.avg(Evaluation.replan_score),
-            func.avg(Evaluation.retrieval_score),
-            func.avg(Evaluation.overall_score),
-        ).where(Evaluation.status == EvaluationStatus.COMPLETED)
-    )
+    require_role(ctx, WorkspaceRole.VIEWER)
+    ws_filter = ctx.filter_workspace_id()
+    cache_key = f"report:summary:{ws_filter or 'all'}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return EvaluationSummary(**cached)
+
+    stats_query = select(
+        func.count(Evaluation.id),
+        func.avg(Evaluation.planning_score),
+        func.avg(Evaluation.tactical_score),
+        func.avg(Evaluation.tool_use_score),
+        func.avg(Evaluation.memory_score),
+        func.avg(Evaluation.replan_score),
+        func.avg(Evaluation.retrieval_score),
+        func.avg(Evaluation.overall_score),
+    ).where(Evaluation.status == EvaluationStatus.COMPLETED)
+    if ws_filter:
+        stats_query = stats_query.join(AgentTask, Evaluation.task_id == AgentTask.id).where(
+            AgentTask.workspace_id == ws_filter
+        )
+    stats_result = await db.execute(stats_query)
     total, avg_planning, avg_tactical, avg_tool, avg_memory, avg_replan, avg_retrieval, avg_overall = stats_result.one()
     total = total or 0
 
@@ -69,17 +76,20 @@ async def get_evaluation_summary(
             recommendations=["Complete some evaluations to get recommendations"],
         )
 
-    scores_result = await db.execute(
-        select(
-            Evaluation.planning_score,
-            Evaluation.tactical_score,
-            Evaluation.tool_use_score,
-            Evaluation.memory_score,
-            Evaluation.replan_score,
-            Evaluation.retrieval_score,
-            Evaluation.overall_score,
-        ).where(Evaluation.status == EvaluationStatus.COMPLETED)
-    )
+    scores_query = select(
+        Evaluation.planning_score,
+        Evaluation.tactical_score,
+        Evaluation.tool_use_score,
+        Evaluation.memory_score,
+        Evaluation.replan_score,
+        Evaluation.retrieval_score,
+        Evaluation.overall_score,
+    ).where(Evaluation.status == EvaluationStatus.COMPLETED)
+    if ws_filter:
+        scores_query = scores_query.join(AgentTask, Evaluation.task_id == AgentTask.id).where(
+            AgentTask.workspace_id == ws_filter
+        )
+    scores_result = await db.execute(scores_query)
     score_rows = scores_result.all()
 
     avg_scores = {
@@ -105,13 +115,16 @@ async def get_evaluation_summary(
     top_issues = _identify_top_issues(avg_scores)
     recommendations = _generate_global_recommendations(avg_scores, distributions)
 
-    return EvaluationSummary(
+    result = EvaluationSummary(
         total_evaluations=total,
         average_scores=avg_scores,
         score_distribution=distributions,
         top_issues=top_issues,
         recommendations=recommendations,
     )
+
+    await cache_set(cache_key, result.model_dump(), ttl=settings.CACHE_REPORTS_TTL)
+    return result
 
 
 @router.get("/tasks/{task_id}/history")
@@ -176,6 +189,12 @@ async def get_dimension_statistics(
             detail=f"Invalid dimension. Must be one of: {', '.join(valid_dimensions)}"
         )
 
+    # Check cache first
+    dim_cache_key = f"report:dim:{dimension}"
+    cached = await cache_get(dim_cache_key)
+    if cached is not None:
+        return cached
+
     # Get all completed evaluations
     result = await db.execute(
         select(Evaluation).where(Evaluation.status == EvaluationStatus.COMPLETED)
@@ -183,7 +202,7 @@ async def get_dimension_statistics(
     evaluations = result.scalars().all()
 
     if not evaluations:
-        return {
+        empty_result = {
             "dimension": dimension,
             "count": 0,
             "average": 0,
@@ -191,13 +210,15 @@ async def get_dimension_statistics(
             "max": 0,
             "distribution": [],
         }
+        await cache_set(dim_cache_key, empty_result, ttl=settings.CACHE_REPORTS_TTL)
+        return empty_result
 
     # Get scores for this dimension
     score_field = f"{dimension}_score"
     scores = [getattr(e, score_field) for e in evaluations if getattr(e, score_field) is not None]
 
     if not scores:
-        return {
+        empty_result = {
             "dimension": dimension,
             "count": 0,
             "average": 0,
@@ -205,8 +226,10 @@ async def get_dimension_statistics(
             "max": 0,
             "distribution": [],
         }
+        await cache_set(dim_cache_key, empty_result, ttl=settings.CACHE_REPORTS_TTL)
+        return empty_result
 
-    return {
+    dim_result = {
         "dimension": dimension,
         "count": len(scores),
         "average": sum(scores) / len(scores),
@@ -214,6 +237,9 @@ async def get_dimension_statistics(
         "max": max(scores),
         "distribution": scores,
     }
+
+    await cache_set(dim_cache_key, dim_result, ttl=settings.CACHE_REPORTS_TTL)
+    return dim_result
 
 
 def _identify_top_issues(avg_scores: Dict[str, float]) -> List[str]:
@@ -287,6 +313,11 @@ async def get_trends(db: AsyncSession = Depends(get_db)):
     获取评估趋势数据（Dashboard 趋势图）。
     返回最近 30 条按日期分组的评估分数均值。
     """
+    # Check cache first
+    cached = await cache_get("report:trends")
+    if cached is not None:
+        return cached
+
     from sqlalchemy import func as sa_func, text
 
     # SQLite 兼容：用 func.date() 替代 cast(Date)，避免 timezone 字符串解析报错
@@ -308,7 +339,7 @@ async def get_trends(db: AsyncSession = Depends(get_db)):
         .limit(30)
     )
     rows = result.all()
-    return [
+    trends_data = [
         {
             "date": str(row.date),
             "avg_overall": round(row.avg_overall or 0, 1),
@@ -322,6 +353,9 @@ async def get_trends(db: AsyncSession = Depends(get_db)):
         }
         for row in reversed(rows)
     ]
+
+    await cache_set("report:trends", trends_data, ttl=settings.CACHE_TRENDS_TTL)
+    return trends_data
 
 
 @router.get("/export/{task_id}")
@@ -382,6 +416,12 @@ async def compare_evaluations(
     - **task_id**: 任务 UUID
     - **limit**: 返回最近 N 轮评估（默认 10）
     """
+    # Check cache first
+    compare_cache_key = f"report:compare:{task_id}:{limit}"
+    cached = await cache_get(compare_cache_key)
+    if cached is not None:
+        return cached
+
     from app.db.models import Evaluation, EvaluationStatus
     from sqlalchemy import select as sa_select, func as sa_func
 
@@ -422,10 +462,13 @@ async def compare_evaluations(
         trend = "insufficient_data"
         delta = 0
 
-    return {
+    compare_result = {
         "task_id": task_id,
         "total_evaluations": len(scores_history),
         "trend": trend,
         "score_delta": round(delta, 1),
         "history": scores_history,
     }
+
+    await cache_set(compare_cache_key, compare_result, ttl=settings.CACHE_REPORTS_TTL)
+    return compare_result

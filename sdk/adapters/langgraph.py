@@ -27,6 +27,7 @@ LangGraph Adapter - 包装 LangGraph，自动收集轨迹
 
 from __future__ import annotations
 
+import inspect
 import logging
 import time
 import traceback
@@ -93,9 +94,7 @@ class InstrumentedStateGraph:
 
         自动检测原始节点是否为 async，使用对应的同步/异步包装器。
         """
-        import asyncio
-
-        if asyncio.iscoroutinefunction(node_func):
+        if inspect.iscoroutinefunction(node_func):
             return self._wrap_node_async(node_name, node_func)
         else:
             return self._wrap_node_sync(node_name, node_func)

@@ -139,7 +139,7 @@ class RetrievalEvaluator(BaseEvaluator):
         prompt = ChatPromptTemplate.from_template(RETRIEVAL_EVAL_PROMPT)
         chain = prompt | self.llm
         try:
-            response = await chain.ainvoke({
+            response = await self._invoke_llm_cached(chain, {
                 "goal": goal,
                 "retrieved_docs": docs_text,
                 "final_answer": final_answer or "No final answer found",

@@ -30,12 +30,34 @@ class EvaluationService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_task(self, task_data: TaskCreate) -> TaskResponse:
+    @staticmethod
+    def _dashboard_cache_key(workspace_id: Optional[str]) -> str:
+        return f"dashboard:{workspace_id or 'all'}:counters"
+
+    @staticmethod
+    def _task_to_response(task: AgentTask) -> TaskResponse:
+        return TaskResponse(
+            id=task.id,
+            goal=task.goal,
+            context=task.context,
+            status=task.status.value,
+            workspace_id=task.workspace_id,
+            created_at=task.created_at,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+        )
+
+    async def create_task(
+        self,
+        task_data: TaskCreate,
+        workspace_id: Optional[str] = None,
+    ) -> TaskResponse:
         """Create a new agent task."""
         task_id = str(uuid.uuid4())
 
         task = AgentTask(
             id=task_id,
+            workspace_id=workspace_id,
             goal=task_data.goal,
             context=task_data.context,
             status=TaskStatus.PENDING,
@@ -45,40 +67,38 @@ class EvaluationService:
         self.db.add(task)
         await self.db.flush()
 
-        return TaskResponse(
-            id=task.id,
-            goal=task.goal,
-            context=task.context,
-            status=task.status.value,
-            created_at=task.created_at,
-        )
+        from app.core.cache import cache_delete
+        await cache_delete(self._dashboard_cache_key(workspace_id))
 
-    async def get_task(self, task_id: str) -> Optional[TaskResponse]:
+        return self._task_to_response(task)
+
+    async def get_task(self, task_id: str, workspace_id: Optional[str] = None) -> Optional[TaskResponse]:
         """Get task by ID."""
-        result = await self.db.execute(
-            select(AgentTask).where(AgentTask.id == task_id)
-        )
-        task = result.scalar_one_or_none()
+        from app.core.cache import cache_get, cache_set
+        cache_key = f"task:{task_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            response = TaskResponse(**cached)
+            if workspace_id and response.workspace_id != workspace_id:
+                return None
+            return response
 
+        task = await self._get_task_model(task_id, workspace_id=workspace_id)
         if not task:
             return None
 
-        return TaskResponse(
-            id=task.id,
-            goal=task.goal,
-            context=task.context,
-            status=task.status.value,
-            created_at=task.created_at,
-            started_at=task.started_at,
-            completed_at=task.completed_at,
-        )
+        response = self._task_to_response(task)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl=settings.CACHE_TASK_TTL)
+        return response
 
-    async def update_task(self, task_id: str, task_data) -> Optional[TaskResponse]:
+    async def update_task(
+        self,
+        task_id: str,
+        task_data,
+        workspace_id: Optional[str] = None,
+    ) -> Optional[TaskResponse]:
         """Update an existing task."""
-        result = await self.db.execute(
-            select(AgentTask).where(AgentTask.id == task_id)
-        )
-        task = result.scalar_one_or_none()
+        task = await self._get_task_model(task_id, workspace_id=workspace_id)
         if not task:
             return None
 
@@ -93,28 +113,22 @@ class EvaluationService:
                 pass
 
         await self.db.flush()
-        return TaskResponse(
-            id=task.id,
-            goal=task.goal,
-            context=task.context,
-            status=task.status.value,
-            created_at=task.created_at,
-            started_at=task.started_at,
-            completed_at=task.completed_at,
-        )
+
+        from app.core.cache import cache_delete
+        await cache_delete(f"task:{task_id}")
+        await cache_delete(self._dashboard_cache_key(workspace_id))
+        await cache_delete(self._dashboard_cache_key(task.workspace_id))
+
+        return self._task_to_response(task)
 
     async def add_trajectory(
         self,
         task_id: str,
         steps: List[Dict[str, Any]],
+        workspace_id: Optional[str] = None,
     ) -> bool:
-        """Add trajectory steps to a task.
-
-        Task status stays PENDING — only transitions to RUNNING when
-        evaluation is manually triggered.
-        """
-        # Verify task exists
-        task = await self._get_task_model(task_id)
+        """Add trajectory steps to a task."""
+        task = await self._get_task_model(task_id, workspace_id=workspace_id)
         if not task:
             return False
 
@@ -135,15 +149,21 @@ class EvaluationService:
             self.db.add(trajectory)
 
         await self.db.flush()
+
+        # Invalidate trajectory cache
+        from app.core.cache import cache_delete
+        await cache_delete(f"trajectory:{task_id}")
+
         return True
 
-    async def create_evaluation(self, task_id: str, stream_mode: bool = False) -> Optional[EvaluationResponse]:
-        """Create an evaluation record (IN_PROGRESS) without running the graph.
-
-        Used by the async endpoint to return immediately, then the background
-        task calls run_evaluation() to do the actual work.
-        """
-        task = await self._get_task_model(task_id)
+    async def create_evaluation(
+        self,
+        task_id: str,
+        stream_mode: bool = False,
+        workspace_id: Optional[str] = None,
+    ) -> Optional[EvaluationResponse]:
+        """Create an evaluation record (IN_PROGRESS) without running the graph."""
+        task = await self._get_task_model(task_id, workspace_id=workspace_id)
         if not task:
             return None
 
@@ -172,14 +192,10 @@ class EvaluationService:
         self,
         task_id: str,
         context: Optional[Dict[str, Any]] = None,
+        workspace_id: Optional[str] = None,
     ) -> Optional[EvaluationResponse]:
-        """Run evaluation for a task.
-
-        If an IN_PROGRESS evaluation already exists for this task, it will be
-        updated. Otherwise a new one is created.
-        """
-        # Get task
-        task = await self._get_task_model(task_id)
+        """Run evaluation for a task."""
+        task = await self._get_task_model(task_id, workspace_id=workspace_id)
         if not task:
             return None
 
@@ -209,6 +225,10 @@ class EvaluationService:
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
         await self.db.flush()
+
+        # Invalidate task cache (status changed)
+        from app.core.cache import cache_delete
+        await cache_delete(f"task:{task_id}")
 
         try:
             # Prepare state for graph
@@ -269,11 +289,18 @@ class EvaluationService:
             await self.db.flush()
             raise e
 
-    async def get_evaluation(self, eval_id: str) -> Optional[EvaluationResponse]:
+    async def get_evaluation(
+        self,
+        eval_id: str,
+        workspace_id: Optional[str] = None,
+    ) -> Optional[EvaluationResponse]:
         """Get evaluation by ID."""
-        result = await self.db.execute(
-            select(Evaluation).where(Evaluation.id == eval_id)
-        )
+        query = select(Evaluation).where(Evaluation.id == eval_id)
+        if workspace_id:
+            query = query.join(AgentTask, Evaluation.task_id == AgentTask.id).where(
+                AgentTask.workspace_id == workspace_id
+            )
+        result = await self.db.execute(query)
         evaluation = result.scalar_one_or_none()
 
         if not evaluation:
@@ -317,12 +344,18 @@ class EvaluationService:
         skip: int = 0,
         limit: int = 100,
         status: Optional[str] = None,
+        workspace_id: Optional[str] = None,
     ) -> tuple[List[EvaluationListItem], int]:
         """List evaluations with total count for pagination."""
         from sqlalchemy import func as sql_func
 
-        # Count query
-        count_query = select(sql_func.count()).select_from(Evaluation)
+        count_query = (
+            select(sql_func.count())
+            .select_from(Evaluation)
+            .join(AgentTask, Evaluation.task_id == AgentTask.id)
+        )
+        if workspace_id:
+            count_query = count_query.where(AgentTask.workspace_id == workspace_id)
         if status:
             try:
                 count_query = count_query.where(Evaluation.status == EvaluationStatus(status))
@@ -331,12 +364,13 @@ class EvaluationService:
         total_result = await self.db.execute(count_query)
         total = total_result.scalar_one()
 
-        # Data query
         query = (
             select(Evaluation, AgentTask.goal)
             .join(AgentTask, Evaluation.task_id == AgentTask.id)
             .order_by(Evaluation.created_at.desc())
         )
+        if workspace_id:
+            query = query.where(AgentTask.workspace_id == workspace_id)
         if status:
             try:
                 query = query.where(Evaluation.status == EvaluationStatus(status))
@@ -378,12 +412,40 @@ class EvaluationService:
         items, _ = await self.list_evaluations_with_count(skip, limit, status)
         return items
 
-    async def get_trajectory(self, task_id: str) -> Optional[List[Dict[str, Any]]]:
+    async def get_trajectory(
+        self,
+        task_id: str,
+        workspace_id: Optional[str] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
         """Get trajectory steps for a task."""
-        task = await self._get_task_model(task_id)
+        task = await self._get_task_model(task_id, workspace_id=workspace_id)
         if not task:
             return None
         return await self._get_trajectory(task_id)
+
+    async def list_tasks_with_count(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        workspace_id: Optional[str] = None,
+    ) -> tuple[List[TaskResponse], int]:
+        """List tasks with total count for pagination."""
+        from sqlalchemy import func as sql_func
+
+        count_query = select(sql_func.count()).select_from(AgentTask)
+        list_query = select(AgentTask).order_by(AgentTask.created_at.desc())
+        if workspace_id:
+            count_query = count_query.where(AgentTask.workspace_id == workspace_id)
+            list_query = list_query.where(AgentTask.workspace_id == workspace_id)
+
+        total_result = await self.db.execute(count_query)
+        total = total_result.scalar_one()
+
+        result = await self.db.execute(list_query.offset(skip).limit(limit))
+        tasks = result.scalars().all()
+
+        items = [self._task_to_response(task) for task in tasks]
+        return items, total
 
     async def list_tasks(
         self,
@@ -391,41 +453,33 @@ class EvaluationService:
         limit: int = 100,
     ) -> List[TaskResponse]:
         """List all tasks."""
-        result = await self.db.execute(
-            select(AgentTask)
-            .offset(skip)
-            .limit(limit)
-            .order_by(AgentTask.created_at.desc())
-        )
-        tasks = result.scalars().all()
+        items, _ = await self.list_tasks_with_count(skip=skip, limit=limit)
+        return items
 
-        return [
-            TaskResponse(
-                id=task.id,
-                goal=task.goal,
-                context=task.context,
-                status=task.status.value,
-                created_at=task.created_at,
-                started_at=task.started_at,
-                completed_at=task.completed_at,
-            )
-            for task in tasks
-        ]
-
-    async def delete_task(self, task_id: str) -> bool:
+    async def delete_task(self, task_id: str, workspace_id: Optional[str] = None) -> bool:
         """Delete a task and all its trajectory and evaluation records (cascade)."""
-        task = await self._get_task_model(task_id)
+        task = await self._get_task_model(task_id, workspace_id=workspace_id)
         if not task:
             return False
         await self.db.delete(task)
         await self.db.flush()
+
+        from app.core.cache import cache_delete
+        await cache_delete(f"task:{task_id}")
+        await cache_delete(f"trajectory:{task_id}")
+        await cache_delete(self._dashboard_cache_key(workspace_id))
+        await cache_delete(self._dashboard_cache_key(task.workspace_id))
+
         return True
 
-    async def delete_evaluation(self, eval_id: str) -> bool:
+    async def delete_evaluation(self, eval_id: str, workspace_id: Optional[str] = None) -> bool:
         """Delete a single evaluation record."""
-        result = await self.db.execute(
-            select(Evaluation).where(Evaluation.id == eval_id)
-        )
+        query = select(Evaluation).where(Evaluation.id == eval_id)
+        if workspace_id:
+            query = query.join(AgentTask, Evaluation.task_id == AgentTask.id).where(
+                AgentTask.workspace_id == workspace_id
+            )
+        result = await self.db.execute(query)
         evaluation = result.scalar_one_or_none()
         if not evaluation:
             return False
@@ -433,15 +487,27 @@ class EvaluationService:
         await self.db.flush()
         return True
 
-    async def _get_task_model(self, task_id: str) -> Optional[AgentTask]:
+    async def _get_task_model(
+        self,
+        task_id: str,
+        workspace_id: Optional[str] = None,
+    ) -> Optional[AgentTask]:
         """Get task ORM model by ID."""
-        result = await self.db.execute(
-            select(AgentTask).where(AgentTask.id == task_id)
-        )
+        query = select(AgentTask).where(AgentTask.id == task_id)
+        if workspace_id:
+            query = query.where(AgentTask.workspace_id == workspace_id)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def _get_trajectory(self, task_id: str) -> List[Dict[str, Any]]:
         """Get trajectory steps for a task."""
+        # Check cache first
+        from app.core.cache import cache_get, cache_set
+        cache_key = f"trajectory:{task_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         result = await self.db.execute(
             select(AgentTrajectory)
             .where(AgentTrajectory.task_id == task_id)
@@ -449,7 +515,7 @@ class EvaluationService:
         )
         steps = result.scalars().all()
 
-        return [
+        trajectory = [
             {
                 "step_number": step.step_number,
                 "action_type": step.action_type,
@@ -459,6 +525,9 @@ class EvaluationService:
             }
             for step in steps
         ]
+
+        await cache_set(cache_key, trajectory, ttl=settings.CACHE_TRAJECTORY_TTL)
+        return trajectory
 
     async def finalize_from_parallel(
         self,
@@ -515,6 +584,12 @@ class EvaluationService:
         task.completed_at = datetime.now(timezone.utc)
 
         await self.db.flush()
+
+        # Invalidate report caches + task cache + dashboard
+        from app.core.cache import cache_delete_pattern, cache_delete
+        await cache_delete_pattern("report:*")
+        await cache_delete(f"task:{task.id}")
+        await cache_delete(self._dashboard_cache_key(task.workspace_id))
 
         return EvaluationResponse(
             id=evaluation.id,

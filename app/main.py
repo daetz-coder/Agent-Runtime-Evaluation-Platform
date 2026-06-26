@@ -24,6 +24,7 @@ from fastapi.routing import APIRoute
 
 from app.core.config import settings
 from app.db.database import init_db, close_db
+from app.core.cache import init_redis, close_redis
 from app.api.v1.endpoints import benchmark, evaluation, reports, system, tasks
 from app.wiki_agent.bootstrap import startup as wiki_agent_startup
 from app.wiki_agent.routers import chat as wiki_chat
@@ -41,11 +42,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting %s...", settings.APP_NAME)
     await init_db()
     logger.info("Database initialized")
+    await init_redis()
     logger.info("Starting Wiki Agent...")
     await wiki_agent_startup()
     logger.info("Wiki Agent initialized")
     yield
     logger.info("Shutting down...")
+    await close_redis()
     await close_db()
     logger.info("Database connections closed")
 
@@ -124,6 +127,9 @@ Evaluate the runtime quality of AI agents across 6 dimensions:
 
     from app.api.auth_middleware import AuthMiddleware
     app.add_middleware(AuthMiddleware)
+
+    from app.api.rate_limit_middleware import RateLimitMiddleware
+    app.add_middleware(RateLimitMiddleware)
 
     @app.get("/health")
     async def health_check():

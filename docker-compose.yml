@@ -1,14 +1,27 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
   backend:
     build: .
     ports:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./agent_eval.db:/app/agent_eval.db
       - ./data:/app/data
     restart: unless-stopped
+    depends_on:
+      - redis
 
   frontend:
     image: node:20-alpine
@@ -23,3 +36,6 @@ services:
       - backend
     environment:
       - VITE_EVAL_API_BASE=http://backend:8000
+
+volumes:
+  redis_data:

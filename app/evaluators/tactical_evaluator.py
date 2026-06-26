@@ -108,9 +108,9 @@ class TacticalEvaluator(BaseEvaluator):
         # Create prompt
         prompt = ChatPromptTemplate.from_template(TACTICAL_EVALUATION_PROMPT)
 
-        # Get LLM evaluation
+        # Get LLM evaluation (with Redis caching)
         chain = prompt | self.llm
-        response = await chain.ainvoke({
+        response = await self._invoke_llm_cached(chain, {
             "goal": goal,
             "current_state": current_state,
             "actions": actions_text,

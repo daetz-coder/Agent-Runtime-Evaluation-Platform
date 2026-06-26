@@ -15,10 +15,12 @@
 import logging
 from typing import Optional
 
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
+from app.db.database import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -38,21 +40,27 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not settings.AUTH_ENABLED:
             return await call_next(request)
 
-        api_key = _extract_api_key(request)
-        expected_key = settings.API_KEY or settings.SECRET_KEY
+        from app.api.workspace_context import authenticate_request
 
-        if not api_key or api_key != expected_key:
-            logger.warning("Auth failed from %s: %s", request.client.host if request.client else "unknown", request.url.path)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing API key",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        async with async_session_factory() as db:
+            ctx = await authenticate_request(request, db)
+            if not ctx.is_authenticated:
+                logger.warning(
+                    "Auth failed from %s: %s",
+                    request.client.host if request.client else "unknown",
+                    request.url.path,
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "Invalid or missing API key"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            request.state.workspace_context = ctx
 
         return await call_next(request)
 
 
-def _extract_api_key(request: Request) -> Optional[str]:
+def extract_api_key(request: Request) -> Optional[str]:
     """从请求中提取 API Key。"""
     # Header: Authorization: Bearer <key>
     auth_header = request.headers.get("Authorization", "")
@@ -61,3 +69,7 @@ def _extract_api_key(request: Request) -> Optional[str]:
 
     # Query: ?api_key=<key>
     return request.query_params.get("api_key")
+
+
+# 向后兼容内部引用
+_extract_api_key = extract_api_key

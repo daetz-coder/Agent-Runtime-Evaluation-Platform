@@ -4,7 +4,7 @@ Application configuration using pydantic-settings.
 
 from typing import List
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -33,6 +33,22 @@ class Settings(BaseSettings):
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_TIMEOUT: int = 2
+    REDIS_KEY_PREFIX: str = "eval:"
+
+    # Cache TTLs (seconds)
+    CACHE_LLM_RESPONSES: bool = True
+    CACHE_LLM_TTL: int = 86400          # 24h
+    CACHE_REPORTS_TTL: int = 300        # 5min
+    CACHE_TRENDS_TTL: int = 600         # 10min
+    CACHE_TASK_TTL: int = 60            # 1min
+    CACHE_TRAJECTORY_TTL: int = 300     # 5min
+    CACHE_DASHBOARD_TTL: int = 30       # 30s
+    CACHE_SESSION_TTL: int = 3600       # 1h
+
+    # Rate limiting
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_EVAL_PER_MINUTE: int = 10
 
     # LLM Providers
     OPENAI_API_KEY: str = ""
@@ -41,7 +57,7 @@ class Settings(BaseSettings):
 
     # DeepSeek Configuration
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-    DEEPSEEK_MODEL: str = "deepseek-v4-flash"
+    DEEPSEEK_MODEL: str = "deepseek-chat"
 
     # ZhipuAI (GLM) Configuration
     ZHIPUAI_API_KEY: str = ""
@@ -54,7 +70,7 @@ class Settings(BaseSettings):
 
     # Default LLM Configuration
     DEFAULT_LLM_PROVIDER: str = "deepseek"
-    DEFAULT_LLM_MODEL: str = "deepseek-v4-flash"
+    DEFAULT_LLM_MODEL: str = "deepseek-chat"
 
     # Observability
     OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
@@ -71,15 +87,17 @@ class Settings(BaseSettings):
     EVAL_ENABLED: bool = True
     EVAL_AUTO_COLLECT: bool = True
     EVAL_API_BASE_URL: str = "http://127.0.0.1:8000"
+    EVAL_API_KEY: str = ""
     EVAL_BATCH_SIZE: int = 10
     EVAL_WEBHOOK_URL: str = ""
     EVAL_PARALLEL: bool = True
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
-        extra = "ignore"  # 忽略额外的配置项
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
 
 settings = Settings()

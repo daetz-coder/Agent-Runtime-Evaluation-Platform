@@ -17,7 +17,7 @@ def test_proxy_llm():
     """测试 LLM Proxy — BaseChatModel 透明代理，记录 llm_call + tool_decision"""
     from langchain_openai import ChatOpenAI
     from app.adapters.llm_proxy import create_proxy_llm
-    from app.collectors.trajectory import get_collector
+    from app.collectors import get_collector
 
     collector = get_collector()
 

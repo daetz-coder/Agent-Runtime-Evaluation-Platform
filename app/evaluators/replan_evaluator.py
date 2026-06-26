@@ -122,9 +122,9 @@ class ReplanEvaluator(BaseEvaluator):
         # Create prompt
         prompt = ChatPromptTemplate.from_template(REPLAN_EVALUATION_PROMPT)
 
-        # Get LLM evaluation
+        # Get LLM evaluation (with Redis caching)
         chain = prompt | self.llm
-        response = await chain.ainvoke({
+        response = await self._invoke_llm_cached(chain, {
             "goal": goal,
             "trajectory": trajectory_text,
             "replan_events": replan_events_text,

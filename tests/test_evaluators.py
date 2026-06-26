@@ -4,6 +4,12 @@ Tests for evaluator modules.
 
 import pytest
 from datetime import datetime
+from typing import Any, List, Optional
+
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 from app.models.schemas import TrajectoryStep
 from app.evaluators import (
@@ -13,6 +19,34 @@ from app.evaluators import (
     MemoryEvaluator,
     ReplanEvaluator,
 )
+
+
+class MockLLM(BaseChatModel):
+    """LangChain Runnable-compatible mock for evaluator unit tests."""
+
+    response_json: str = "{}"
+
+    @property
+    def _llm_type(self) -> str:
+        return "mock"
+
+    def _generate(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=self.response_json))])
+
+    async def _agenerate(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        return self._generate(messages, stop, run_manager, **kwargs)
 
 
 @pytest.fixture
@@ -62,15 +96,9 @@ def sample_trajectory():
 async def test_planning_evaluator(sample_trajectory):
     """Test planning evaluator."""
     evaluator = PlanningEvaluator()
-
-    # Mock LLM response
-    class MockLLM:
-        async def ainvoke(self, *args, **kwargs):
-            class Response:
-                content = '{"coverage": 80, "ordering": 85, "granularity": 75, "completeness": 80, "overall": 80, "feedback": "Good plan with clear steps."}'
-            return Response()
-
-    evaluator.llm = MockLLM()
+    evaluator.llm = MockLLM(
+        response_json='{"coverage": 80, "ordering": 85, "granularity": 75, "completeness": 80, "overall": 80, "feedback": "Good plan with clear steps."}',
+    )
 
     result = await evaluator.evaluate(
         goal="Fix authentication bug",
@@ -89,14 +117,9 @@ async def test_planning_evaluator(sample_trajectory):
 async def test_tactical_evaluator(sample_trajectory):
     """Test tactical evaluator."""
     evaluator = TacticalEvaluator()
-
-    class MockLLM:
-        async def ainvoke(self, *args, **kwargs):
-            class Response:
-                content = '{"relevance": 90, "efficiency": 85, "correctness": 88, "overall": 88, "feedback": "Good tactical decisions."}'
-            return Response()
-
-    evaluator.llm = MockLLM()
+    evaluator.llm = MockLLM(
+        response_json='{"relevance": 90, "efficiency": 85, "correctness": 88, "overall": 88, "feedback": "Good tactical decisions."}',
+    )
 
     result = await evaluator.evaluate(
         goal="Fix authentication bug",
@@ -112,14 +135,9 @@ async def test_tactical_evaluator(sample_trajectory):
 async def test_tool_use_evaluator(sample_trajectory):
     """Test tool use evaluator."""
     evaluator = ToolUseEvaluator()
-
-    class MockLLM:
-        async def ainvoke(self, *args, **kwargs):
-            class Response:
-                content = '{"selection_quality": 92, "parameter_accuracy": 88, "result_utilization": 85, "overall": 89, "feedback": "Good tool usage."}'
-            return Response()
-
-    evaluator.llm = MockLLM()
+    evaluator.llm = MockLLM(
+        response_json='{"selection_quality": 92, "parameter_accuracy": 88, "result_utilization": 85, "overall": 89, "feedback": "Good tool usage."}',
+    )
 
     result = await evaluator.evaluate(
         goal="Fix authentication bug",
@@ -135,14 +153,9 @@ async def test_tool_use_evaluator(sample_trajectory):
 async def test_memory_evaluator(sample_trajectory):
     """Test memory evaluator."""
     evaluator = MemoryEvaluator()
-
-    class MockLLM:
-        async def ainvoke(self, *args, **kwargs):
-            class Response:
-                content = '{"retention": 85, "relevance": 90, "consistency": 88, "overall": 87, "feedback": "Good memory retention."}'
-            return Response()
-
-    evaluator.llm = MockLLM()
+    evaluator.llm = MockLLM(
+        response_json='{"retention": 85, "relevance": 90, "consistency": 88, "overall": 87, "feedback": "Good memory retention."}',
+    )
 
     result = await evaluator.evaluate(
         goal="Fix authentication bug",
@@ -158,14 +171,9 @@ async def test_memory_evaluator(sample_trajectory):
 async def test_replan_evaluator_no_replans(sample_trajectory):
     """Test replan evaluator when no replans occurred."""
     evaluator = ReplanEvaluator()
-
-    class MockLLM:
-        async def ainvoke(self, *args, **kwargs):
-            class Response:
-                content = '{"trigger_appropriateness": 100, "adaptation_quality": 100, "learning_from_failure": 100, "overall": 100, "feedback": "No replanning needed."}'
-            return Response()
-
-    evaluator.llm = MockLLM()
+    evaluator.llm = MockLLM(
+        response_json='{"trigger_appropriateness": 100, "adaptation_quality": 100, "learning_from_failure": 100, "overall": 100, "feedback": "No replanning needed."}',
+    )
 
     result = await evaluator.evaluate(
         goal="Fix authentication bug",

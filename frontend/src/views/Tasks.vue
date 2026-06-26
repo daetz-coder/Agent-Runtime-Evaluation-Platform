@@ -328,12 +328,12 @@ const formatDateTime = (date: string) => {
 const fetchTasks = async () => {
   loading.value = true
   try {
-    const data = await taskApi.list({
+    const { items, total } = await taskApi.list({
       skip: (currentPage.value - 1) * pageSize.value,
       limit: pageSize.value,
     })
-    tasks.value = data
-    totalTasks.value = data.length
+    tasks.value = items
+    totalTasks.value = total
   } catch (error) {
     console.error('Failed to fetch tasks:', error)
   } finally {

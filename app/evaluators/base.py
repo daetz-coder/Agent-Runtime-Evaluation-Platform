@@ -11,8 +11,12 @@ Base evaluator class for all evaluation dimensions.
 - node_execute / tool_decision — 节点执行与工具决策
 """
 
+import json
+import logging
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
@@ -21,6 +25,8 @@ from app.core.config import settings
 from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep
 from app.evaluators.trajectory_compressor import TrajectoryCompressor
+
+logger = logging.getLogger(__name__)
 
 
 class BaseEvaluator(ABC):
@@ -260,3 +266,60 @@ class BaseEvaluator(ABC):
         total_weight = sum(weights.values())
         weighted_sum = sum(scores.get(k, 0) * v for k, v in weights.items())
         return weighted_sum / total_weight if total_weight > 0 else 0
+
+    async def _invoke_llm_cached(self, chain, inputs: Dict[str, Any]) -> Any:
+        """
+        Invoke an LLM chain with Redis caching.
+
+        If CACHE_LLM_RESPONSES is enabled and a cached response exists for the
+        same prompt, return the cached content without calling the LLM.
+        Otherwise, invoke the chain and cache the result.
+
+        Args:
+            chain: A LangChain runnable (prompt | llm).
+            inputs: The input dict for the prompt template.
+
+        Returns:
+            The LLM response object (with .content attribute).
+        """
+        if not settings.CACHE_LLM_RESPONSES:
+            return await chain.ainvoke(inputs)
+
+        from app.core.cache import cache_hgetall, cache_hset, hash_prompt
+
+        # Build a deterministic cache key from evaluator name + prompt content
+        evaluator_name = type(self).__name__
+        prompt_text = json.dumps(inputs, sort_keys=True, default=str)
+        prompt_hash = hash_prompt(prompt_text)
+        cache_key = f"llm:{evaluator_name}:{prompt_hash}"
+
+        # Check cache
+        cached = await cache_hgetall(cache_key)
+        if cached and "response" in cached:
+            logger.debug("LLM cache hit: %s", cache_key)
+            # Reconstruct a minimal response object with .content
+            return _CachedLLMResponse(content=cached["response"])
+
+        # Cache miss — call LLM
+        logger.debug("LLM cache miss: %s", cache_key)
+        response = await chain.ainvoke(inputs)
+
+        # Store in cache
+        await cache_hset(
+            cache_key,
+            mapping={
+                "response": response.content,
+                "model": getattr(self.llm, "model_name", "unknown"),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+            ttl=settings.CACHE_LLM_TTL,
+        )
+
+        return response
+
+
+class _CachedLLMResponse:
+    """Minimal response wrapper for cached LLM output (mimics LangChain AIMessage.content)."""
+
+    def __init__(self, content: str):
+        self.content = content

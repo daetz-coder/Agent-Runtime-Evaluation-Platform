@@ -21,6 +21,39 @@ const axiosInstance = axios.create({
   },
 })
 
+/** Raw client for endpoints that return pagination headers. */
+const paginatedAxios = axios.create({
+  baseURL: '/api/v1',
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+export interface PaginatedResult<T> {
+  items: T[]
+  total: number
+}
+
+async function fetchPaginated<T>(url: string, config?: ApiRequestConfig): Promise<PaginatedResult<T>> {
+  const response = await paginatedAxios.get<T[]>(url, config)
+  const headerTotal = response.headers['x-total-count']
+  const total = headerTotal ? Number(headerTotal) : response.data.length
+  return { items: response.data, total }
+}
+
+paginatedAxios.interceptors.response.use(
+  (response: AxiosResponse) => response,
+  (error) => {
+    const silent = (error.config as ApiRequestConfig | undefined)?.silent
+    if (!silent) {
+      const message = error.response?.data?.detail || error.message || '请求失败'
+      ElMessage.error(message)
+    }
+    return Promise.reject(error)
+  }
+)
+
 axiosInstance.interceptors.request.use(
   (config) => config,
   (error) => Promise.reject(error)
@@ -55,7 +88,7 @@ export const taskApi = {
   },
 
   list(params?: { skip?: number; limit?: number }) {
-    return api.get('/tasks/', { params })
+    return fetchPaginated('/tasks/', { params })
   },
 
   getDashboard() {
@@ -78,7 +111,7 @@ export const taskApi = {
 // Evaluation API
 export const evaluationApi = {
   list(params?: { skip?: number; limit?: number; status?: string }) {
-    return api.get('/evaluations/', { params })
+    return fetchPaginated('/evaluations/', { params })
   },
 
   run(data: { task_id: string; include_details?: boolean; use_stream?: boolean }) {

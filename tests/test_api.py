@@ -85,3 +85,21 @@ async def test_evaluation_summary(client):
     data = response.json()
     assert "total_evaluations" in data
     assert "average_scores" in data
+
+
+@pytest.mark.asyncio
+async def test_auth_middleware_returns_401(client):
+    """Auth middleware must return 401 JSON, not 500, when enabled."""
+    from app.core.config import settings
+
+    prev_enabled = settings.AUTH_ENABLED
+    prev_key = settings.API_KEY
+    try:
+        settings.AUTH_ENABLED = True
+        settings.API_KEY = "test-api-key"
+        response = await client.get("/api/v1/tasks/")
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Invalid or missing API key"
+    finally:
+        settings.AUTH_ENABLED = prev_enabled
+        settings.API_KEY = prev_key

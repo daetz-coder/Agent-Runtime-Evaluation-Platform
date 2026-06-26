@@ -189,7 +189,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh, CircleCheck, Loading, TrendCharts, Warning } from '@element-plus/icons-vue'
-import { reportApi, evaluationApi } from '@/api'
+import { evaluationApi } from '@/api'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -291,13 +291,12 @@ const formatDateTime = (date: string) => {
 const fetchEvaluations = async () => {
   loading.value = true
   try {
-    const skip = (currentPage.value - 1) * pageSize.value
-    const [summary, items] = await Promise.all([
-      reportApi.getSummary(),
-      evaluationApi.list({ skip, limit: pageSize.value }),
-    ])
+    const { items, total } = await evaluationApi.list({
+      skip: (currentPage.value - 1) * pageSize.value,
+      limit: pageSize.value,
+    })
     evaluations.value = items as any[]
-    totalEvaluations.value = summary.total_evaluations || evaluations.value.length
+    totalEvaluations.value = total
   } catch (error) {
     console.error('Failed to fetch evaluations:', error)
   } finally {

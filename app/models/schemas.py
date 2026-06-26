@@ -4,7 +4,7 @@ Pydantic schemas for API request/response validation.
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # ============== Task Schemas ==============
@@ -28,12 +28,12 @@ class TaskResponse(BaseModel):
     goal: str
     context: Optional[Dict[str, Any]] = None
     status: str
+    workspace_id: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============== Trajectory Schemas ==============
@@ -172,8 +172,7 @@ class EvaluationResponse(BaseModel):
     completed_at: Optional[datetime] = None
     evaluation: Optional[OverallEvaluation] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EvaluationListItem(BaseModel):
@@ -193,8 +192,7 @@ class EvaluationListItem(BaseModel):
     replan_score: Optional[float] = None
     retrieval_score: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============== Report Schemas ==============

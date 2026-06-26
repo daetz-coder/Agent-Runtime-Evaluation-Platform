@@ -9,12 +9,20 @@ from app.core.config import settings
 
 
 # Create async engine
+_engine_kwargs: dict = {
+    "echo": settings.SQL_ECHO,
+    "pool_pre_ping": True,
+}
+if "sqlite" in settings.DATABASE_URL:
+    # SQLite (especially aiosqlite) does not benefit from a large connection pool.
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_kwargs["pool_size"] = 20
+    _engine_kwargs["max_overflow"] = 10
+
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.SQL_ECHO,
-    pool_size=20,
-    max_overflow=10,
-    pool_pre_ping=True,
+    **_engine_kwargs,
 )
 
 # Create async session factory
@@ -45,6 +53,10 @@ async def get_db() -> AsyncSession:
 
 async def init_db() -> None:
     """Initialize database tables and apply lightweight schema patches."""
+    # 注册所有 ORM 模型（含 workspace 表）
+    from app.db.models import AgentTask, AgentTrajectory, Evaluation  # noqa: F401
+    from app.api.workspace import Workspace, WorkspaceMember, AuditLog  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_apply_schema_patches)
@@ -60,6 +72,11 @@ def _apply_schema_patches(connection) -> None:
     columns = {col["name"] for col in inspector.get_columns("evaluations")}
     if "stream_mode" not in columns:
         connection.execute(text("ALTER TABLE evaluations ADD COLUMN stream_mode BOOLEAN DEFAULT 0 NOT NULL"))
+
+    if "agent_tasks" in inspector.get_table_names():
+        task_columns = {col["name"] for col in inspector.get_columns("agent_tasks")}
+        if "workspace_id" not in task_columns:
+            connection.execute(text("ALTER TABLE agent_tasks ADD COLUMN workspace_id VARCHAR(36)"))
 
 
 async def close_db() -> None:

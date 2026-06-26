@@ -71,10 +71,15 @@ KEY_FACTS_PROMPT = """从以下对话上下文提取 Agent 必须记住的关键
 """
 
 # 创建 LLM 并用 SDK 包裹（自动采集 LLM 调用）
+# 优先使用 ZhipuAI（如配置了 API Key），否则回退到 DeepSeek
+_chat_llm_model = settings.ZHIPUAI_CHAT_MODEL if settings.ZHIPUAI_API_KEY else settings.DEEPSEEK_MODEL
+_chat_llm_key = settings.ZHIPUAI_API_KEY or settings.DEEPSEEK_API_KEY
+_chat_llm_base = settings.ZHIPUAI_BASE_URL if settings.ZHIPUAI_API_KEY else settings.DEEPSEEK_BASE_URL
+
 chat_llm = wrap_llm(ChatOpenAI(
-    model=settings.ZHIPUAI_CHAT_MODEL,
-    api_key=settings.ZHIPUAI_API_KEY,
-    base_url=settings.ZHIPUAI_BASE_URL,
+    model=_chat_llm_model,
+    api_key=_chat_llm_key,
+    base_url=_chat_llm_base,
     temperature=0.7,
     streaming=True,
 ))
@@ -179,9 +184,9 @@ async def _extract_key_facts(
         from langchain_core.messages import HumanMessage as HM
 
         llm = _RawLLM(
-            model=settings.ZHIPUAI_CHAT_MODEL,
-            api_key=settings.ZHIPUAI_API_KEY,
-            base_url=settings.ZHIPUAI_BASE_URL,
+            model=_chat_llm_model,
+            api_key=_chat_llm_key,
+            base_url=_chat_llm_base,
             temperature=0,
             max_tokens=200,
         )

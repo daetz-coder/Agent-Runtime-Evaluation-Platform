@@ -152,6 +152,7 @@ class TrajectoryCollector:
 
         self._enabled = _env_bool("EVAL_ENABLED", True)
         self._api_base = _env_str("EVAL_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+        self._api_key = _env_str("EVAL_API_KEY", "")
         self._batch_size = _env_int("EVAL_BATCH_SIZE", 10)
 
         import httpx
@@ -487,7 +488,10 @@ class TrajectoryCollector:
         last_exc: Optional[Exception] = None
         for attempt in range(self._MAX_RETRIES):
             try:
-                r = self._http().request(method, url, json=json, timeout=timeout)
+                headers = {}
+                if self._api_key:
+                    headers["Authorization"] = f"Bearer {self._api_key}"
+                r = self._http().request(method, url, json=json, timeout=timeout, headers=headers)
                 r.raise_for_status()
                 return r
             except httpx.TimeoutException as exc:
@@ -547,3 +551,8 @@ class TrajectoryCollector:
 
 def get_collector() -> TrajectoryCollector:
     return TrajectoryCollector()
+
+
+def reset_collector() -> None:
+    """Reset collector state and destroy singleton (for tests)."""
+    TrajectoryCollector._reset_singleton()

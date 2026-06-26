@@ -6,11 +6,13 @@ import logging
 import json
 import asyncio
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Dict, Any
 from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.api.workspace import AuditAction, WorkspaceRole, add_audit_log
+from app.api.workspace_context import WorkspaceContext, get_workspace_context, require_role
 from app.db.database import get_db, async_session_factory
 from app.core.config import settings
 from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem, TrajectoryStep, StreamEvaluationRequest
@@ -27,10 +29,14 @@ async def list_evaluations(
     limit: int = 100,
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """List evaluations with pagination."""
+    require_role(ctx, WorkspaceRole.VIEWER)
     service = EvaluationService(db)
-    evaluations, total = await service.list_evaluations_with_count(skip=skip, limit=limit, status=status)
+    evaluations, total = await service.list_evaluations_with_count(
+        skip=skip, limit=limit, status=status, workspace_id=ctx.filter_workspace_id(),
+    )
     # 通过 response header 返回总数
     from fastapi.responses import JSONResponse
     return JSONResponse(
@@ -75,6 +81,7 @@ async def run_evaluation(
     request: EvaluationRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Run evaluation for a task (truly async).
@@ -86,20 +93,25 @@ async def run_evaluation(
     When use_stream=false (default), evaluation runs in background — poll GET /evaluations/{id}.
     When use_stream=true, call POST /evaluations/stream from the client for live progress.
     """
+    require_role(ctx, WorkspaceRole.EVALUATOR)
+    ws_filter = ctx.filter_workspace_id()
     service = EvaluationService(db)
 
-    # Verify task exists
-    task = await service.get_task(request.task_id)
+    task = await service.get_task(request.task_id, workspace_id=ws_filter)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # Create evaluation record (IN_PROGRESS) and return immediately
-    evaluation = await service.create_evaluation(request.task_id, stream_mode=request.use_stream)
+    evaluation = await service.create_evaluation(
+        request.task_id, stream_mode=request.use_stream, workspace_id=ws_filter,
+    )
 
     if not evaluation:
         raise HTTPException(status_code=500, detail="Evaluation failed to start")
 
-    # 显式 commit — 确保前端立即跳转时 GET 能查到这条记录
+    ws_id = ws_filter or ctx.workspace_id
+    if ws_id:
+        await add_audit_log(db, ws_id, ctx.user_id, AuditAction.EVAL_CREATED, "evaluation", evaluation.id)
+
     await db.commit()
 
     if not request.use_stream:
@@ -127,14 +139,16 @@ async def get_eval_settings():
 async def get_evaluation(
     evaluation_id: str,
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Get evaluation by ID.
 
     - **evaluation_id**: UUID of the evaluation
     """
+    require_role(ctx, WorkspaceRole.VIEWER)
     service = EvaluationService(db)
-    evaluation = await service.get_evaluation(evaluation_id)
+    evaluation = await service.get_evaluation(evaluation_id, workspace_id=ctx.filter_workspace_id())
 
     if not evaluation:
         raise HTTPException(status_code=404, detail="Evaluation not found")
@@ -147,6 +161,7 @@ async def quick_evaluation(
     task_id: str = Body(..., embed=True),
     context: Optional[Dict[str, Any]] = Body(None, embed=True),
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Quick evaluation endpoint (synchronous).
@@ -157,18 +172,15 @@ async def quick_evaluation(
     Note: This runs synchronously and may take some time.
     Use the async endpoint for better performance.
     """
+    require_role(ctx, WorkspaceRole.EVALUATOR)
+    ws_filter = ctx.filter_workspace_id()
     service = EvaluationService(db)
 
-    # Verify task exists
-    task = await service.get_task(task_id)
+    task = await service.get_task(task_id, workspace_id=ws_filter)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # Run evaluation synchronously
-    evaluation = await service.run_evaluation(
-        task_id=task_id,
-        context=context,
-    )
+    evaluation = await service.run_evaluation(task_id=task_id, context=context, workspace_id=ws_filter)
 
     if not evaluation:
         raise HTTPException(status_code=500, detail="Evaluation failed")
@@ -178,23 +190,26 @@ async def quick_evaluation(
 
 @router.post("/batch")
 async def batch_evaluation(
-    task_ids: List[str] = Body(..., embed=True),
+    background_tasks: BackgroundTasks,
+    task_ids: Annotated[List[str], Body(embed=True)],
     db: AsyncSession = Depends(get_db),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     批量评估多个任务（异步）。
 
     - **task_ids**: 任务 ID 列表
     """
+    require_role(ctx, WorkspaceRole.EVALUATOR)
+    ws_filter = ctx.filter_workspace_id()
     service = EvaluationService(db)
     results = []
     for task_id in task_ids:
-        task = await service.get_task(task_id)
+        task = await service.get_task(task_id, workspace_id=ws_filter)
         if not task:
             results.append({"task_id": task_id, "status": "not_found"})
             continue
-        evaluation = await service.create_evaluation(task_id)
+        evaluation = await service.create_evaluation(task_id, workspace_id=ws_filter)
         background_tasks.add_task(_run_evaluation_background, task_id, evaluation.id)
         results.append({
             "task_id": task_id,
@@ -208,6 +223,7 @@ async def batch_evaluation(
 async def evaluation_stream(
     request: StreamEvaluationRequest,
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     SSE 流式评估 — 每个评估器完成时实时推送分数，可选持久化到 evaluation_id。
@@ -227,8 +243,10 @@ async def evaluation_stream(
     from app.models.schemas import TrajectoryStep as TS
     from sse_starlette.sse import EventSourceResponse
 
+    require_role(ctx, WorkspaceRole.EVALUATOR)
+    ws_filter = ctx.filter_workspace_id()
     service = EvaluationService(db)
-    task = await service.get_task(request.task_id)
+    task = await service.get_task(request.task_id, workspace_id=ws_filter)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -375,6 +393,7 @@ async def consensus_evaluation(
     task_id: str = Body(..., embed=True),
     include_all: bool = Body(False, embed=True),
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     多模型共识评估 — DeepSeek + OpenAI + Anthropic 独立评分。
@@ -387,8 +406,10 @@ async def consensus_evaluation(
     from app.evaluators.consensus import ConsensusEvaluator
 
     # 获取任务和轨迹
+    require_role(ctx, WorkspaceRole.EVALUATOR)
+    ws_filter = ctx.filter_workspace_id()
     service = EvaluationService(db)
-    task = await service.get_task(task_id)
+    task = await service.get_task(task_id, workspace_id=ws_filter)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -435,14 +456,16 @@ async def consensus_evaluation(
 async def delete_evaluation(
     evaluation_id: str,
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Delete an evaluation record.
 
     - **evaluation_id**: UUID of the evaluation
     """
+    require_role(ctx, WorkspaceRole.ADMIN)
     service = EvaluationService(db)
-    deleted = await service.delete_evaluation(evaluation_id)
+    deleted = await service.delete_evaluation(evaluation_id, workspace_id=ctx.filter_workspace_id())
 
     if not deleted:
         raise HTTPException(status_code=404, detail="Evaluation not found")

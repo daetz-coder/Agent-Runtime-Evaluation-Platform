@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 WIKI_AGENT_ROOT = PROJECT_ROOT / "example" / "wiki-agent"
@@ -12,6 +12,11 @@ class WikiAgentSettings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-chat"
+
+    # LLM (ZhipuAI / GLM, OpenAI-compatible API) — optional override
+    ZHIPUAI_API_KEY: str = ""
+    ZHIPUAI_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"
+    ZHIPUAI_CHAT_MODEL: str = "glm-4-flash"
 
     # Paths — runtime data under data/wiki_agent/, seed content under app/wiki_agent/seed/
     KNOWLEDGE_DIR: str = str(WIKI_DATA_DIR / "knowledge")
@@ -39,10 +44,11 @@ class WikiAgentSettings(BaseSettings):
     EVAL_AUTO_RUN: bool = False
     EVAL_BATCH_SIZE: int = 8
 
-    class Config:
-        env_file = str(PROJECT_ROOT / ".env")
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=str(PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = WikiAgentSettings()

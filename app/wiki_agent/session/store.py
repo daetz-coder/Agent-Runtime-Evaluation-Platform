@@ -1,10 +1,15 @@
-"""会话存储服务 — SQLite 实现"""
+"""会话存储服务 — SQLite 实现 + Redis 缓存层"""
 
 import json
+import logging
 from datetime import datetime
 from typing import Optional
 
 from app.wiki_agent.database import get_db
+from app.core.cache import cache_get, cache_set, cache_delete
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 async def create_session(session_id: str, name: str = "新对话") -> dict:
@@ -17,13 +22,24 @@ async def create_session(session_id: str, name: str = "新对话") -> dict:
             (session_id, name, now, now),
         )
         await db.commit()
-        return {"id": session_id, "name": name, "created_at": now, "updated_at": now}
+        result = {"id": session_id, "name": name, "created_at": now, "updated_at": now}
+
+        # Invalidate list cache
+        await cache_delete("wiki:sessions:list")
+
+        return result
     finally:
         await db.close()
 
 
 async def get_session(session_id: str) -> Optional[dict]:
     """获取会话及消息"""
+    # Check Redis cache first
+    cache_key = f"wiki:session:{session_id}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     db = await get_db()
     try:
         db.row_factory = None
@@ -40,7 +56,7 @@ async def get_session(session_id: str) -> Optional[dict]:
         )
         messages = await cursor.fetchall()
 
-        return {
+        result = {
             "id": row[0],
             "name": row[1],
             "created_at": row[2],
@@ -55,12 +71,21 @@ async def get_session(session_id: str) -> Optional[dict]:
                 for msg in messages
             ],
         }
+
+        # Cache the session
+        await cache_set(cache_key, result, ttl=settings.CACHE_SESSION_TTL)
+        return result
     finally:
         await db.close()
 
 
 async def list_sessions() -> list[dict]:
     """列出所有会话摘要"""
+    # Check cache first
+    cached = await cache_get("wiki:sessions:list")
+    if cached is not None:
+        return cached
+
     db = await get_db()
     try:
         db.row_factory = None
@@ -84,6 +109,9 @@ async def list_sessions() -> list[dict]:
                 "updated_at": row[3],
                 "message_count": count_row[0],
             })
+
+        # Cache with short TTL (60s)
+        await cache_set("wiki:sessions:list", sessions, ttl=60)
         return sessions
     finally:
         await db.close()
@@ -115,6 +143,11 @@ async def add_message(
             (datetime.now().isoformat(timespec="seconds"), session_id),
         )
         await db.commit()
+
+        # Invalidate related caches
+        await cache_delete(f"wiki:session:{session_id}")
+        await cache_delete("wiki:sessions:list")
+
         return cursor.lastrowid
     finally:
         await db.close()
@@ -149,6 +182,9 @@ async def update_extraction_status(
                     (json.dumps(extraction, ensure_ascii=False), row[0]),
                 )
                 await db.commit()
+
+                # Invalidate session cache (messages changed)
+                await cache_delete(f"wiki:session:{session_id}")
                 return
     finally:
         await db.close()
@@ -163,6 +199,10 @@ async def update_session_name(session_id: str, name: str):
             (name, datetime.now().isoformat(timespec="seconds"), session_id),
         )
         await db.commit()
+
+        # Invalidate related caches
+        await cache_delete(f"wiki:session:{session_id}")
+        await cache_delete("wiki:sessions:list")
     finally:
         await db.close()
 
@@ -176,13 +216,25 @@ async def delete_session(session_id: str) -> bool:
         # 再删除会话
         cursor = await db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         await db.commit()
-        return cursor.rowcount > 0
+
+        if cursor.rowcount > 0:
+            # Invalidate all related caches
+            await cache_delete(f"wiki:session:{session_id}")
+            await cache_delete(f"wiki:session:{session_id}:facts")
+            await cache_delete("wiki:sessions:list")
+            return True
+        return False
     finally:
         await db.close()
 
 
 async def session_exists(session_id: str) -> bool:
     """检查会话是否存在"""
+    # Check cache first — if session is cached, it exists
+    cached = await cache_get(f"wiki:session:{session_id}")
+    if cached is not None:
+        return True
+
     db = await get_db()
     try:
         cursor = await db.execute("SELECT 1 FROM sessions WHERE id = ?", (session_id,))
@@ -194,6 +246,12 @@ async def session_exists(session_id: str) -> bool:
 
 async def get_session_key_facts(session_id: str) -> list[str]:
     """获取会话累积的 key_facts"""
+    # Check cache first
+    cache_key = f"wiki:session:{session_id}:facts"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     db = await get_db()
     try:
         # 检测列是否存在（兼容旧 schema）
@@ -207,8 +265,13 @@ async def get_session_key_facts(session_id: str) -> list[str]:
         )
         row = await cursor.fetchone()
         if row and row[0]:
-            return json.loads(row[0])
-        return []
+            facts = json.loads(row[0])
+        else:
+            facts = []
+
+        # Cache the facts
+        await cache_set(cache_key, facts, ttl=settings.CACHE_SESSION_TTL)
+        return facts
     except (json.JSONDecodeError, TypeError):
         return []
     finally:
@@ -240,6 +303,9 @@ async def merge_session_key_facts(session_id: str, new_facts: list[str]) -> list
                 (json.dumps(merged, ensure_ascii=False), session_id),
             )
             await db.commit()
+
+            # Invalidate key_facts cache
+            await cache_delete(f"wiki:session:{session_id}:facts")
     finally:
         await db.close()
 
