@@ -118,6 +118,10 @@ class ToolUseScore(BaseModel):
     result_utilization: float = Field(..., ge=0, le=100, description="How well results are used")
     overall: float = Field(..., ge=0, le=100, description="Overall tool use score")
     feedback: str = Field(..., description="Detailed feedback")
+    sandbox_results: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Sandbox execution results (None = sandbox disabled or no code detected)",
+    )
 
 
 class MemoryScore(BaseModel):

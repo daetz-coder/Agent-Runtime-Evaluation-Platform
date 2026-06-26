@@ -26,6 +26,13 @@ TOOL_USE_EVALUATION_PROMPT = """You are an expert at evaluating AI agent tool us
 ## Context
 {context}
 
+## Sandbox Execution Results
+The following code snippets from the agent's tool calls were actually executed in a
+sandboxed environment. Compare the sandbox output with what the agent recorded.
+If sandbox results are unavailable, evaluate based on recorded outputs only.
+
+{sandbox_results}
+
 ## Evaluation Criteria
 
 Evaluate the agent's tool usage on:
@@ -39,11 +46,13 @@ Evaluate the agent's tool usage on:
    - Were the tool parameters correct and complete?
    - Example: Correct file paths, appropriate search queries
    - Consider: Were there errors due to wrong parameters?
+   - If sandbox execution failed but agent claimed success, penalize heavily.
 
 3. **Result Utilization** (0-100):
    - Were tool results used effectively?
    - Did the agent act on the information received?
    - Example: After finding auth code, did the agent analyze it properly?
+   - If sandbox output differs from agent's recorded output, check for fabrication.
 
 ## Output Format
 Return a JSON object:
@@ -105,6 +114,39 @@ class ToolUseEvaluator(BaseEvaluator):
             tool_calls_text += "\n\n## Tool Results (Independent Records)\n"
             tool_calls_text += self._format_tool_results(tool_results)
 
+        # ── Sandbox execution ──────────────────────────────────
+        sandbox_text = "Sandbox not available — evaluating based on recorded outputs only."
+        sandbox_results_list = None
+
+        from app.sandbox.executor import is_sandbox_available, SandboxExecutor
+        from app.sandbox.detector import detect_code_executions
+
+        if is_sandbox_available():
+            code_snippets = detect_code_executions(tool_calls)
+            if code_snippets:
+                executor = SandboxExecutor()
+                results = await executor.execute_batch(code_snippets)
+                sandbox_results_list = []
+                sandbox_lines = []
+                for snippet, result in zip(code_snippets, results):
+                    entry = {
+                        "step": snippet.step,
+                        "tool": snippet.tool_name,
+                        "language": snippet.language.value,
+                        "code": snippet.code[:200],
+                        "sandbox_output": result.summary(),
+                        "recorded_output": snippet.original_output[:200],
+                        "match": result.success,
+                    }
+                    sandbox_results_list.append(entry)
+                    sandbox_lines.append(
+                        f"Step {snippet.step} ({snippet.tool_name}, {snippet.language.value}):\n"
+                        f"  Code: {snippet.code[:150]}...\n"
+                        f"  Sandbox: {result.summary()}\n"
+                        f"  Agent recorded: {snippet.original_output[:150]}"
+                    )
+                sandbox_text = "\n\n".join(sandbox_lines)
+
         # Create prompt
         prompt = ChatPromptTemplate.from_template(TOOL_USE_EVALUATION_PROMPT)
 
@@ -114,6 +156,7 @@ class ToolUseEvaluator(BaseEvaluator):
             "goal": goal,
             "tool_calls": tool_calls_text,
             "context": context or "No additional context provided.",
+            "sandbox_results": sandbox_text,
         })
 
         # Parse response
@@ -128,6 +171,7 @@ class ToolUseEvaluator(BaseEvaluator):
             result_utilization=scores.get("result_utilization", 0),
             overall=overall,
             feedback=scores.get("feedback", "Evaluation completed."),
+            sandbox_results=sandbox_results_list,
         )
 
     def _format_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> str:

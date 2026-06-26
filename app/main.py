@@ -46,8 +46,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting Wiki Agent...")
     await wiki_agent_startup()
     logger.info("Wiki Agent initialized")
+
+    from app.sandbox.executor import init_sandbox
+    sandbox_ok = await init_sandbox()
+    logger.info("Sandbox: %s", "ready" if sandbox_ok else "disabled")
+
     yield
     logger.info("Shutting down...")
+
+    from app.sandbox.executor import close_sandbox
+    await close_sandbox()
     await close_redis()
     await close_db()
     logger.info("Database connections closed")

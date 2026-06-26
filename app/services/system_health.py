@@ -25,12 +25,21 @@ async def get_system_health() -> dict:
     if db_status == "disconnected":
         overall = "degraded"
 
+    sandbox_health = {
+        "enabled": settings.SANDBOX_ENABLED,
+        "available": False,
+    }
+    if settings.SANDBOX_ENABLED:
+        from app.sandbox.executor import is_sandbox_available
+        sandbox_health["available"] = is_sandbox_available()
+
     return {
         "status": overall,
         "app": settings.APP_NAME,
         "version": "0.1.0",
         "database": db_status,
         "auth_enabled": settings.AUTH_ENABLED,
+        "sandbox": sandbox_health,
         "wiki": wiki_status,
     }
 

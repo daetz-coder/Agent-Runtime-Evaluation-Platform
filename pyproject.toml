@@ -52,6 +52,9 @@ dependencies = [
     # Redis (for caching and message queue)
     "redis>=5.0.1",
 
+    # Sandbox (Docker-based code execution)
+    "docker>=7.0.0",
+
     # Utilities
     "python-dotenv>=1.0.0",
     "pyjwt>=2.8.0",

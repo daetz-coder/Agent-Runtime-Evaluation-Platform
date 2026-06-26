@@ -19,6 +19,7 @@ services:
     volumes:
       - ./agent_eval.db:/app/agent_eval.db
       - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock  # For sandbox container management
     restart: unless-stopped
     depends_on:
       - redis

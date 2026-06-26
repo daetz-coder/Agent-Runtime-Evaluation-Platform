@@ -92,6 +92,16 @@ class Settings(BaseSettings):
     EVAL_WEBHOOK_URL: str = ""
     EVAL_PARALLEL: bool = True
 
+    # Code Execution Sandbox (Docker-based)
+    SANDBOX_ENABLED: bool = False
+    SANDBOX_POOL_SIZE: int = 3
+    SANDBOX_TIMEOUT: int = 30                # seconds per snippet
+    SANDBOX_MEMORY_LIMIT_MB: int = 256
+    SANDBOX_CPU_CORES: int = 1
+    SANDBOX_OUTPUT_LIMIT: int = 10_240_000   # 10 MB
+    SANDBOX_ACQUIRE_TIMEOUT: float = 10.0    # seconds to wait for pool
+    SANDBOX_CACHE_TTL: int = 86400           # 24h cache for identical executions
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
