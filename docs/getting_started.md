@@ -5,6 +5,7 @@
 - Python 3.11+
 - Node.js 18+
 - Git
+- Redis 7+ (可选 — 应用会自动降级，无需 Redis 也能正常运行)
 
 ## 安装
 
@@ -21,6 +22,12 @@ pip install -e ".[dev]"
 
 # 安装前端依赖
 cd frontend && npm install && cd ..
+
+# (可选) 启动 Redis — 用于缓存和限流，不启动则自动降级
+# Docker 方式:
+docker compose up redis -d
+# 或本地安装:
+redis-server
 ```
 
 ## 启动
@@ -109,3 +116,9 @@ alembic revision --autogenerate -m "描述"  # 生成新迁移
 | `EVAL_PARALLEL` | 是否并行评估 | true |
 | `AUTH_ENABLED` | 是否启用 API 认证 | false |
 | `EVAL_WEBHOOK_URL` | 评估完成通知 URL | - |
+| `REDIS_URL` | Redis 连接地址（可选，不可用时自动降级） | redis://localhost:6379/0 |
+| `CACHE_LLM_RESPONSES` | 是否缓存 LLM 评估结果（节省 API 费用） | true |
+| `CACHE_LLM_TTL` | LLM 缓存有效期（秒） | 86400 (24h) |
+| `CACHE_REPORTS_TTL` | 报表聚合缓存有效期（秒） | 300 (5min) |
+| `RATE_LIMIT_ENABLED` | 是否启用评估接口限流（需 Redis） | true |
+| `RATE_LIMIT_EVAL_PER_MINUTE` | 每客户端每分钟最大评估请求数 | 10 |

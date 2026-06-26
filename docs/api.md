@@ -10,6 +10,29 @@ http://localhost:8000/api/v1
 
 可选中。设置 `AUTH_ENABLED=true` 启用 API Key 认证，通过 `Authorization: Bearer <key>` 或 `?api_key=<key>` 传递。
 
+## 接口限流
+
+评估相关 POST 接口启用了基于 Redis 的滑动窗口限流（需 Redis 可用，不可用时自动跳过）：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `RATE_LIMIT_ENABLED` | `true` | 是否启用限流 |
+| `RATE_LIMIT_EVAL_PER_MINUTE` | `10` | 每分钟每客户端最大请求数 |
+
+**限流范围**: `POST /evaluations/`、`POST /evaluations/quick`、`POST /evaluations/batch`、`POST /evaluations/stream`、`POST /evaluations/consensus`
+
+**超限响应** (HTTP 429):
+```json
+{
+  "detail": "Too many requests. Please try again later.",
+  "retry_after": 23
+}
+```
+
+**响应头**: `Retry-After`、`X-RateLimit-Limit`、`X-RateLimit-Remaining`
+
+**客户端标识**: 优先使用 API Key（前 9 字符），无 Key 时使用客户端 IP。
+
 ---
 
 ## Endpoints

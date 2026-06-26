@@ -36,17 +36,18 @@ sdk/                  独立 SDK 包 — 外部项目 pip install httpx langchai
   collector.py        TrajectoryCollector (线程安全, 批量上传, 离线模式)
   adapters/           instrument_langgraph / create_proxy_llm / create_callback_handler
 
-app/main.py           FastAPI app + lifespan (DB init, Wiki Agent bootstrap, Milvus load)
+app/main.py           FastAPI app + lifespan (DB init, Redis init, Wiki Agent bootstrap, Milvus load)
 app/api/v1/endpoints/ tasks / evaluation / reports / benchmark
-app/api/              auth_middleware.py / workspace.py (多租户+RABC)
+app/api/              auth_middleware.py / rate_limit_middleware.py / workspace.py (多租户+RBAC)
+app/core/             pydantic-settings 配置 + cache.py (Redis 缓存层, 优雅降级)
 app/services/         EvaluationService — 6 维评估编排 (默认并行, EVAL_PARALLEL=true)
-app/evaluators/       6 evaluators (planning/tactical/tool_use/memory/replan/retrieval)
+app/evaluators/       6 evaluators (planning/tactical/tool_use/memory/replan/retrieval) + LLM 缓存
 app/evaluators/consensus.py  多模型共识 (DeepSeek+GLM+Qwen → mean±std)
 app/graphs/           LangGraph 串行 fallback + evaluate_parallel() asyncio.gather
 app/benchmarks/       Monotonicity benchmark (6 档质量递减 → 单调性验证)
 app/models/           Pydantic schemas + ActionType (14 种)
 app/db/               SQLAlchemy ORM (AgentTask/Trajectory/Evaluation/Workspace/AuditLog)
-app/wiki_agent/       RAG Wiki Agent (Milvus + BM25 + BGE-M3 + RRF)
+app/wiki_agent/       RAG Wiki Agent (Milvus + BM25 + BGE-M3 + RRF + Redis 会话缓存)
 ```
 
 **Evaluation flow**: Task created → trajectory pushed → 6 evaluators run in parallel (~15s) → `OverallEvaluation` persisted. Also: SSE stream via `POST /evaluations/stream`, consensus via `POST /evaluations/consensus`, benchmark via `GET /benchmark/monotonicity`.
@@ -55,11 +56,12 @@ app/wiki_agent/       RAG Wiki Agent (Milvus + BM25 + BGE-M3 + RRF)
 
 - **Python**: ruff (line-length 120), mypy strict, public symbols have docstrings
 - **Async**: all DB async, evaluators async, use `async/await` not sync wrappers
-- **Evaluator**: extend `BaseEvaluator`, use LLM-as-judge via `ChatPromptTemplate`, register in `__init__.py`
+- **Evaluator**: extend `BaseEvaluator`, use LLM-as-judge via `ChatPromptTemplate`, use `_invoke_llm_cached()` for Redis-backed LLM calls
 - **DB**: SQLAlchemy 2.0 `Mapped[]`, UTC via `datetime.now(timezone.utc)`, never `datetime.utcnow()`
 - **Trajectory**: use `ActionType.PLAN` etc., never raw strings
 - **Frontend**: Vue 3 `<script setup>`, Element Plus auto-import, route-based code splitting
 - **Config**: `.env` via pydantic-settings, UPPER_CASE fields. Secrets never committed.
+- **Redis**: optional dependency — all cache operations degrade gracefully (return None/False) when Redis is unavailable. Use `app.core.cache` helpers, never raw redis calls. Key prefix: `eval:` (configurable via `REDIS_KEY_PREFIX`). Cache invalidation on write — never rely on TTL alone for stale data.
 - **Wiki Agent**: chunking uses `RecursiveCharacterTextSplitter` (LangChain), multi-format via `load_document()` (PDF/Word/MD/TXT)
 
 ## Notes
