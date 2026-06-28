@@ -197,13 +197,20 @@ class EvaluationService:
             if observation is not None and not isinstance(observation, str):
                 observation = json.dumps(observation, ensure_ascii=False, default=str)
 
+            timestamp_raw = step_data.get("timestamp", datetime.now(timezone.utc))
+            if isinstance(timestamp_raw, str):
+                try:
+                    timestamp_raw = datetime.fromisoformat(timestamp_raw.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    timestamp_raw = datetime.now(timezone.utc)
+
             trajectory = AgentTrajectory(
                 task_id=task_id,
                 step_number=step_data.get("step_number", 0),
                 action_type=step_data.get("action_type", "unknown"),
                 action_detail=step_data.get("action_detail", {}),
                 observation=observation,
-                timestamp=step_data.get("timestamp", datetime.now(timezone.utc)),
+                timestamp=timestamp_raw,
             )
             self.db.add(trajectory)
 
