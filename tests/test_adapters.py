@@ -131,6 +131,41 @@ async def test_langgraph_instrument():
     print("  [PASS] LangGraph: sync/async wrapping, add_node intercept, compile+ainvoke OK")
 
 
+async def test_langgraph_forwards_config():
+    """Instrumented nodes must receive LangGraph RunnableConfig (e.g. event_queue)."""
+    from typing import TypedDict
+
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.graph import StateGraph
+
+    from app.adapters.langgraph import instrument_langgraph
+
+    class TestState(TypedDict):
+        value: str
+
+    seen: dict[str, object] = {}
+
+    async def async_node(state: TestState, config: RunnableConfig) -> dict:
+        seen["config"] = config
+        seen["event_queue"] = (config.get("configurable") or {}).get("event_queue")
+        return {"value": state["value"] + "-done"}
+
+    raw = StateGraph(TestState)
+    raw.add_node("step", async_node)
+    raw.set_entry_point("step")
+    raw.set_finish_point("step")
+
+    compiled = instrument_langgraph(raw).compile()
+    marker = object()
+    await compiled.ainvoke(
+        {"value": "x"},
+        config={"configurable": {"event_queue": marker}},
+    )
+    assert seen.get("event_queue") is marker, "config.configurable must reach wrapped node"
+
+    print("  [PASS] LangGraph: RunnableConfig forwarded to async nodes")
+
+
 async def main():
     print("=" * 60)
     print("  Adapters 集成测试")
@@ -153,6 +188,11 @@ async def main():
         await test_langgraph_instrument()
     except Exception as e:
         print(f"  [FAIL] LangGraph: {e}")
+
+    try:
+        await test_langgraph_forwards_config()
+    except Exception as e:
+        print(f"  [FAIL] LangGraph config: {e}")
 
     print("=" * 60)
     print("  测试完成")

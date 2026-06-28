@@ -34,11 +34,33 @@ import traceback
 from typing import Any, Callable, Dict, Union
 
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph, StateGraph
 
 from sdk.collector import ActionType, get_collector
 
 logger = logging.getLogger(__name__)
+
+
+def _accepts_config(node_func: Callable) -> bool:
+    """Return True if node accepts LangGraph RunnableConfig."""
+    return "config" in inspect.signature(node_func).parameters
+
+
+def _call_node(node_func: Callable, state: Any, config: RunnableConfig | None) -> Any:
+    """Invoke a sync node, forwarding config when supported."""
+    if _accepts_config(node_func):
+        return node_func(state, config)
+    return node_func(state)
+
+
+async def _call_node_async(
+    node_func: Callable, state: Any, config: RunnableConfig | None
+) -> Any:
+    """Invoke an async node, forwarding config when supported."""
+    if _accepts_config(node_func):
+        return await node_func(state, config)
+    return await node_func(state)
 
 
 class InstrumentedStateGraph:
@@ -103,7 +125,7 @@ class InstrumentedStateGraph:
         import functools
 
         @functools.wraps(node_func)
-        def wrapper(state):
+        def wrapper(state, config: RunnableConfig | None = None, **kwargs):
             start_time = time.time()
             state_before = self._extract_state_summary(state)
 
@@ -113,7 +135,7 @@ class InstrumentedStateGraph:
             )
 
             try:
-                result = node_func(state)
+                result = _call_node(node_func, state, config)
                 duration_ms = (time.time() - start_time) * 1000
 
                 state_after = self._extract_result_summary(result)
@@ -149,7 +171,11 @@ class InstrumentedStateGraph:
         import functools
 
         @functools.wraps(node_func)
-        async def async_wrapper(state: Dict[str, Any]) -> Dict[str, Any]:
+        async def async_wrapper(
+            state: Dict[str, Any],
+            config: RunnableConfig | None = None,
+            **kwargs: Any,
+        ) -> Dict[str, Any]:
             start_time = time.time()
             state_before = self._extract_state_summary(state)
 
@@ -159,7 +185,7 @@ class InstrumentedStateGraph:
             )
 
             try:
-                result = await node_func(state)
+                result = await _call_node_async(node_func, state, config)
                 duration_ms = (time.time() - start_time) * 1000
 
                 state_after = self._extract_result_summary(result)
