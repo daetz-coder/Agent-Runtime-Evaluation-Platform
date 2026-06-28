@@ -86,12 +86,15 @@ class IncrementalEvalService:
             if not head_traj:
                 raise ValueError("Head task has no trajectory")
 
-            # ── Detect changes ──
+            # ── Detect changes (generate eval_id first so diff has a real head ID) ──
+            import uuid
+
+            eval_id = str(uuid.uuid4())
             diff = await self.diff_service.compare(
                 base_trajectory=base_traj,
                 head_trajectory=head_traj,
                 base_eval_id=base_eval_id,
-                head_eval_id="",
+                head_eval_id=eval_id,
                 base_goal=base_eval.task.goal if base_eval.task else "",
                 head_goal=head_task.goal,
             )
@@ -106,7 +109,6 @@ class IncrementalEvalService:
             reused_dims = [d for d in all_dims if d not in re_eval_dims]
 
             # ── Create new evaluation record ──
-            import uuid
             from datetime import datetime, timezone
 
             from app.agent_runtime.prompts import PROMPT_VERSION
