@@ -107,7 +107,7 @@ class Settings(BaseSettings):
     SANDBOX_CACHE_TTL: int = 86400  # 24h cache for identical executions
 
     # Mock Sandbox Mode — for local development without Docker
-    SANDBOX_MOCK_MODE: bool = False
+    SANDBOX_MOCK_MODE: bool = True
     """When True, AgentRuntime returns a fixed mock trajectory instead of
     running inside Docker.  Useful for rapid prompt iteration."""
 
