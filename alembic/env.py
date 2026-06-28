@@ -36,7 +36,7 @@ def run_migrations_offline() -> None:
 async def run_migrations_online() -> None:
     """在线模式：连接数据库执行迁移。"""
     connectable = create_async_engine(
-        settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "sqlite+aiosqlite:///"),
+        settings.DATABASE_URL,
         poolclass=pool.NullPool,
     )
 
@@ -52,7 +52,19 @@ def _do_run_migrations(connection):
         context.run_migrations()
 
 
+def _run_async_migration():
+    """Safely run async migration, handling nested event loop cases."""
+    try:
+        loop = asyncio.get_running_loop()
+        # Already inside a running event loop (e.g., called from FastAPI lifespan)
+        if loop.is_running():
+            loop.create_task(run_migrations_online())
+    except RuntimeError:
+        # No running event loop — safe to create one
+        asyncio.run(run_migrations_online())
+
+
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    asyncio.run(run_migrations_online())
+    _run_async_migration()

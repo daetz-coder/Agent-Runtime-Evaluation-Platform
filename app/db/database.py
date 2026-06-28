@@ -65,26 +65,36 @@ async def init_db() -> None:
 
 
 async def _run_alembic_upgrade() -> None:
-    """Run alembic upgrade head programmatically."""
+    """Run database schema initialization.
+
+    For SQLite (development), use create_all directly to avoid
+    alembic async event-loop conflicts.
+    For PostgreSQL (production), attempt alembic upgrade first.
+    """
+    is_sqlite = "sqlite" in settings.DATABASE_URL
+
+    if is_sqlite:
+        # SQLite dev mode: use create_all directly
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables created via create_all (SQLite dev mode)")
+        return
+
+    # PostgreSQL production mode: run alembic migrations
     from alembic.config import Config
     from alembic.script import ScriptDirectory
-
     from alembic import command
 
     alembic_cfg = Config("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
-    # For async engines, we use the sync connection under the hood
-    # Alembic env.py handles the async engine creation
     try:
-        # Check if there are migrations to apply
         script = ScriptDirectory.from_config(alembic_cfg)
         head = script.get_current_head()
 
         command.upgrade(alembic_cfg, "head")
         logger.info("Alembic migrations applied successfully (head: %s)", head)
     except Exception as e:
-        # Fallback to create_all for development/testing when alembic fails
         logger.warning("Alembic migration failed, falling back to create_all: %s", e)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
