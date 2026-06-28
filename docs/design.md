@@ -27,11 +27,16 @@
 ## 3. 架构
 
 ```
-Trajectory (SDK/Wiki Agent) → EvaluationService → 6 Evaluators → DB → Reports API → Vue Dashboard
-                                         ↓                    ↓
-                                   Redis Cache          Redis Cache
-                              (LLM 结果缓存 24h)   (报表聚合 5min, Task 60s,
-                                                    Dashboard 30s, 限流 Sorted Set)
+Trajectory (SDK/Wiki Agent) → EvaluationService → 6 Evaluators (并行)
+                                         ↓
+                                   Redis Cache (可选)
+                                   • LLM 结果缓存 24h
+                                   • 报表聚合 5min
+                                   • Task 查询 60s
+                                   • Dashboard 30s
+                                   • 接口限流 Sorted Set
+                                         ↓
+                                    DB → Reports API → Vue Dashboard
 ```
 
 ## 4. Redis 缓存策略
@@ -50,7 +55,7 @@ Trajectory (SDK/Wiki Agent) → EvaluationService → 6 Evaluators → DB → Re
 
 - **RAGAS**：专注 RAG 检索与生成质量
 - **LangSmith**：通用 tracing + 实验平台
-- **本平台**：Agent **运行时** 全链路五维 + RAG 六维，含轨迹动作级分析、迭代对比、多模型共识
+- **本平台**：Agent **运行时** 全链路六维（Planning / Tactical / Tool Use / Memory / Replan / Retrieval），含轨迹动作级分析、迭代对比、多模型共识
 
 ## 6. Wiki Agent 闭环
 

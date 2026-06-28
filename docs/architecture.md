@@ -11,16 +11,16 @@ The Agent Runtime Evaluation Platform evaluates the runtime quality of AI agents
 │                        API Layer (FastAPI)                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  /api/v1/tasks │ /api/v1/evaluations │ /api/v1/reports │ /api/v1/benchmark │
-│  /workspaces   │ /api/wiki/*         │ /api/chat/*     │                   │
-│  AuthMiddleware → RateLimitMiddleware → CORS (middleware chain)  │
+│  /api/v1/workspaces │ /api/wiki/* │ /api/chat/* │ /api/v1/settings │
+│  CORS → CorrelationIdMiddleware → AuthMiddleware → RateLimitMiddleware     │
+│  → PrometheusMiddleware (middleware chain)                                 │
 └────────────────────┴───────────────────┴─────────────────┴───────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Service Layer                                 │
-│  EvaluationService · ConsensusEvaluator · BenchmarkRunner       │
-│  ReplayService  · JudgeService  · DiffService                  │
-│  IncrementalEvalService · RegressionDetectionService            │
+│  EvaluationService · ReplayService · JudgeService · DiffService          │
+│  IncrementalEvalService · RegressionDetectionService · SystemHealth      │
 └─────────────────────────────────────────────────────────────────┘
                               │
                     ┌─────────┴─────────┐
@@ -70,7 +70,7 @@ The Agent Runtime Evaluation Platform evaluates the runtime quality of AI agents
 - **Tasks API**: Create and manage agent tasks
 - **Evaluations API**: Run and retrieve evaluations
 - **Reports API**: Get analytics and summaries
-- **Middleware chain**: CORS → AuthMiddleware → RateLimitMiddleware
+- **Middleware chain**: CORS → CorrelationIdMiddleware → AuthMiddleware → RateLimitMiddleware → PrometheusMiddleware
 
 ### 2. Service Layer
 
@@ -141,7 +141,7 @@ Each evaluator focuses on a specific dimension:
 | Replan | Replanning decisions | Trigger Appropriateness, Adaptation Quality, Learning |
 | Retrieval | RAG / retrieval quality | Relevance, Evidence Accuracy, Coverage, Hallucination detection |
 
-### 7. Agent Runtime (`app/agent_runtime/`)
+### 6. Agent Runtime (`app/agent_runtime/`)
 
 The Agent Runtime runs AI agents inside Docker sandbox containers and captures
 their full trajectory for evaluation.
@@ -150,7 +150,7 @@ their full trajectory for evaluation.
 |-----------|------|-------------|
 | **AgentRunner** | `runner.py` | Orchestrates agent execution: acquire session → setup workspace → create LLM → run LangGraph → capture trajectory |
 | **LangGraph Agent** | `graph.py` | ReAct loop: think → act → observe. Auto-injects `_llm_trace` (prompt/response/model/latency) into each step |
-| **Prompts** | `prompts.py` | System prompt templates. Versioned via `PROMPT_VERSION` constant |
+| **Prompts** | `prompts/` (package) + `prompts_compat.py` | System prompt templates in `templates/v1.1.yaml`. Versioned via `PROMPT_VERSION=v1.1` constant |
 | **Mock Executor** | `mock_executor.py` | `SANDBOX_MOCK_MODE=true` — returns predefined trajectory without Docker |
 | **TrajectoryRecorder** | `trajectory_recorder.py` | Records 14 action types. Accepts optional `llm_trace` parameter |
 | **SessionPool** | `sandbox/session_pool.py` | Docker container pool with writable `/workspace` |
@@ -188,7 +188,7 @@ Curated trajectories with expected score ranges for evaluator regression testing
 2. Add Trajectory → AgentTrajectory[]
 3. Run Evaluation → LangGraph Workflow
 4. Store Results → Evaluation
-5. Return Report → OverallEvaluation
+5. Return Report → `EvaluationResponse` (含 6 维分数 + 版本信息)
 ```
 
 ## Design Decisions
