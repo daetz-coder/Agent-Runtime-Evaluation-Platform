@@ -28,11 +28,11 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, List, Optional
+from typing import Any, AsyncIterator, List, Optional
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
-from langchain_core.outputs import ChatResult
+from langchain_core.outputs import ChatGenerationChunk, ChatResult
 
 from sdk.collector import get_collector
 
@@ -87,17 +87,37 @@ class ProxyChatModel(BaseChatModel):
         run_manager: Any = None,
         **kwargs: Any,
     ) -> ChatResult:
-        """异步生成 - 代理到原始 LLM"""
+        """异步生成 - 代理到原始 LLM
+
+        ⚠️ 强制 stream=False 防止原始 LLM 的 streaming=True 泄露到 API，
+        导致返回 AsyncStream 而非 ChatCompletion。
+        """
         start_time = time.time()
 
-        # 调用原始 LLM
-        result = await self._original_llm._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        # 强制非流式 — 流式走 _astream 路径
+        kwargs.pop("stream", None)
+        result = await self._original_llm._agenerate(
+            messages, stop=stop, run_manager=run_manager, **kwargs
+        )
 
         # 记录调用
         duration_ms = (time.time() - start_time) * 1000
         self._record_call(messages, result, duration_ms)
 
         return result
+
+    async def _astream(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        """流式生成 - 透传到原始 LLM 的流式输出。"""
+        async for chunk in self._original_llm._astream(
+            messages, stop=stop, run_manager=run_manager, **kwargs
+        ):
+            yield chunk
 
     def _record_call(
         self,
