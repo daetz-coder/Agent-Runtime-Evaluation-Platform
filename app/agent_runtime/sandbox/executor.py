@@ -1,14 +1,19 @@
 """
-SandboxExecutor — the main async facade for code execution.
+SandboxExecutor — reusable one-shot code execution via SessionPool.
 
-1. Check Redis cache for identical snippets (content-hash key).
-2. Acquire a container from the pool.
-3. Write code into the container via put_archive (tar stream).
-4. Execute with resource limits and timeout.
-5. Collect stdout/stderr/exit_code/duration.
-6. Cache result in Redis.
-7. Release container (destroy + replace).
-8. Fall back gracefully if Docker is unavailable.
+Provides the same public interface as the legacy ``app.sandbox.executor``
+but delegates container management to the Agent Runtime's ``SessionPool``,
+which also powers the multi-step Agent-in-Sandbox workflow.
+
+Execution flow:
+  1. Check Redis cache for identical snippets (content-hash key).
+  2. Acquire a session from ``SessionPool``.
+  3. Write code into the container via ``put_archive`` (tar stream).
+  4. Execute with resource limits and timeout.
+  5. Collect stdout/stderr/exit_code/duration.
+  6. Cache result in Redis.
+  7. Release session (destroy + replace).
+  8. Fall back gracefully if Docker / pool is unavailable.
 """
 
 from __future__ import annotations
@@ -21,50 +26,48 @@ import tarfile
 import time
 from typing import List, Optional
 
+from app.agent_runtime.sandbox.detector import DetectedCodeSnippet
+from app.agent_runtime.sandbox.models import ExecutionResult, SandboxLanguage
+from app.agent_runtime.sandbox.session_pool import (
+    close_session_pool,
+    get_session_pool,
+    init_session_pool,
+    is_session_pool_available,
+)
 from app.core.cache import cache_get, cache_set
 from app.core.config import settings
-from app.sandbox.detector import DetectedCodeSnippet
-from app.sandbox.models import ExecutionResult, SandboxLanguage
-from app.sandbox.pool import ContainerPool
 
 logger = logging.getLogger(__name__)
 
-# Module-level singleton pool
-_pool: Optional[ContainerPool] = None
+
+# ── Module-level lifecycle (drop-in replacement for legacy sandbox) ──
 
 
 async def init_sandbox() -> bool:
-    """Initialize the global sandbox pool. Called from app lifespan."""
-    global _pool
-    if not settings.SANDBOX_ENABLED:
-        logger.info("Sandbox disabled by config (SANDBOX_ENABLED=false)")
-        return False
-    _pool = ContainerPool()
-    available = await _pool.initialize()
-    if not available:
-        _pool = None
-    return available
+    """Initialize the sandbox subsystem (delegates to SessionPool init)."""
+    return await init_session_pool()
 
 
 async def close_sandbox() -> None:
-    """Shut down the global sandbox pool."""
-    global _pool
-    if _pool:
-        await _pool.shutdown()
-        _pool = None
+    """Shut down the sandbox subsystem (delegates to SessionPool close)."""
+    await close_session_pool()
 
 
 def is_sandbox_available() -> bool:
     """Check if the sandbox subsystem is operational."""
-    return _pool is not None and _pool.available
+    return is_session_pool_available()
+
+
+# ── SandboxExecutor ──────────────────────────────────────────────
 
 
 class SandboxExecutor:
-    """Executes code snippets in Docker containers."""
+    """Executes code snippets in Docker containers via SessionPool."""
 
     async def execute(self, snippet: DetectedCodeSnippet) -> ExecutionResult:
         """Execute a single code snippet in a sandboxed container."""
-        if not is_sandbox_available():
+        pool = get_session_pool()
+        if not pool or not pool.available:
             return ExecutionResult(
                 language=snippet.language,
                 error="Sandbox unavailable (Docker not running or image missing)",
@@ -78,10 +81,9 @@ class SandboxExecutor:
             logger.debug("Sandbox cache hit: %s", cache_key)
             return ExecutionResult(**cached)
 
-        # ── Acquire container ──
-        assert _pool is not None
-        container_id = await _pool.acquire(timeout=settings.SANDBOX_ACQUIRE_TIMEOUT)
-        if container_id is None:
+        # ── Acquire session ──
+        session = await pool.acquire_session(timeout=settings.SANDBOX_ACQUIRE_TIMEOUT)
+        if session is None:
             return ExecutionResult(
                 language=snippet.language,
                 error="Sandbox pool exhausted — could not acquire container",
@@ -90,7 +92,7 @@ class SandboxExecutor:
 
         # ── Execute ──
         try:
-            result = await self._run_in_container(container_id, snippet)
+            result = await self._run_in_session(session, snippet)
         except Exception as e:
             logger.error("Sandbox execution error: %s", e, exc_info=True)
             result = ExecutionResult(
@@ -99,7 +101,7 @@ class SandboxExecutor:
                 exit_code=-1,
             )
         finally:
-            await _pool.release_and_replace(container_id)
+            await pool.release_session(session)
 
         # ── Cache result ──
         await cache_set(cache_key, result.model_dump(), ttl=settings.SANDBOX_CACHE_TTL)
@@ -111,13 +113,15 @@ class SandboxExecutor:
 
     # ── Internal ──────────────────────────────────────────────
 
-    async def _run_in_container(self, container_id: str, snippet: DetectedCodeSnippet) -> ExecutionResult:
-        """Inject code into container, execute, and collect output."""
-        loop = asyncio.get_event_loop()
+    async def _run_in_session(self, session: object, snippet: DetectedCodeSnippet) -> ExecutionResult:
+        """
+        Inject code into the session container, execute, and collect output.
 
-        assert _pool is not None and _pool.client is not None
-        container = _pool.client.containers.get(container_id)
-        container.start()
+        ``session`` is a ``SandboxSession`` (duck-typed to avoid circular imports
+        at the module level — it needs ``container`` and ``container_id`` attrs).
+        """
+        loop = asyncio.get_event_loop()
+        container = session.container  # docker.models.containers.Container
 
         # Write code file via put_archive (tar stream)
         filename, cmd = self._get_language_command(snippet)
@@ -141,10 +145,6 @@ class SandboxExecutor:
                 timeout=settings.SANDBOX_TIMEOUT,
             )
         except asyncio.TimeoutError:
-            try:
-                container.kill()
-            except Exception:
-                pass
             duration_ms = (time.monotonic() - start) * 1000
             return ExecutionResult(
                 language=snippet.language,

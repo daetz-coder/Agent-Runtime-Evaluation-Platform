@@ -1,7 +1,7 @@
 """Tests for sandbox code detection and execution models."""
 
-from app.sandbox.detector import DetectedCodeSnippet, detect_code_executions
-from app.sandbox.models import ExecutionResult, SandboxLanguage
+from app.agent_runtime.sandbox.detector import DetectedCodeSnippet, detect_code_executions
+from app.agent_runtime.sandbox.models import ExecutionResult, SandboxLanguage
 
 
 class TestSandboxModels:
@@ -168,7 +168,7 @@ class TestSandboxAvailability:
 
     def test_sandbox_unavailable_by_default(self):
         """Without init_sandbox(), is_sandbox_available() should be False."""
-        from app.sandbox.executor import is_sandbox_available
+        from app.agent_runtime.sandbox.executor import is_sandbox_available
 
         assert is_sandbox_available() is False
 
@@ -176,7 +176,7 @@ class TestSandboxAvailability:
         """SandboxExecutor.execute() should return error result when unavailable."""
         import asyncio
 
-        from app.sandbox.executor import SandboxExecutor
+        from app.agent_runtime.sandbox.executor import SandboxExecutor
 
         snippet = DetectedCodeSnippet(
             step=1,
@@ -200,7 +200,7 @@ class TestSandboxCacheKey:
     """Test cache key generation."""
 
     def test_deterministic_key(self):
-        from app.sandbox.executor import SandboxExecutor
+        from app.agent_runtime.sandbox.executor import SandboxExecutor
 
         s = DetectedCodeSnippet(
             step=1,
@@ -215,7 +215,7 @@ class TestSandboxCacheKey:
         assert key1.startswith("sandbox:")
 
     def test_different_code_different_key(self):
-        from app.sandbox.executor import SandboxExecutor
+        from app.agent_runtime.sandbox.executor import SandboxExecutor
 
         s1 = DetectedCodeSnippet(
             step=1,
@@ -234,7 +234,7 @@ class TestSandboxCacheKey:
         assert SandboxExecutor._cache_key(s1) != SandboxExecutor._cache_key(s2)
 
     def test_different_language_different_key(self):
-        from app.sandbox.executor import SandboxExecutor
+        from app.agent_runtime.sandbox.executor import SandboxExecutor
 
         s1 = DetectedCodeSnippet(
             step=1,
@@ -257,7 +257,7 @@ class TestLanguageCommand:
     """Test language-to-command mapping."""
 
     def test_python_command(self):
-        from app.sandbox.executor import SandboxExecutor
+        from app.agent_runtime.sandbox.executor import SandboxExecutor
 
         s = DetectedCodeSnippet(
             step=1,
@@ -271,7 +271,7 @@ class TestLanguageCommand:
         assert cmd == ["python3", "/tmp/script.py"]
 
     def test_bash_command(self):
-        from app.sandbox.executor import SandboxExecutor
+        from app.agent_runtime.sandbox.executor import SandboxExecutor
 
         s = DetectedCodeSnippet(
             step=1,
@@ -285,7 +285,7 @@ class TestLanguageCommand:
         assert cmd == ["bash", "/tmp/script.sh"]
 
     def test_node_command(self):
-        from app.sandbox.executor import SandboxExecutor
+        from app.agent_runtime.sandbox.executor import SandboxExecutor
 
         s = DetectedCodeSnippet(
             step=1,

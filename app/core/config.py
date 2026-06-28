@@ -97,10 +97,9 @@ class Settings(BaseSettings):
     EVAL_WEBHOOK_URL: str = ""
     EVAL_PARALLEL: bool = True
 
-    # Code Execution Sandbox (Docker-based)
-    SANDBOX_ENABLED: bool = False
-    SANDBOX_POOL_SIZE: int = 3
-    SANDBOX_TIMEOUT: int = 30  # seconds per snippet
+    # Code Execution Sandbox (Docker-based) — shared with Agent Runtime
+    # Note: enable/disable via AGENT_RUNTIME_ENABLED below
+    SANDBOX_TIMEOUT: int = 30  # seconds per snippet (SandboxExecutor)
     SANDBOX_MEMORY_LIMIT_MB: int = 256
     SANDBOX_CPU_CORES: int = 1
     SANDBOX_OUTPUT_LIMIT: int = 10_240_000  # 10 MB

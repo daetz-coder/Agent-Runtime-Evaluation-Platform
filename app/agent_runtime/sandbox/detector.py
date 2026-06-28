@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from app.sandbox.models import SandboxLanguage
+from app.agent_runtime.sandbox.models import SandboxLanguage
 
 # Tool name patterns that indicate code execution.
 # Order matters — first match wins.

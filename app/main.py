@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await wiki_agent_startup()
     logger.info("Wiki Agent initialized")
 
-    from app.sandbox.executor import init_sandbox
+    from app.agent_runtime.sandbox.executor import init_sandbox
 
     sandbox_ok = await init_sandbox()
     logger.info("Sandbox: %s", "ready" if sandbox_ok else "disabled")
@@ -87,7 +87,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.agent_runtime.sandbox.session_pool import close_session_pool
 
     await close_session_pool()
-    from app.sandbox.executor import close_sandbox
+    from app.agent_runtime.sandbox.executor import close_sandbox
 
     await close_sandbox()
     await close_redis()

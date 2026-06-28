@@ -26,11 +26,11 @@ async def get_system_health() -> dict:
         overall = "degraded"
 
     sandbox_health = {
-        "enabled": settings.SANDBOX_ENABLED,
+        "enabled": settings.AGENT_RUNTIME_ENABLED,
         "available": False,
     }
-    if settings.SANDBOX_ENABLED:
-        from app.sandbox.executor import is_sandbox_available
+    if settings.AGENT_RUNTIME_ENABLED:
+        from app.agent_runtime.sandbox.executor import is_sandbox_available
 
         sandbox_health["available"] = is_sandbox_available()
 

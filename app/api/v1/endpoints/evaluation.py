@@ -187,8 +187,8 @@ async def get_eval_settings():
 
 def _is_sandbox_ready() -> bool:
     """Check if both sandbox subsystems are available."""
+    from app.agent_runtime.sandbox.executor import is_sandbox_available
     from app.agent_runtime.sandbox.session_pool import is_session_pool_available
-    from app.sandbox.executor import is_sandbox_available
 
     return is_sandbox_available() or is_session_pool_available()
 
