@@ -52,6 +52,27 @@ async def test_create_task(client):
 
 
 @pytest.mark.asyncio
+async def test_create_task_idempotent(client):
+    """Client-provided task id must not create duplicates on retry."""
+    task_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    payload = {
+        "id": task_id,
+        "goal": "Idempotent wiki-agent task",
+        "context": {"agent": "wiki-agent"},
+    }
+    first = await client.post("/api/v1/tasks/", json=payload)
+    second = await client.post("/api/v1/tasks/", json=payload)
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["id"] == task_id
+    assert second.json()["id"] == task_id
+
+    listed = await client.get("/api/v1/tasks/")
+    matches = [t for t in listed.json() if t["id"] == task_id]
+    assert len(matches) == 1
+
+
+@pytest.mark.asyncio
 async def test_list_tasks(client):
     """Test task listing."""
     response = await client.get("/api/v1/tasks/")

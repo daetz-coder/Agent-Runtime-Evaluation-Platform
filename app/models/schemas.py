@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class TaskCreate(BaseModel):
     """Schema for creating a new agent task."""
 
+    id: Optional[str] = Field(None, description="Optional client-provided task ID (idempotent create)")
     goal: str = Field(..., description="The goal/objective for the agent to achieve")
     context: Optional[Dict[str, Any]] = Field(None, description="Additional context for the task")
 

@@ -95,7 +95,11 @@ class EvaluationService:
         workspace_id: Optional[str] = None,
     ) -> TaskResponse:
         """Create a new agent task."""
-        task_id = str(uuid.uuid4())
+        task_id = task_data.id or str(uuid.uuid4())
+
+        existing = await self._get_task_model(task_id)
+        if existing:
+            return self._task_to_response(existing)
 
         task = AgentTask(
             id=task_id,
