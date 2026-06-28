@@ -82,7 +82,6 @@ chat_llm = wrap_llm(
         api_key=_chat_llm_key,
         base_url=_chat_llm_base,
         temperature=0.7,
-        streaming=True,
     )
 )
 
