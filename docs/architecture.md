@@ -19,6 +19,8 @@ The Agent Runtime Evaluation Platform evaluates the runtime quality of AI agents
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Service Layer                                 │
 │  EvaluationService · ConsensusEvaluator · BenchmarkRunner       │
+│  ReplayService  · JudgeService  · DiffService                  │
+│  IncrementalEvalService · RegressionDetectionService            │
 └─────────────────────────────────────────────────────────────────┘
                               │
                     ┌─────────┴─────────┐
@@ -76,6 +78,26 @@ The Agent Runtime Evaluation Platform evaluates the runtime quality of AI agents
 - Manages database operations with integrated cache invalidation
 - Integrates with LangGraph workflow
 
+- **ReplayService** (`app/services/replay_service.py`): Step-by-step replay debugger.
+  Extracts LLM trace data (`_llm_trace`) from trajectory steps and assembles
+  a chronological replay view. API: `GET /evaluations/{id}/replay`.
+
+- **JudgeService** (`app/services/judge_service.py`): Judge transparency panel.
+  Extracts raw judge LLM prompt/response from evaluation feedback JSON
+  (`_judge_raw`). API: `GET /evaluations/{id}/judge-raw[/{dim}]`.
+
+- **DiffService** (`app/services/diff_service.py`): Trajectory comparison.
+  Compares two trajectories step-by-step, detecting added/removed/changed steps.
+  API: `GET /evaluations/diff`.
+
+- **IncrementalEvalService** (`app/services/incremental_eval.py`): Partial
+  re-evaluation. Detects trajectory changes → maps to affected evaluation
+  dimensions → re-runs only affected evaluators. API: `POST /evaluations/incremental`.
+
+- **RegressionDetectionService** (`app/services/regression_detection.py`):
+  Score regression detection. Compares two evaluations with configurable
+  per-dimension thresholds. API: `GET /evaluations/regression/check`.
+
 ### 3. Redis Cache Layer (`app/core/cache.py`)
 
 可选的 Redis 缓存层，Redis 不可用时所有操作静默降级（返回 None/False）。
@@ -119,11 +141,45 @@ Each evaluator focuses on a specific dimension:
 | Replan | Replanning decisions | Trigger Appropriateness, Adaptation Quality, Learning |
 | Retrieval | RAG / retrieval quality | Relevance, Evidence Accuracy, Coverage, Hallucination detection |
 
-### 6. Database Models
+### 7. Agent Runtime (`app/agent_runtime/`)
+
+The Agent Runtime runs AI agents inside Docker sandbox containers and captures
+their full trajectory for evaluation.
+
+| Component | File | Description |
+|-----------|------|-------------|
+| **AgentRunner** | `runner.py` | Orchestrates agent execution: acquire session → setup workspace → create LLM → run LangGraph → capture trajectory |
+| **LangGraph Agent** | `graph.py` | ReAct loop: think → act → observe. Auto-injects `_llm_trace` (prompt/response/model/latency) into each step |
+| **Prompts** | `prompts.py` | System prompt templates. Versioned via `PROMPT_VERSION` constant |
+| **Mock Executor** | `mock_executor.py` | `SANDBOX_MOCK_MODE=true` — returns predefined trajectory without Docker |
+| **TrajectoryRecorder** | `trajectory_recorder.py` | Records 14 action types. Accepts optional `llm_trace` parameter |
+| **SessionPool** | `sandbox/session_pool.py` | Docker container pool with writable `/workspace` |
+| **WorkspaceManager** | `sandbox/workspace.py` | File injection, capture, and cleanup in sandbox containers |
+| **Tools** | `tools/` | PythonExecute, BashExecute, FileRead/Write/List |
+
+**Mock mode flow**: `AgentRunner.run()` checks `settings.SANDBOX_MOCK_MODE` →
+calls `get_mock_trajectory(goal)` → returns fixed 5-step trajectory with
+`_llm_trace` → no Docker required.
+
+### 8. Golden Test Suite (`app/benchmarks/golden/`)
+
+Curated trajectories with expected score ranges for evaluator regression testing.
+
+| Component | File | Description |
+|-----------|------|-------------|
+| **GoldenCase** | `__init__.py` | Data model: id, description, goal, trajectory, expected_ranges |
+| **Case: Excellent** | `case_excellent.py` | 12-step perfect agent: data analysis pipeline, scores expected 80-100 |
+| **Case: Tool Misuse** | `case_tool_misuse.py` | 6-step bad agent: no plan, repeated failures, scores expected 0-30 |
+| **Case: Replan** | `case_replan.py` | 10-step agent: curl fail → 403 → replan → API success, replan 80-100 |
+| **Case: Retrieval** | `case_retrieval.py` | 9-step RAG agent: multi-turn retrieval + evidence, retrieval 70-98 |
+| **GoldenSuiteRunner** | `runner.py` | Run all/specific cases, fail-fast, print/summary |
+| **CI Gate** | `run_ci_gate.py` | Two-stage: golden suite → optional regression check |
+
+### 9. Database Models
 
 - **AgentTask**: Stores task information
-- **AgentTrajectory**: Stores execution steps
-- **Evaluation**: Stores evaluation results
+- **AgentTrajectory**: Stores execution steps (with optional `_llm_trace`)
+- **Evaluation**: Stores evaluation results + version fields (`prompt_version`, `model_name`, `model_provider`, `evaluator_version`)
 
 ## Data Flow
 

@@ -58,8 +58,13 @@ http://localhost:8000/api/v1
 | `POST /evaluations/batch` | 批量评估 `{"task_ids": [...]}` |
 | `POST /evaluations/consensus` | 多模型共识评估（DeepSeek+GLM+Qwen） |
 | `GET /evaluations/` | 列出评估（支持 `?skip=&limit=&status=`） |
-| `GET /evaluations/{id}` | 获取评估详情（含 6 维分数+反馈） |
+| `GET /evaluations/{id}` | 获取评估详情（含 6 维分数+反馈+版本信息） |
 | `DELETE /evaluations/{id}` | 删除评估记录 |
+| `GET /evaluations/{id}/replay` | **Replay 调试器** — 每步 LLM 原始 prompt/response |
+| `GET /evaluations/{id}/judge-raw[/{dim}]` | **Judge 透明度** — 原始 judge prompt/response |
+| `GET /evaluations/diff` | **Trajectory 对比** — 两 evaluation 步骤级 diff |
+| `POST /evaluations/incremental` | **增量评估** — 仅重算变化维度 |
+| `GET /evaluations/regression/check` | **回归检测** — 自动发现分数退化 |
 
 ### Reports
 
@@ -78,6 +83,23 @@ http://localhost:8000/api/v1
 |------|------|------|
 | `GET /benchmark/monotonicity` | 单调性基准元数据（6 档参考分数） |
 | `POST /benchmark/monotonicity/run` | **SSE 流式**实时运行单调性基准 |
+
+### CLI / Makefile
+
+```bash
+# 开发常用命令（详见 Makefile）
+make lint          # ruff 检查
+make typecheck     # mypy 类型检查
+make test          # 运行全部测试
+make test-cov      # 带覆盖率的测试
+make test-fast     # 快速测试（跳过 Milvus）
+make golden        # 运行 Golden Test Suite
+make check-ci      # 完整 CI 门禁
+make check-regression BASE=<id> HEAD=<id>  # 回归检查
+make run           # 启动后端
+make run-dev       # 热重载后端
+make db-upgrade    # 数据库迁移
+```
 
 ### Workspaces（多租户）
 
