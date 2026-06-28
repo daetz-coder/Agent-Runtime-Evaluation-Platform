@@ -443,6 +443,62 @@ async def run_sandbox_evaluation_stream(
     return EventSourceResponse(event_generator())
 
 
+@router.get("/diff", response_model=TrajectoryDiffResponse)
+async def compare_evaluations(
+    base_evaluation_id: str,
+    head_evaluation_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """
+    Compare trajectories between two evaluations.
+
+    Returns step-by-step diff showing added/removed/changed steps.
+    Useful for understanding what changed between two agent runs.
+    """
+    require_role(ctx, WorkspaceRole.VIEWER)
+    from app.db.models import AgentTask, AgentTrajectory, Evaluation
+    from app.services.diff_service import DiffService
+
+    service = DiffService()
+
+    base_eval = await db.get(Evaluation, base_evaluation_id)
+    head_eval = await db.get(Evaluation, head_evaluation_id)
+
+    if not base_eval or not head_eval:
+        raise HTTPException(status_code=404, detail="One or both evaluations not found")
+
+    base_task = await db.get(AgentTask, base_eval.task_id)
+    head_task = await db.get(AgentTask, head_eval.task_id)
+
+    async def _get_traj(task_id: str) -> list:
+        r = await db.execute(
+            select(AgentTrajectory).where(AgentTrajectory.task_id == task_id).order_by(AgentTrajectory.step_number)
+        )
+        return [
+            {
+                "step_number": s.step_number,
+                "action_type": s.action_type,
+                "action_detail": s.action_detail,
+                "observation": s.observation,
+                "timestamp": s.timestamp.isoformat() if s.timestamp else None,
+            }
+            for s in r.scalars().all()
+        ]
+
+    base_traj = await _get_traj(base_eval.task_id)
+    head_traj = await _get_traj(head_eval.task_id)
+
+    return await service.compare(
+        base_trajectory=base_traj,
+        head_trajectory=head_traj,
+        base_eval_id=base_evaluation_id,
+        head_eval_id=head_evaluation_id,
+        base_goal=base_task.goal if base_task else "",
+        head_goal=head_task.goal if head_task else "",
+    )
+
+
 @router.get("/{evaluation_id}", response_model=EvaluationResponse)
 async def get_evaluation(
     evaluation_id: str,
@@ -949,64 +1005,6 @@ async def get_evaluation_judge_raw(
 # ============== Trajectory Diff ==============
 
 
-@router.get("/diff", response_model=TrajectoryDiffResponse)
-async def compare_evaluations(
-    base_evaluation_id: str,
-    head_evaluation_id: str,
-    db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
-):
-    """
-    Compare trajectories between two evaluations.
-
-    Returns step-by-step diff showing added/removed/changed steps.
-    Useful for understanding what changed between two agent runs.
-    """
-    require_role(ctx, WorkspaceRole.VIEWER)
-    from app.db.models import Evaluation
-    from app.services.diff_service import DiffService
-
-    service = DiffService()
-
-    base_eval = await db.get(Evaluation, base_evaluation_id)
-    head_eval = await db.get(Evaluation, head_evaluation_id)
-
-    if not base_eval or not head_eval:
-        raise HTTPException(status_code=404, detail="One or both evaluations not found")
-
-    from app.db.models import AgentTask, AgentTrajectory
-
-    base_task = await db.get(AgentTask, base_eval.task_id)
-    head_task = await db.get(AgentTask, head_eval.task_id)
-
-    async def _get_traj(task_id: str) -> list:
-        r = await db.execute(
-            select(AgentTrajectory).where(AgentTrajectory.task_id == task_id).order_by(AgentTrajectory.step_number)
-        )
-        return [
-            {
-                "step_number": s.step_number,
-                "action_type": s.action_type,
-                "action_detail": s.action_detail,
-                "observation": s.observation,
-                "timestamp": s.timestamp.isoformat() if s.timestamp else None,
-            }
-            for s in r.scalars().all()
-        ]
-
-    base_traj = await _get_traj(base_eval.task_id)
-    head_traj = await _get_traj(head_eval.task_id)
-
-    return await service.compare(
-        base_trajectory=base_traj,
-        head_trajectory=head_traj,
-        base_eval_id=base_evaluation_id,
-        head_eval_id=head_evaluation_id,
-        base_goal=base_task.goal if base_task else "",
-        head_goal=head_task.goal if head_task else "",
-    )
-
-
 # ============== Incremental Evaluation ==============
 
 
@@ -1115,14 +1113,15 @@ async def run_legacy_evaluation(
     Useful for quick iteration: no need to create a task separately.
     """
     require_role(ctx, WorkspaceRole.EVALUATOR)
+    from app.models.schemas import TaskCreate
     from app.services.evaluation_service import EvaluationService
 
     service = EvaluationService(db)
 
     # 1. Create task
+    task_data = TaskCreate(goal=goal, context=context or {})
     task = await service.create_task(
-        goal=goal,
-        context=context or {},
+        task_data,
         workspace_id=ctx.filter_workspace_id(),
     )
 

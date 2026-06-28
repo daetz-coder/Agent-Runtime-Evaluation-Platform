@@ -158,10 +158,11 @@ class PromptManager:
                 self._context_cache[version] = _DEFAULT_CONTEXT_TEMPLATE
             return
 
-        current_mtime = os.path.getmtime(path)
-        cached_mtime = self._mtime.get(version)
+        stat = path.stat()
+        current_key = (stat.st_mtime_ns, stat.st_size)
+        cached_key = self._mtime.get(version)
 
-        if cached_mtime == current_mtime and version in self._cache:
+        if cached_key == current_key and version in self._cache:
             return  # Cache is fresh
 
         try:
@@ -169,7 +170,7 @@ class PromptManager:
                 data = yaml.safe_load(f) or {}
             self._cache[version] = data.get("prompt", _DEFAULT_SYSTEM_PROMPT)
             self._context_cache[version] = data.get("context_template", _DEFAULT_CONTEXT_TEMPLATE)
-            self._mtime[version] = current_mtime
+            self._mtime[version] = current_key
             logger.debug("Loaded prompt version %s from %s", version, path.name)
         except Exception as e:
             logger.warning("Failed to load prompt %s: %s — using default", version, e)

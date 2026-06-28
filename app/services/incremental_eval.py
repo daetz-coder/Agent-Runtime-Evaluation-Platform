@@ -108,13 +108,12 @@ class IncrementalEvalService:
             all_dims = ["planning", "tactical", "tool_use", "memory", "replan", "retrieval"]
             reused_dims = [d for d in all_dims if d not in re_eval_dims]
 
-            # ── Create new evaluation record ──
+            # ── Create new evaluation record (reuse eval_id from above) ──
             from datetime import datetime, timezone
 
             from app.agent_runtime.prompts import PROMPT_VERSION
             from app.core.config import settings as _cfg
 
-            eval_id = str(uuid.uuid4())
             new_eval = Evaluation(
                 id=eval_id,
                 task_id=head_task_id,
