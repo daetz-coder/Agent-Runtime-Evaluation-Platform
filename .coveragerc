@@ -1,0 +1,18 @@
+[run]
+source = app
+omit =
+    app/wiki_agent/*
+    app/benchmarks/*
+    app/adapters/*
+    app/collectors/*
+    */tests/*
+    */__pycache__/*
+
+[report]
+show_missing = true
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING
+    if __name__ == .__main__
+    raise NotImplementedError
+    pass

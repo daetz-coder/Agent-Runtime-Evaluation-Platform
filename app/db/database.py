@@ -2,11 +2,13 @@
 Database configuration and session management.
 """
 
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 
 # Create async engine
 _engine_kwargs: dict = {
@@ -52,31 +54,39 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db() -> None:
-    """Initialize database tables and apply lightweight schema patches."""
-    # 注册所有 ORM 模型（含 workspace 表）
+    """Initialize database by running Alembic migrations to head."""
+    # Register all ORM models so metadata is populated
     from app.db.models import AgentTask, AgentTrajectory, Evaluation  # noqa: F401
     from app.api.workspace import Workspace, WorkspaceMember, AuditLog  # noqa: F401
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(_apply_schema_patches)
+    await _run_alembic_upgrade()
 
 
-def _apply_schema_patches(connection) -> None:
-    """Add columns introduced after initial deploy (SQLite has no ALTER IF NOT EXISTS)."""
-    from sqlalchemy import inspect, text
+async def _run_alembic_upgrade() -> None:
+    """Run alembic upgrade head programmatically."""
+    from alembic.config import Config
+    from alembic import command
+    from alembic.script import ScriptDirectory
 
-    inspector = inspect(connection)
-    if "evaluations" not in inspector.get_table_names():
-        return
-    columns = {col["name"] for col in inspector.get_columns("evaluations")}
-    if "stream_mode" not in columns:
-        connection.execute(text("ALTER TABLE evaluations ADD COLUMN stream_mode BOOLEAN DEFAULT 0 NOT NULL"))
+    alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
-    if "agent_tasks" in inspector.get_table_names():
-        task_columns = {col["name"] for col in inspector.get_columns("agent_tasks")}
-        if "workspace_id" not in task_columns:
-            connection.execute(text("ALTER TABLE agent_tasks ADD COLUMN workspace_id VARCHAR(36)"))
+    # For async engines, we use the sync connection under the hood
+    # Alembic env.py handles the async engine creation
+    try:
+        # Check if there are migrations to apply
+        script = ScriptDirectory.from_config(alembic_cfg)
+        head = script.get_current_head()
+
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Alembic migrations applied successfully (head: %s)", head)
+    except Exception as e:
+        # Fallback to create_all for development/testing when alembic fails
+        logger.warning(
+            "Alembic migration failed, falling back to create_all: %s", e
+        )
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
 
 async def close_db() -> None:

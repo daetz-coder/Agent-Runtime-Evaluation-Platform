@@ -14,7 +14,10 @@ os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIMEOUT_MS", "20000")
 os.environ.setdefault("GRPC_HTTP2_MAX_PINGS_WITHOUT_DATA", "0")
 os.environ.setdefault("GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS", "5000")
 
-import logging
+# Initialize structured logging BEFORE any other imports that use logging
+from app.core.logging import setup_logging, get_logger  # noqa: E402
+setup_logging()
+
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -33,7 +36,7 @@ from app.wiki_agent.routers import wiki as wiki_router
 from app.wiki_agent.routers import debug as wiki_debug
 from app.api.workspace_endpoints import router as workspace_router
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -60,6 +63,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.core.tracing import init_tracing
     tracing_ok = init_tracing()
     logger.info("Tracing: %s", "active" if tracing_ok else "disabled")
+
+    # Set app info metric
+    from app.core.metrics import APP_INFO
+    APP_INFO.info({
+        "version": "0.1.0",
+        "environment": settings.APP_ENV,
+    })
 
     yield
     logger.info("Shutting down...")
@@ -159,6 +169,12 @@ External agents can still submit trajectories via `POST /api/v1/tasks/{id}/traje
 
     from app.api.rate_limit_middleware import RateLimitMiddleware
     app.add_middleware(RateLimitMiddleware)
+
+    from app.api.correlation_id_middleware import CorrelationIdMiddleware
+    app.add_middleware(CorrelationIdMiddleware)
+
+    from app.api.metrics_middleware import PrometheusMiddleware
+    app.add_middleware(PrometheusMiddleware)
 
     @app.get("/health")
     async def health_check():
