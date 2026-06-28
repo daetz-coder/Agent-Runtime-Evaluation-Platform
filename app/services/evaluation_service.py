@@ -181,8 +181,18 @@ class EvaluationService:
         if not task:
             return False
 
+        existing = await self.db.execute(
+            select(AgentTrajectory.step_number).where(AgentTrajectory.task_id == task_id)
+        )
+        existing_numbers = set(existing.scalars().all())
+
         # Add trajectory steps
         for step_data in steps:
+            step_number = step_data.get("step_number", 0)
+            if step_number in existing_numbers:
+                continue
+            existing_numbers.add(step_number)
+
             observation = step_data.get("observation")
             if observation is not None and not isinstance(observation, str):
                 observation = json.dumps(observation, ensure_ascii=False, default=str)
@@ -216,6 +226,27 @@ class EvaluationService:
         task = await self._get_task_model(task_id, workspace_id=workspace_id)
         if not task:
             return None
+
+        result = await self.db.execute(
+            select(Evaluation)
+            .where(
+                Evaluation.task_id == task_id,
+                Evaluation.status == EvaluationStatus.IN_PROGRESS,
+            )
+            .order_by(Evaluation.created_at.desc())
+            .limit(1)
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            return EvaluationResponse(
+                id=existing.id,
+                task_id=existing.task_id,
+                status=existing.status.value,
+                stream_mode=existing.stream_mode,
+                created_at=existing.created_at,
+                completed_at=existing.completed_at,
+                evaluation=None,
+            )
 
         eval_id = str(uuid.uuid4())
         evaluation = Evaluation(
