@@ -194,6 +194,16 @@
             >
               {{ showReplayPanel ? '隐藏调试器' : 'Replay 调试器' }}
             </el-button>
+            <el-button
+              v-if="evaluation?.status === 'completed'"
+              size="small"
+              type="success"
+              plain
+              style="margin-left: 8px"
+              @click="openDiffDialog"
+            >
+              A/B 对比
+            </el-button>
           </div>
         </template>
 
@@ -423,6 +433,59 @@
         </el-row>
       </el-card>
     </template>
+
+    <!-- Diff Dialog (A/B Comparison) -->
+    <el-dialog v-model="diffDialogVisible" title="A/B 对比" width="80%" top="5vh">
+      <template v-if="diffData">
+        <div class="diff-summary">
+          <el-alert
+            :title="`共 ${diffData.total_changes} 处变化`"
+            :type="diffData.total_changes > 0 ? 'warning' : 'success'"
+            :description="`新增 ${diffData.steps_added} · 删除 ${diffData.steps_removed} · 修改 ${diffData.steps_modified}`"
+            show-icon
+            style="margin-bottom: 16px"
+          />
+        </div>
+
+        <el-table :data="diffData.steps" stripe size="small" max-height="500">
+          <el-table-column prop="step_number" label="步骤" width="80" />
+          <el-table-column label="变化" width="100">
+            <template #default="{ row }">
+              <el-tag
+                :type="row.change_type === 'unchanged' ? 'info' : row.change_type === 'added' ? 'success' : row.change_type === 'removed' ? 'danger' : 'warning'"
+                size="small"
+              >
+                {{ row.change_type === 'added' ? '新增' : row.change_type === 'removed' ? '删除' : row.change_type === 'changed' ? '修改' : '不变' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="变更前" min-width="200">
+            <template #default="{ row }">
+              <pre v-if="row.before" class="diff-pre">{{ formatActionDetail(row.before) }}</pre>
+              <span v-else class="diff-empty">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="变更后" min-width="200">
+            <template #default="{ row }">
+              <pre v-if="row.after" class="diff-pre">{{ formatActionDetail(row.after) }}</pre>
+              <span v-else class="diff-empty">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="变更字段" min-width="160">
+            <template #default="{ row }">
+              <el-tag v-for="f in row.field_changes" :key="f" size="small" type="warning" style="margin: 2px">
+                {{ f }}
+              </el-tag>
+              <span v-if="!row.field_changes?.length" class="diff-empty">—</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+      <div v-else-if="diffLoading" style="text-align:center;padding:40px">
+        <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+        <p>加载对比数据...</p>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -431,6 +494,7 @@ import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { ArrowLeft, VideoPlay, View, Warning, CircleCheck, Loading } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { evaluationApi, taskApi, withSilent } from '@/api'
 import { connectEvaluationStream } from '@/utils/evaluationStream'
 import dayjs from 'dayjs'
@@ -714,6 +778,31 @@ const getScoreTagType = (score: number | null | undefined) => {
   if (score >= 80) return 'success'
   if (score >= 60) return 'warning'
   return 'danger'
+}
+
+// ── Diff / A/B Comparison methods ──
+
+const openDiffDialog = async () => {
+  if (!evaluation.value?.id) return
+  diffLoading.value = true
+  diffDialogVisible.value = true
+  diffData.value = null
+
+  // Prompt user for the base evaluation ID
+  const baseId = prompt('输入基准 Evaluation ID（留空使用当前 evaluation 作为 head）')
+  if (!baseId) {
+    diffLoading.value = false
+    return
+  }
+
+  try {
+    diffData.value = await evaluationApi.getDiff(baseId, evaluation.value.id, withSilent())
+  } catch {
+    diffData.value = null
+    ElMessage.error('加载对比数据失败，请检查 Evaluation ID')
+  } finally {
+    diffLoading.value = false
+  }
 }
 
 // Initialize radar chart
@@ -1308,6 +1397,24 @@ watch(selectedJudgeDim, () => {
       color: #606266;
       line-height: 1.6;
     }
+  }
+
+  // Diff dialog styles
+  .diff-pre {
+    background: #f5f7fa;
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 12px;
+    max-height: 150px;
+    overflow-y: auto;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .diff-empty {
+    color: #c0c4cc;
+    font-style: italic;
   }
 }
 </style>

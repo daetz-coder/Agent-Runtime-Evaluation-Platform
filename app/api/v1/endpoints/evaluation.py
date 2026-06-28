@@ -1093,3 +1093,54 @@ async def check_regression(
         },
         "diff": report.diff.model_dump() if report.diff else None,
     }
+
+
+# ============== One-Click Legacy Evaluation ==============
+
+
+@router.post("/run-legacy", response_model=EvaluationResponse)
+async def run_legacy_evaluation(
+    goal: str = Body(..., embed=True),
+    steps: List[TrajectoryStep] = Body(..., embed=True),
+    context: Optional[Dict[str, Any]] = Body(None, embed=True),
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """
+    One-click evaluation: submit a goal + trajectory directly, get scores back.
+
+    Internally creates a task, writes the trajectory, runs evaluation,
+    and returns the result — all in one call.
+
+    Useful for quick iteration: no need to create a task separately.
+    """
+    require_role(ctx, WorkspaceRole.EVALUATOR)
+    from app.services.evaluation_service import EvaluationService
+
+    service = EvaluationService(db)
+
+    # 1. Create task
+    task = await service.create_task(
+        goal=goal,
+        context=context or {},
+        workspace_id=ctx.filter_workspace_id(),
+    )
+
+    # 2. Add trajectory
+    await service.add_trajectory(
+        task_id=task.id,
+        steps=[s.model_dump() for s in steps],
+        workspace_id=ctx.filter_workspace_id(),
+    )
+
+    # 3. Run evaluation (synchronous quick path)
+    result = await service.run_evaluation(
+        task_id=task.id,
+        context=context,
+        workspace_id=ctx.filter_workspace_id(),
+    )
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Evaluation failed")
+
+    return result

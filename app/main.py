@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
 from app.api.v1.endpoints import benchmark, evaluation, reports, system, tasks
+from app.api.v1.endpoints import settings as settings_endpoints
 from app.api.workspace_endpoints import router as workspace_router
 from app.core.cache import close_redis, init_redis
 from app.core.config import settings
@@ -167,6 +168,7 @@ External agents can still submit trajectories via `POST /api/v1/tasks/{id}/traje
     register_routes(reports.router, "/api/v1/reports", ["reports"])
     register_routes(benchmark.router, "/api/v1/benchmark", ["benchmark"])
     register_routes(system.router, "/api/v1/system", ["system"])
+    register_routes(settings_endpoints.router, "/api/v1", ["settings"])
     register_routes(wiki_router.router, "", ["wiki-agent"])
     register_routes(wiki_chat.router, "", ["wiki-agent"])
     register_routes(wiki_vector_api.api_router, "", ["wiki-agent"])

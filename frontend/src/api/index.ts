@@ -172,6 +172,11 @@ export const evaluationApi = {
   runIncremental(data: { base_evaluation_id: string; head_task_id: string; force_dimensions?: string[] }) {
     return api.post('/evaluations/incremental', data)
   },
+
+  // ── One-Click Legacy Evaluation ──
+  runLegacy(data: { goal: string; steps: any[]; context?: Record<string, any> }) {
+    return api.post('/evaluations/run-legacy', data)
+  },
 }
 
 // Report API
@@ -205,6 +210,19 @@ export const reportApi = {
 export const systemApi = {
   getHealth() {
     return api.get('/system/health')
+  },
+
+  // Prompt templates
+  listPrompts() {
+    return api.get('/settings/prompts')
+  },
+
+  getPrompt(version: string) {
+    return api.get(`/settings/prompts/${version}`)
+  },
+
+  updatePrompt(version: string, content: string, description?: string) {
+    return api.put(`/settings/prompts/${version}`, { content, description: description || '' })
   },
 }
 
