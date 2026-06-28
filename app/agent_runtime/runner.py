@@ -35,6 +35,7 @@ from app.agent_runtime.tools.base import ToolProxy
 from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
 from app.core.config import settings
 from app.core.tracing import get_tracer
+from app.core.metrics import AGENT_RUN_DURATION, AGENT_STEPS, SANDBOX_SESSIONS_ACTIVE
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer(__name__)
@@ -221,6 +222,10 @@ class AgentRunner:
                 root_span.set_attribute("success", success)
                 if error:
                     root_span.set_attribute("error", error)
+
+                # Record Prometheus metrics
+                AGENT_RUN_DURATION.observe(duration_ms / 1000)
+                AGENT_STEPS.observe(final_state.get("current_step", 0))
 
                 logger.info(
                     "Agent run completed: %s in %.1fs, %d steps, %d trajectory entries",

@@ -17,6 +17,7 @@ from docker.models.containers import Container
 
 from app.core.config import settings
 from app.core.tracing import get_tracer
+from app.core.metrics import TOOL_CALL_COUNT, TOOL_CALL_DURATION
 
 if TYPE_CHECKING:
     from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
@@ -191,6 +192,11 @@ class ToolProxy:
 
             span.set_attribute("success", success)
             span.set_attribute("duration_ms", round(duration_ms, 1))
+
+            # Record Prometheus metrics
+            status_label = "success" if success else ("timeout" if "timed out" in output else "failed")
+            TOOL_CALL_COUNT.labels(tool=tool_name, status=status_label).inc()
+            TOOL_CALL_DURATION.labels(tool=tool_name).observe(duration_ms / 1000)
 
             # 4. Record trajectory
             self.recorder.record_tool_call(

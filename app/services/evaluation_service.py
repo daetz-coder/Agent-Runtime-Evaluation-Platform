@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.tracing import get_tracer
+from app.core.metrics import EVALUATION_COUNT, EVALUATION_DURATION, EVALUATION_SCORE
 from app.db.models import AgentTask, AgentTrajectory, Evaluation, TaskStatus, EvaluationStatus
 from app.models.schemas import (
     TaskCreate,
@@ -458,6 +459,12 @@ class EvaluationService:
                         overall_eval = self._build_overall_from_parallel(parallel_result)
                         overall = overall_eval.model_dump()
                         eval_span.set_attribute("overall_score", overall.get("overall_score", 0))
+
+                        # Record Prometheus metrics
+                        EVALUATION_COUNT.labels(status="success", mode="sandbox").inc()
+                        score = overall.get("overall_score", 0)
+                        EVALUATION_SCORE.observe(score)
+
                         evaluation_result = await self._persist_evaluation_results(
                             evaluation, task_model, overall
                         )
@@ -468,6 +475,7 @@ class EvaluationService:
                     await self.db.flush()
             else:
                 # No trajectory or agent failed — mark evaluation as failed
+                EVALUATION_COUNT.labels(status="failed", mode="sandbox").inc()
                 evaluation.status = EvaluationStatus.FAILED
                 if task_model:
                     task_model.status = TaskStatus.FAILED

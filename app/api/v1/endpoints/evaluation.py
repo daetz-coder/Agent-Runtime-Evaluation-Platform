@@ -60,20 +60,12 @@ async def _run_evaluation_background(task_id: str, eval_id: str):
 
 
 async def _notify_webhook(task_id: str, eval_id: str, result):
-    """发送 webhook 通知（如果配置了 EVAL_WEBHOOK_URL）。"""
-    webhook_url = settings.EVAL_WEBHOOK_URL if hasattr(settings, 'EVAL_WEBHOOK_URL') else ""
-    if not webhook_url:
-        return
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(webhook_url, json={
-                "event": "evaluation.completed",
-                "task_id": task_id,
-                "evaluation_id": eval_id,
-            })
-    except Exception:
-        logger.debug("Webhook notification failed")
+    """Send webhook notification via WebhookService with retry."""
+    from app.services.webhook import WebhookService
+    await WebhookService.notify("evaluation.completed", {
+        "task_id": task_id,
+        "evaluation_id": eval_id,
+    })
 
 
 @router.post("/", response_model=EvaluationResponse, status_code=202)
@@ -115,11 +107,20 @@ async def run_evaluation(
     await db.commit()
 
     if not request.use_stream:
-        background_tasks.add_task(
-            _run_evaluation_background,
-            request.task_id,
-            evaluation.id,
-        )
+        # Prefer Celery task queue; fall back to BackgroundTasks
+        try:
+            from app.celery_app import run_evaluation_task
+            run_evaluation_task.delay(
+                request.task_id,
+                evaluation.id,
+                workspace_id=ws_filter,
+            )
+        except Exception:
+            background_tasks.add_task(
+                _run_evaluation_background,
+                request.task_id,
+                evaluation.id,
+            )
 
     return evaluation
 
@@ -178,6 +179,17 @@ async def run_sandbox_evaluation(
             status_code=503,
             detail="Agent runtime is disabled (AGENT_RUNTIME_ENABLED=false)",
         )
+
+    # Check workspace quotas
+    from app.services.quota import QuotaService, QuotaExceeded
+    quota = QuotaService(db)
+    try:
+        await quota.check_eval_limit(ws_filter)
+        await quota.check_sandbox_quota(ws_filter)
+        if request.max_steps:
+            await quota.check_max_steps(ws_filter, request.max_steps)
+    except QuotaExceeded as e:
+        raise HTTPException(status_code=429, detail=str(e))
 
     service = EvaluationService(db)
     result = await service.run_sandbox_evaluation(request, workspace_id=ws_filter)
@@ -404,7 +416,11 @@ async def batch_evaluation(
             results.append({"task_id": task_id, "status": "not_found"})
             continue
         evaluation = await service.create_evaluation(task_id, workspace_id=ws_filter)
-        background_tasks.add_task(_run_evaluation_background, task_id, evaluation.id)
+        try:
+            from app.celery_app import run_evaluation_task
+            run_evaluation_task.delay(task_id, evaluation.id, workspace_id=ws_filter)
+        except Exception:
+            background_tasks.add_task(_run_evaluation_background, task_id, evaluation.id)
         results.append({
             "task_id": task_id,
             "evaluation_id": evaluation.id,
