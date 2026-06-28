@@ -46,9 +46,32 @@ http://localhost:8000/api/v1
 | `GET /tasks/{id}` | 获取任务详情 |
 | `PUT /tasks/{id}` | 更新任务（goal/context/status） |
 | `GET /tasks/dashboard` | 仪表板统计（总数、状态分布、最近 5 条） |
-| `POST /tasks/{id}/trajectory` | 上传轨迹步骤（批量 JSON 数组） |
+| `POST /tasks/{id}/trajectory` | 上传轨迹步骤（**deprecated** → 使用 `POST /evaluations/run`） |
 
 ### Evaluations
+
+#### Agent in Sandbox（推荐）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST /evaluations/run` | **沙箱评估** — Agent 在 Docker 容器内运行，自动捕获轨迹并评估 |
+| `POST /evaluations/run/stream` | **SSE 流式沙箱评估** — 实时推送 agent_step + eval_progress |
+| `POST /evaluations/run-legacy` | **一步式评估** — 提交 goal+轨迹，直接返回分数 |
+
+`POST /evaluations/run` 请求体：
+```json
+{
+  "goal": "分析 sales.csv 并生成报告",
+  "model": "deepseek-chat",
+  "provider": "deepseek",
+  "workspace_files": {"sales.csv": "date,amount\n2024-01-01,100\n..."},
+  "tools": ["python_execute", "bash_execute", "file_read", "file_write", "file_list"],
+  "max_steps": 20,
+  "temperature": 0.0
+}
+```
+
+#### 传统评估流程
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -60,6 +83,11 @@ http://localhost:8000/api/v1
 | `GET /evaluations/` | 列出评估（支持 `?skip=&limit=&status=`） |
 | `GET /evaluations/{id}` | 获取评估详情（含 6 维分数+反馈+版本信息） |
 | `DELETE /evaluations/{id}` | 删除评估记录 |
+
+#### 高级评估功能
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
 | `GET /evaluations/{id}/replay` | **Replay 调试器** — 每步 LLM 原始 prompt/response |
 | `GET /evaluations/{id}/judge-raw[/{dim}]` | **Judge 透明度** — 原始 judge prompt/response |
 | `GET /evaluations/diff` | **Trajectory 对比** — 两 evaluation 步骤级 diff |
@@ -83,6 +111,14 @@ http://localhost:8000/api/v1
 |------|------|------|
 | `GET /benchmark/monotonicity` | 单调性基准元数据（6 档参考分数） |
 | `POST /benchmark/monotonicity/run` | **SSE 流式**实时运行单调性基准 |
+
+### System / 运维
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET /system/health` | 健康检查（DB + sandbox + session pool 状态） |
+| `GET /system/metrics` | Prometheus 指标端点（`/metrics`） |
+| `GET /settings` | 运行时配置（provider、tools、quota 等公开信息） |
 
 ### CLI / Makefile
 

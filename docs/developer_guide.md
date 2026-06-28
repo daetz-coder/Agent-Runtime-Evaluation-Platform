@@ -232,5 +232,136 @@ make check-ci      # CI 门禁
 }
 ```
 
-修改 `app/agent_runtime/prompts.py` 中的 `PROMPT_VERSION` 常量来标记新版本。
+修改 `app/agent_runtime/prompts/` 目录下的 YAML 模板来创建新版本。
 修改 evaluator judge prompt 后，建议运行 `make golden` 确认评分范围没有被破坏。
+
+---
+
+## 11. Agent in Sandbox（沙箱评估）
+
+Agent 在 Docker 容器内运行，平台完全控制执行环境：
+
+```bash
+# 沙箱评估 — Agent 在容器内运行 python/bash/file 工具
+curl -X POST http://localhost:8000/api/v1/evaluations/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "goal": "读取 data.csv 计算平均销售额并保存到 result.txt",
+    "workspace_files": {
+      "data.csv": "month,sales\nJan,100\nFeb,200\nMar,150"
+    },
+    "tools": ["python_execute", "file_read", "file_write"]
+  }'
+
+# 返回完整评估结果（6 维分数 + Agent 运行元数据）
+```
+
+**SSE 流式模式**（实时查看 Agent 每步操作）：
+
+```bash
+curl -N -X POST http://localhost:8000/api/v1/evaluations/run/stream \
+  -H "Content-Type: application/json" \
+  -d '{"goal": "计算 Fibonacci 前 10 项"}'
+
+# 事件流:
+# event: agent_step    {"step_number":1,"action_type":"think",...}
+# event: agent_done    {"success":true,"steps_taken":5}
+# event: eval_progress {"dimension":"planning","score":85}
+# event: result        {"evaluation":{...}}
+# event: done
+```
+
+**Mock 模式**（无需 Docker 开发）：
+
+```bash
+SANDBOX_MOCK_MODE=true python -m app.main
+# Agent Runtime 返回固定 5 步轨迹，含 _llm_trace
+```
+
+---
+
+## 12. 可观测性
+
+### 结构化日志
+
+所有日志自动包含 `request_id`（Correlation ID）：
+
+```
+2024-01-15T10:30:00Z [info] Evaluation completed [eval_service] task_id=abc request_id=f3a2c1
+```
+
+通过 `X-Request-ID` 请求头传递或自动生成。
+
+### OpenTelemetry 链路追踪
+
+```bash
+# 启动 Jaeger（可选）
+docker run -d --name jaeger -p 16686:16686 -p 4317:4317 jaegertracing/all-in-one
+
+# 启动应用（ENABLE_TRACING=true，默认开启）
+python -m app.main
+
+# 访问 Jaeger UI
+open http://localhost:16686
+```
+
+Trace 结构：
+```
+sandbox_evaluation (5min)
+├── session_acquire (10ms)
+├── workspace_setup (200ms)
+├── agent_loop (4min)
+│   ├── step_0_think_and_act
+│   │   ├── llm_call (3s, provider=deepseek)
+│   │   └── tool_execute: python_execute (2s)
+│   ├── step_1_think_and_act
+│   │   ├── llm_call (3s)
+│   │   └── tool_execute: file_read (50ms)
+│   └── ...
+├── trajectory_persist (20ms)
+└── evaluation (15s, 6 evaluators parallel)
+```
+
+### Prometheus 指标
+
+```bash
+# 查看指标
+curl http://localhost:8000/api/v1/system/metrics
+
+# 关键指标:
+# agent_eval_evaluation_total{status,mode}        — 评估总数
+# agent_eval_evaluation_duration_seconds{mode}    — 评估耗时分布
+# agent_eval_llm_calls_total{provider,model}      — LLM 调用次数
+# agent_eval_tool_calls_total{tool,status}        — 工具调用次数
+# agent_eval_sandbox_active_sessions              — 活跃沙箱数
+# agent_eval_http_requests_total{method,endpoint} — HTTP 请求数
+```
+
+---
+
+## 13. Celery 任务队列
+
+评估任务通过 Celery 异步执行（自动重试、并发控制）：
+
+```bash
+# 启动 Celery worker（另一个终端）
+celery -A app.celery_app worker -l info -c 4 -Q evaluation,sandbox
+
+# 评估请求自动路由到 Celery（如果可用）
+# 不可用时 fallback 到 FastAPI BackgroundTasks
+```
+
+---
+
+## 14. 多租户资源配额
+
+Workspace 级别的资源限制：
+
+| 配额 | 默认值 | 说明 |
+|------|--------|------|
+| `sandbox_quota` | 3 | 同时运行的沙箱数 |
+| `max_steps_per_eval` | 50 | 单次评估最大 Agent 步数 |
+| `eval_count_limit_monthly` | 1000 | 月评估次数上限 |
+| `storage_limit_mb` | 1024 | workspace 存储上限 |
+
+超限时 API 返回 HTTP 429 + 详细错误信息。

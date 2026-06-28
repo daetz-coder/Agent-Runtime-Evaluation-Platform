@@ -220,3 +220,72 @@ Curated trajectories with expected score ranges for evaluator regression testing
 - **接口保护**: Sorted Set 滑动窗口限流，防止 LLM API 费用失控
 - **优雅降级**: Redis 不可用时应用正常运行，仅失去缓存加速（所有 cache 操作 catch 异常后返回 None/False）
 - **Key 前缀隔离**: `REDIS_KEY_PREFIX` 支持多实例共用同一 Redis 实例
+
+### 10. Observability（可观测性）
+
+三层可观测性，全部支持 graceful degradation（collector 不可用时自动 no-op）：
+
+| 层 | 技术 | 模块 | 说明 |
+|----|------|------|------|
+| **链路追踪** | OpenTelemetry | `app/core/tracing.py` | 评估全链路 span 树，支持 Jaeger/Zipkin 可视化 |
+| **指标监控** | Prometheus | `app/core/metrics.py` + `metrics_middleware.py` | HTTP/LLM/Tool/Sandbox 指标，`GET /metrics` 端点 |
+| **结构化日志** | structlog | `app/core/logging.py` + `correlation_id_middleware.py` | JSON 格式日志，自动注入 request_id |
+
+**Tracing span 树**：
+```
+sandbox_evaluation
+├── session_acquire → container_id
+├── workspace_setup → file_count
+├── agent_loop
+│   ├── step_0_think_and_act → step_number, has_tool_call
+│   │   ├── llm_call → provider, model, response_length
+│   │   └── tool_execute → tool_name, success, duration_ms
+│   └── step_N_think_and_act → ...
+├── workspace_capture
+├── session_release
+├── trajectory_persist → step_count
+└── evaluation → evaluator_count, parallel, overall_score
+```
+
+**关键指标**：
+- `agent_eval_evaluation_total{status,mode}` — 评估计数
+- `agent_eval_evaluation_duration_seconds{mode}` — 评估耗时分布
+- `agent_eval_llm_calls_total{provider,model}` — LLM 调用计数
+- `agent_eval_tool_calls_total{tool,status}` — 工具调用计数
+- `agent_eval_sandbox_active_sessions` — 活跃沙箱数
+
+### 11. Celery Task Queue（任务队列）
+
+评估任务通过 Celery + Redis 异步执行，替代 FastAPI BackgroundTasks：
+
+| 特性 | 说明 |
+|------|------|
+| **自动重试** | 指数退避（15s, 30s, 45s），最多 3 次 |
+| **并发控制** | `worker_prefetch_multiplier=1`，防止 worker 抢占多个长时间任务 |
+| **队列分离** | `evaluation` 队列（传统评估）和 `sandbox` 队列（沙箱评估） |
+| **任务超时** | soft limit = AGENT_TIMEOUT + 60s，hard limit = AGENT_TIMEOUT + 120s |
+| **Worker 重启** | `max_tasks_per_child=50`，防止内存泄漏 |
+| **Fallback** | Celery 不可用时自动降级到 BackgroundTasks |
+
+### 12. Multi-tenant Resource Quotas（多租户配额）
+
+Workspace 级别的资源限制，评估前检查，超限返回 HTTP 429：
+
+| 配额 | 字段 | 默认 | 检查时机 |
+|------|------|------|----------|
+| 沙箱并发 | `sandbox_quota` | 3 | `POST /evaluations/run` |
+| 最大步数 | `max_steps_per_eval` | 50 | `POST /evaluations/run` |
+| 月评估次数 | `eval_count_limit_monthly` | 1000 | 所有评估端点 |
+| 存储上限 | `storage_limit_mb` | 1024 | 文件上传时 |
+
+### 13. Webhook Retry（通知重试）
+
+评估完成后通过 Webhook 通知外部系统，指数退避重试：
+
+```
+attempt 1: delay=0s  → POST webhook_url
+attempt 2: delay=1s  → POST webhook_url (retry)
+attempt 3: delay=2s  → POST webhook_url (retry)
+attempt 4: delay=4s  → POST webhook_url (final retry)
+→ 全部失败: 记录日志，不阻塞评估流程
+```

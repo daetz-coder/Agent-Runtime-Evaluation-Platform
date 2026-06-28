@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     # Qwen (DashScope) Configuration — OpenAI 兼容 API
     QWEN_API_KEY: str = ""
     QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    QWEN_MODEL: str = "qwen-plus"
+    QWEN_MODEL: str = "qwen3.7-plus"
 
     # Default LLM Configuration
     DEFAULT_LLM_PROVIDER: str = "deepseek"
