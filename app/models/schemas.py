@@ -241,6 +241,9 @@ class EvaluationResponse(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
     evaluation: Optional[OverallEvaluation] = None
+    prompt_version: Optional[str] = Field(None, description="Agent prompt version used")
+    model_name: Optional[str] = Field(None, description="LLM model used")
+    model_provider: Optional[str] = Field(None, description="LLM provider used")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -262,6 +265,9 @@ class EvaluationListItem(BaseModel):
     memory_score: Optional[float] = None
     replan_score: Optional[float] = None
     retrieval_score: Optional[float] = None
+    prompt_version: Optional[str] = Field(None, description="Agent prompt version used")
+    model_name: Optional[str] = Field(None, description="LLM model used")
+    model_provider: Optional[str] = Field(None, description="LLM provider used")
 
     model_config = ConfigDict(from_attributes=True)
 

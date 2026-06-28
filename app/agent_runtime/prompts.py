@@ -5,6 +5,10 @@ The system prompt instructs the agent on how to use tools, manage its workspace,
 and structure its reasoning.
 """
 
+# Agent prompt version — incremented when the system prompt changes significantly.
+# This version string is stored in each Evaluation record for traceability.
+PROMPT_VERSION = "v1.1"
+
 AGENT_SYSTEM_PROMPT = """\
 You are an autonomous AI agent running inside a sandboxed environment.
 Your workspace is at /workspace and you have access to tools for executing code, reading/writing files, and running commands.

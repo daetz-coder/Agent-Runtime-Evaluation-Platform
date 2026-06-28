@@ -113,12 +113,18 @@ class IncrementalEvalService:
             import uuid
             from datetime import datetime, timezone
 
+            from app.agent_runtime.prompts import PROMPT_VERSION
+            from app.core.config import settings as _cfg
+
             eval_id = str(uuid.uuid4())
             new_eval = Evaluation(
                 id=eval_id,
                 task_id=head_task_id,
                 status=EvaluationStatus.IN_PROGRESS,
                 created_at=datetime.now(timezone.utc),
+                prompt_version=PROMPT_VERSION,
+                model_name=_cfg.DEFAULT_LLM_MODEL,
+                model_provider=_cfg.DEFAULT_LLM_PROVIDER,
             )
             db.add(new_eval)
             await db.flush()

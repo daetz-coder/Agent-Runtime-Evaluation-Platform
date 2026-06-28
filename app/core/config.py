@@ -106,6 +106,11 @@ class Settings(BaseSettings):
     SANDBOX_ACQUIRE_TIMEOUT: float = 10.0  # seconds to wait for pool
     SANDBOX_CACHE_TTL: int = 86400  # 24h cache for identical executions
 
+    # Mock Sandbox Mode — for local development without Docker
+    SANDBOX_MOCK_MODE: bool = False
+    """When True, AgentRuntime returns a fixed mock trajectory instead of
+    running inside Docker.  Useful for rapid prompt iteration."""
+
     # Agent Runtime (Agent in Sandbox)
     AGENT_RUNTIME_ENABLED: bool = True
     AGENT_MAX_STEPS: int = 20

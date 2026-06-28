@@ -87,6 +87,16 @@ class Evaluation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Versioning — tracks which agent config produced this evaluation
+    prompt_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    """Version of the agent system prompt (from prompts.py PROMPT_VERSION)."""
+    model_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    """LLM model name used (e.g. deepseek-chat, gpt-4)."""
+    model_provider: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    """LLM provider (e.g. deepseek, openai, anthropic)."""
+    evaluator_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    """Version of the evaluator judge prompts (future use)."""
+
     # Scores
     planning_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     tactical_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

@@ -97,6 +97,23 @@ class AgentRunner:
         Returns:
             AgentRunResult with trajectory, workspace state, and final answer
         """
+        # ── Mock mode: return predefined trajectory without Docker ──
+        if settings.SANDBOX_MOCK_MODE:
+            logger.info("Running in MOCK mode — returning predefined trajectory")
+            from app.agent_runtime.mock_executor import MockToolProxy, get_mock_trajectory
+
+            mock_traj = get_mock_trajectory(goal)
+            return AgentRunResult(
+                success=True,
+                trajectory=mock_traj,
+                final_answer=f"[MOCK] Successfully completed: {goal}",
+                steps_taken=len(mock_traj),
+                duration_ms=50.0,
+                workspace_state={},
+                workspace_files={},
+                error=None,
+            )
+
         if not is_session_pool_available():
             return AgentRunResult(
                 success=False,

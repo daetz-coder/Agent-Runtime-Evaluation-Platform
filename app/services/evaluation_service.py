@@ -258,11 +258,16 @@ class EvaluationService:
         evaluation = result.scalar_one_or_none()
         if not evaluation:
             eval_id = str(uuid.uuid4())
+            from app.agent_runtime.prompts import PROMPT_VERSION
+
             evaluation = Evaluation(
                 id=eval_id,
                 task_id=task_id,
                 status=EvaluationStatus.IN_PROGRESS,
                 created_at=datetime.now(timezone.utc),
+                prompt_version=PROMPT_VERSION,
+                model_name=settings.DEFAULT_LLM_MODEL,
+                model_provider=settings.DEFAULT_LLM_PROVIDER,
             )
             self.db.add(evaluation)
             await self.db.flush()
@@ -386,6 +391,9 @@ class EvaluationService:
             created_at=evaluation.created_at,
             completed_at=evaluation.completed_at,
             evaluation=overall,
+            prompt_version=evaluation.prompt_version,
+            model_name=evaluation.model_name,
+            model_provider=evaluation.model_provider,
         )
 
     # ── Agent in Sandbox ──────────────────────────────────────
@@ -752,6 +760,16 @@ class EvaluationService:
         overall: Dict[str, Any],
     ) -> EvaluationResponse:
         """Write dimension scores and mark evaluation/task completed."""
+        from app.agent_runtime.prompts import PROMPT_VERSION
+
+        # Ensure version fields are set (they may already be from creation)
+        if not evaluation.prompt_version:
+            evaluation.prompt_version = PROMPT_VERSION
+        if not evaluation.model_name:
+            evaluation.model_name = settings.DEFAULT_LLM_MODEL
+        if not evaluation.model_provider:
+            evaluation.model_provider = settings.DEFAULT_LLM_PROVIDER
+
         evaluation.planning_score = self._dim_score(overall, "planning")
         evaluation.tactical_score = self._dim_score(overall, "tactical")
         evaluation.tool_use_score = self._dim_score(overall, "tool_use")
@@ -790,6 +808,9 @@ class EvaluationService:
             created_at=evaluation.created_at,
             completed_at=evaluation.completed_at,
             evaluation=OverallEvaluation(**overall),
+            prompt_version=evaluation.prompt_version,
+            model_name=evaluation.model_name,
+            model_provider=evaluation.model_provider,
         )
 
     @staticmethod
