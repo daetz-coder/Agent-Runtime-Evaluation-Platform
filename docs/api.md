@@ -19,7 +19,11 @@ http://localhost:8000/api/v1
 | `RATE_LIMIT_ENABLED` | `true` | 是否启用限流 |
 | `RATE_LIMIT_EVAL_PER_MINUTE` | `10` | 每分钟每客户端最大请求数 |
 
-**限流范围**: `POST /evaluations/`、`POST /evaluations/quick`、`POST /evaluations/batch`、`POST /evaluations/stream`、`POST /evaluations/consensus`
+**限流范围**: 所有前缀为 `/api/v1/evaluations/` 和 `/api/v1/benchmark/` 的 POST 请求。包括但不限于：
+- `POST /evaluations/run`、`POST /evaluations/run/stream`、`POST /evaluations/run-legacy`
+- `POST /evaluations/`、`POST /evaluations/quick`、`POST /evaluations/batch`
+- `POST /evaluations/stream`、`POST /evaluations/consensus`、`POST /evaluations/incremental`
+- `POST /benchmark/monotonicity/run`
 
 **超限响应** (HTTP 429):
 ```json
@@ -141,32 +145,52 @@ make db-upgrade    # 数据库迁移
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST /workspaces/` | 创建工作区（自动生成 API Key） |
-| `GET /workspaces/` | 列出工作区 |
-| `GET /workspaces/{id}` | 获取工作区详情 |
-| `POST /workspaces/{id}/rotate-key` | 轮换 API Key |
-| `POST /workspaces/{id}/members` | 添加成员（admin/evaluator/viewer） |
-| `DELETE /workspaces/{id}/members/{uid}` | 移除成员 |
-| `GET /workspaces/{id}/audit` | 审计日志 |
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST /api/v1/workspaces/` | 创建工作区（自动生成 API Key） |
+| `GET /api/v1/workspaces/` | 列出工作区 |
+| `GET /api/v1/workspaces/{id}` | 获取工作区详情 |
+| `POST /api/v1/workspaces/{id}/rotate-key` | 轮换 API Key |
+| `POST /api/v1/workspaces/{id}/members` | 添加成员（admin/evaluator/viewer） |
+| `DELETE /api/v1/workspaces/{id}/members/{uid}` | 移除成员 |
+| `GET /api/v1/workspaces/{id}/audit` | 审计日志 |
 
-### Wiki Agent
+### Wiki Agent 知识库
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET /api/wiki/tree` | 知识库目录树 |
 | `GET /api/wiki/page/{path}` | 获取页面内容 |
-| `POST /api/wiki/create` | 创建页面（自动四路同步） |
-| `PUT /api/wiki/update/{path}` | 更新页面 |
+| `POST /api/wiki/page/{path}` | 创建页面（自动四路同步） |
+| `PUT /api/wiki/page/{path}` | 更新页面 |
 | `DELETE /api/wiki/page/{path}` | 删除页面 |
-| `POST /api/wiki/rollback/{path}` | Git 回滚 |
+| `POST /api/wiki/page/{path}/rollback` | Git 回滚 |
 | `GET /api/wiki/history` | 版本历史 |
 | `GET /api/wiki/search?q=` | 搜索知识库 |
 | `POST /api/wiki/import` | 导入 Markdown |
 | `POST /api/wiki/auto-tag` | LLM 自动生成标签 |
 | `GET /api/wiki/export` | 知识库 ZIP 导出 |
+| `GET /api/wiki/vector-stats` | 向量数据库统计 |
+
+### Wiki Agent 对话
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
 | `POST /api/chat/stream` | **SSE 流式对话** |
 | `POST /api/chat/message` | 同步对话（返回 evaluation_link） |
 | `POST /api/chat/confirm` | Human-in-the-Loop CRUD 确认 |
+| `POST /api/chat/save-knowledge` | 保存对话为知识 |
+| `POST /api/chat/sessions` | 创建对话会话 |
+| `GET /api/chat/sessions` | 列出对话会话 |
+| `GET /api/chat/sessions/{session_id}` | 获取对话会话历史 |
+| `DELETE /api/chat/sessions/{session_id}` | 删除对话会话 |
+
+### Debug
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET /api/debug/overview` | 调试总览 |
+| `GET /api/debug/sessions` | 调试会话详情 |
 
 ---
 
