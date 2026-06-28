@@ -597,6 +597,9 @@ class EvaluationService:
                 memory_score=item.memory_score,
                 replan_score=item.replan_score,
                 retrieval_score=item.retrieval_score,
+                prompt_version=item.prompt_version,
+                model_name=item.model_name,
+                model_provider=item.model_provider,
             )
             for item, goal in rows
         ]

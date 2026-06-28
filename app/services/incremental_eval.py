@@ -24,7 +24,6 @@ from app.db.models import AgentTask, AgentTrajectory, Evaluation, EvaluationStat
 from app.graphs.evaluation_graph import evaluate_parallel
 from app.models.schemas import TrajectoryDiffResponse, TrajectoryStep
 from app.services.diff_service import DiffService
-from app.services.evaluation_service import EvaluationService
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +43,6 @@ class IncrementalEvalService:
 
     def __init__(self) -> None:
         self.diff_service = DiffService()
-        self.eval_service: Optional[EvaluationService] = None
-
-    async def _get_eval_service(self, db) -> EvaluationService:
-        """Create an EvaluationService with a valid database session."""
-        from app.services.evaluation_service import EvaluationService
-
-        return EvaluationService(db=db)
 
     async def incremental_evaluate(
         self,
@@ -58,7 +50,7 @@ class IncrementalEvalService:
         head_task_id: str,
         force_dims: Optional[List[str]] = None,
         workspace_id: Optional[str] = None,
-    ) -> Tuple[str, List[str], List[str], TrajectoryDiffResponse]:
+    ) -> Tuple[str, List[str], List[str], TrajectoryDiffResponse, str, Optional[float]]:
         """
         Run an incremental evaluation.
 
@@ -72,8 +64,14 @@ class IncrementalEvalService:
             Tuple of (evaluation_id, reused_dims, re_evaluated_dims, diff_summary).
         """
         async with async_session_factory() as db:
-            # ── Fetch base evaluation ──
-            base_eval = await db.get(Evaluation, base_eval_id)
+            from sqlalchemy.orm import selectinload
+
+            # ── Fetch base evaluation with eager-loaded task ──
+            base_eval = await db.get(
+                Evaluation,
+                base_eval_id,
+                options=[selectinload(Evaluation.task)],
+            )
             if not base_eval or base_eval.status != EvaluationStatus.COMPLETED:
                 raise ValueError(f"Base evaluation {base_eval_id} not found or not completed")
 
@@ -163,14 +161,9 @@ class IncrementalEvalService:
                 feedback = getattr(new_eval, f"{dim}_feedback", None)
                 all_scores[dim] = {"overall": score, **feedback} if feedback else {"overall": score}
 
-            weights = {
-                "planning": 0.20,
-                "tactical": 0.20,
-                "tool_use": 0.15,
-                "memory": 0.15,
-                "replan": 0.15,
-                "retrieval": 0.15,
-            }
+            from app.core.config import settings as _cfg
+
+            weights = _cfg.EVAL_DIMENSION_WEIGHTS
             overall = sum(
                 weights.get(d, 0) * (all_scores[d].get("overall", 0) if isinstance(all_scores[d], dict) else 0)
                 for d in all_dims
@@ -184,7 +177,7 @@ class IncrementalEvalService:
 
             await db.flush()
 
-            return eval_id, reused_dims, re_eval_dims, diff
+            return eval_id, reused_dims, re_eval_dims, diff, new_eval.status.value, new_eval.overall_score
 
     def _detect_changed_dimensions(self, diff: TrajectoryDiffResponse) -> List[str]:
         """Map trajectory changes to affected evaluation dimensions."""

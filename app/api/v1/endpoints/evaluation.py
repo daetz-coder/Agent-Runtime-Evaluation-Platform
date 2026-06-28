@@ -1028,33 +1028,23 @@ async def incremental_evaluation(
     from app.services.incremental_eval import IncrementalEvalService
 
     service = IncrementalEvalService()
-    eval_id, reused_dims, re_eval_dims, diff = await service.incremental_evaluate(
+    eval_id, reused_dims, re_eval_dims, diff, status, overall_score = await service.incremental_evaluate(
         base_eval_id=request.base_evaluation_id,
         head_task_id=request.head_task_id,
         force_dims=request.force_dimensions,
         workspace_id=ctx.filter_workspace_id(),
     )
 
-    # Fetch the result
-    from app.db.models import Evaluation
-
-    async with async_session_factory() as db:
-        new_eval = await db.get(Evaluation, eval_id)
-        if not new_eval:
-            raise HTTPException(status_code=500, detail="Incremental evaluation failed")
-
-        return IncrementalEvalResponse(
-            evaluation_id=eval_id,
-            task_id=request.head_task_id,
-            status=new_eval.status.value,
-            overall_score=new_eval.overall_score or 0.0,
-            reused_dimensions=reused_dims,
-            re_evaluated_dimensions=re_eval_dims,
-            changes_detected=[
-                f"Step {s.step_number}: {s.change_type}" for s in diff.steps if s.change_type != "unchanged"
-            ],
-            diff_summary=diff,
-        )
+    return IncrementalEvalResponse(
+        evaluation_id=eval_id,
+        task_id=request.head_task_id,
+        status=status,
+        overall_score=overall_score or 0.0,
+        reused_dimensions=reused_dims,
+        re_evaluated_dimensions=re_eval_dims,
+        changes_detected=[f"Step {s.step_number}: {s.change_type}" for s in diff.steps if s.change_type != "unchanged"],
+        diff_summary=diff,
+    )
 
 
 # ============== Regression Detection ==============

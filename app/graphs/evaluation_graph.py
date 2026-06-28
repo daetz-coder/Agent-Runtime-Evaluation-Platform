@@ -446,8 +446,10 @@ async def evaluate_parallel(
             scores[dim_name] = {"overall": 0, "feedback": "Evaluation failed"}
     scores["_judge_raw_all"] = all_judge_raw
 
-    # 计算加权总分
-    weights = {"planning": 0.20, "tactical": 0.20, "tool_use": 0.15, "memory": 0.15, "replan": 0.15, "retrieval": 0.15}
+    # 计算加权总分（使用配置中共享的权重）
+    from app.core.config import settings as _cfg
+
+    weights = _cfg.EVAL_DIMENSION_WEIGHTS
     overall = sum(weights.get(d, 0) * (s.get("overall", 0) if isinstance(s, dict) else 0) for d, s in scores.items())
     scores["overall"] = {"overall_score": round(overall, 1)}
 

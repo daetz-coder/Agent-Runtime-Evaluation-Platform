@@ -131,6 +131,16 @@ class Settings(BaseSettings):
         "file_list",
     ]
 
+    # Evaluation weights (shared between full and incremental eval)
+    EVAL_DIMENSION_WEIGHTS: dict = {
+        "planning": 0.20,
+        "tactical": 0.20,
+        "tool_use": 0.15,
+        "memory": 0.15,
+        "replan": 0.15,
+        "retrieval": 0.15,
+    }
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

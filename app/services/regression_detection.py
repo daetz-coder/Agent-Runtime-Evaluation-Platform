@@ -134,7 +134,7 @@ class RegressionDetectionService:
                         base_goal=base_task.goal if base_task else "",
                         head_goal=head_task.goal if head_task else "",
                     )
-                except Exception as e:
+                except (LookupError, OSError, ValueError, RuntimeError) as e:
                     logger.warning("Failed to compute diff for regression report: %s", e)
 
             return report
