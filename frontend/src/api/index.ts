@@ -13,6 +13,18 @@ interface ApiClient {
   delete<T = any>(url: string, config?: ApiRequestConfig): Promise<T>
 }
 
+const apiKey = import.meta.env.VITE_API_KEY as string | undefined
+
+function attachAuthHeader(config: AxiosRequestConfig): AxiosRequestConfig {
+  if (apiKey) {
+    config.headers = {
+      ...config.headers,
+      Authorization: `Bearer ${apiKey}`,
+    }
+  }
+  return config
+}
+
 const axiosInstance = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,
@@ -42,6 +54,11 @@ async function fetchPaginated<T>(url: string, config?: ApiRequestConfig): Promis
   return { items: response.data, total }
 }
 
+paginatedAxios.interceptors.request.use(
+  (config) => attachAuthHeader(config),
+  (error) => Promise.reject(error)
+)
+
 paginatedAxios.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error) => {
@@ -55,7 +72,7 @@ paginatedAxios.interceptors.response.use(
 )
 
 axiosInstance.interceptors.request.use(
-  (config) => config,
+  (config) => attachAuthHeader(config),
   (error) => Promise.reject(error)
 )
 
@@ -174,6 +191,10 @@ export const benchmarkApi = {
 
 // Debug / System Inspector API (served at /api/debug, not /api/v1)
 const debugAxios = axios.create({ baseURL: '/api/debug', timeout: 15000 })
+debugAxios.interceptors.request.use(
+  (config) => attachAuthHeader(config),
+  (error) => Promise.reject(error)
+)
 debugAxios.interceptors.response.use(
   (response: AxiosResponse) => response.data,
   (error) => {

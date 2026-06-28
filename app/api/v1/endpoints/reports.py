@@ -2,7 +2,7 @@
 Reports and analytics endpoints.
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -16,6 +16,31 @@ from app.core.cache import cache_get, cache_set
 from app.core.config import settings
 
 router = APIRouter()
+
+
+def _ws_suffix(ws_filter: Optional[str]) -> str:
+    return ws_filter or "all"
+
+
+async def _get_task_scoped(
+    db: AsyncSession,
+    task_id: str,
+    ws_filter: Optional[str],
+) -> Optional[AgentTask]:
+    query = select(AgentTask).where(AgentTask.id == task_id)
+    if ws_filter:
+        query = query.where(AgentTask.workspace_id == ws_filter)
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+
+def _evaluations_base_query(ws_filter: Optional[str]):
+    query = select(Evaluation).where(Evaluation.status == EvaluationStatus.COMPLETED)
+    if ws_filter:
+        query = query.join(AgentTask, Evaluation.task_id == AgentTask.id).where(
+            AgentTask.workspace_id == ws_filter
+        )
+    return query
 
 
 @router.get("/summary", response_model=EvaluationSummary)
@@ -131,22 +156,15 @@ async def get_evaluation_summary(
 async def get_task_evaluation_history(
     task_id: str,
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
-    """
-    Get evaluation history for a specific task.
-
-    - **task_id**: UUID of the task
-    """
-    # Verify task exists
-    task_result = await db.execute(
-        select(AgentTask).where(AgentTask.id == task_id)
-    )
-    task = task_result.scalar_one_or_none()
-
+    """Get evaluation history for a specific task."""
+    require_role(ctx, WorkspaceRole.VIEWER)
+    ws_filter = ctx.filter_workspace_id()
+    task = await _get_task_scoped(db, task_id, ws_filter)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # Get all evaluations for this task
     eval_result = await db.execute(
         select(Evaluation)
         .where(Evaluation.task_id == task_id)
@@ -175,30 +193,25 @@ async def get_task_evaluation_history(
 async def get_dimension_statistics(
     dimension: str,
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
-    """
-    Get statistics for a specific evaluation dimension.
-
-    - **dimension**: One of: planning, tactical, tool_use, memory, replan, retrieval
-    """
+    """Get statistics for a specific evaluation dimension."""
+    require_role(ctx, WorkspaceRole.VIEWER)
+    ws_filter = ctx.filter_workspace_id()
     valid_dimensions = ["planning", "tactical", "tool_use", "memory", "replan", "retrieval"]
 
     if dimension not in valid_dimensions:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid dimension. Must be one of: {', '.join(valid_dimensions)}"
+            detail=f"Invalid dimension. Must be one of: {', '.join(valid_dimensions)}",
         )
 
-    # Check cache first
-    dim_cache_key = f"report:dim:{dimension}"
+    dim_cache_key = f"report:dim:{dimension}:{_ws_suffix(ws_filter)}"
     cached = await cache_get(dim_cache_key)
     if cached is not None:
         return cached
 
-    # Get all completed evaluations
-    result = await db.execute(
-        select(Evaluation).where(Evaluation.status == EvaluationStatus.COMPLETED)
-    )
+    result = await db.execute(_evaluations_base_query(ws_filter))
     evaluations = result.scalars().all()
 
     if not evaluations:
@@ -308,20 +321,21 @@ def _generate_global_recommendations(
 
 
 @router.get("/trends")
-async def get_trends(db: AsyncSession = Depends(get_db)):
-    """
-    获取评估趋势数据（Dashboard 趋势图）。
-    返回最近 30 条按日期分组的评估分数均值。
-    """
-    # Check cache first
-    cached = await cache_get("report:trends")
+async def get_trends(
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """获取评估趋势数据（Dashboard 趋势图）。"""
+    require_role(ctx, WorkspaceRole.VIEWER)
+    ws_filter = ctx.filter_workspace_id()
+    cache_key = f"report:trends:{_ws_suffix(ws_filter)}"
+    cached = await cache_get(cache_key)
     if cached is not None:
         return cached
 
-    from sqlalchemy import func as sa_func, text
+    from sqlalchemy import func as sa_func
 
-    # SQLite 兼容：用 func.date() 替代 cast(Date)，避免 timezone 字符串解析报错
-    result = await db.execute(
+    trends_query = (
         select(
             sa_func.date(Evaluation.completed_at).label("date"),
             sa_func.avg(Evaluation.overall_score).label("avg_overall"),
@@ -338,6 +352,11 @@ async def get_trends(db: AsyncSession = Depends(get_db)):
         .order_by(sa_func.date(Evaluation.completed_at).desc())
         .limit(30)
     )
+    if ws_filter:
+        trends_query = trends_query.join(AgentTask, Evaluation.task_id == AgentTask.id).where(
+            AgentTask.workspace_id == ws_filter
+        )
+    result = await db.execute(trends_query)
     rows = result.all()
     trends_data = [
         {
@@ -354,18 +373,23 @@ async def get_trends(db: AsyncSession = Depends(get_db)):
         for row in reversed(rows)
     ]
 
-    await cache_set("report:trends", trends_data, ttl=settings.CACHE_TRENDS_TTL)
+    await cache_set(cache_key, trends_data, ttl=settings.CACHE_TRENDS_TTL)
     return trends_data
 
 
 @router.get("/export/{task_id}")
-async def export_report(task_id: str, db: AsyncSession = Depends(get_db)):
-    """
-    导出单次评估报告为 Markdown 格式。
+async def export_report(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """导出单次评估报告为 Markdown 格式。"""
+    require_role(ctx, WorkspaceRole.VIEWER)
+    ws_filter = ctx.filter_workspace_id()
+    task = await _get_task_scoped(db, task_id, ws_filter)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
 
-    - **task_id**: 任务 UUID
-    """
-    from app.db.models import Evaluation, EvaluationStatus
     from sqlalchemy import select as sa_select
 
     result = await db.execute(
@@ -409,23 +433,22 @@ async def compare_evaluations(
     task_id: str,
     limit: int = 10,
     db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
-    """
-    对比同一任务的多轮评估结果，跟踪 Agent 质量变化趋势。
+    """对比同一任务的多轮评估结果。"""
+    require_role(ctx, WorkspaceRole.VIEWER)
+    ws_filter = ctx.filter_workspace_id()
+    task = await _get_task_scoped(db, task_id, ws_filter)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
 
-    - **task_id**: 任务 UUID
-    - **limit**: 返回最近 N 轮评估（默认 10）
-    """
-    # Check cache first
-    compare_cache_key = f"report:compare:{task_id}:{limit}"
+    compare_cache_key = f"report:compare:{task_id}:{limit}:{_ws_suffix(ws_filter)}"
     cached = await cache_get(compare_cache_key)
     if cached is not None:
         return cached
 
-    from app.db.models import Evaluation, EvaluationStatus
-    from sqlalchemy import select as sa_select, func as sa_func
+    from sqlalchemy import select as sa_select
 
-    # 获取所有已完成评估
     result = await db.execute(
         sa_select(Evaluation)
         .where(Evaluation.task_id == task_id, Evaluation.status == EvaluationStatus.COMPLETED)

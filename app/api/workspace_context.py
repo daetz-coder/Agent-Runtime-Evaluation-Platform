@@ -144,3 +144,17 @@ def require_workspace_access(ctx: WorkspaceContext, workspace_id: str, minimum: 
     if ctx.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace access denied")
     require_role(ctx, minimum)
+
+
+def resolve_task_workspace_id(ctx: WorkspaceContext, request: Request) -> Optional[str]:
+    """解析创建任务时的工作区 ID。
+
+    工作区 API Key：绑定当前工作区。
+    超级管理员：可通过 X-Workspace-Id 指定，否则为 NULL（全局任务）。
+    """
+    if not settings.AUTH_ENABLED:
+        return None
+    if ctx.is_super_admin:
+        header_ws = request.headers.get("X-Workspace-Id")
+        return header_ws.strip() if header_ws else None
+    return ctx.require_workspace()

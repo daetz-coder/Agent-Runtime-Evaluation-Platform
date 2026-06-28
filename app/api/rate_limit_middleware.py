@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # Only rate-limit POST requests to these path prefixes
 _LIMITED_PATHS = {
     "/api/v1/evaluations/",   # matches /, /quick, /batch, /stream, /consensus
+    "/api/v1/benchmark/",       # matches /monotonicity/run
 }
 
 # Paths that should never be rate-limited regardless of method
