@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
-from sqlalchemy import DateTime, ForeignKey, String, Text, JSON, Enum as SQLEnum
+from sqlalchemy import DateTime, ForeignKey, String, Text, JSON, Integer, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -59,6 +59,12 @@ class Workspace(Base):
     api_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     is_active: Mapped[bool] = mapped_column(default=True)
+
+    # Resource quotas (0 = unlimited)
+    sandbox_quota: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    max_steps_per_eval: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    eval_count_limit_monthly: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
+    storage_limit_mb: Mapped[int] = mapped_column(Integer, default=1024, nullable=False)
 
     # 关系
     members: Mapped[List["WorkspaceMember"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
