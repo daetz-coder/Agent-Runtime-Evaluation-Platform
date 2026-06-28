@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from app.db.database import async_session_factory
 from app.db.models import Evaluation
@@ -29,6 +29,8 @@ DEFAULT_THRESHOLDS: Dict[str, float] = {
     "replan": -10.0,
     "retrieval": -10.0,
 }
+
+ALL_DIMS = ["planning", "tactical", "tool_use", "memory", "replan", "retrieval"]
 
 
 @dataclass
@@ -86,73 +88,20 @@ class RegressionDetectionService:
             if not base_eval or not head_eval:
                 raise ValueError("One or both evaluations not found")
 
-            return self._compare_objects(
+            report = self._compare_objects(
                 base_eval=base_eval,
                 head_eval=head_eval,
-                include_diff=include_diff,
+                base_eval_id=base_eval_id,
+                head_eval_id=head_eval_id,
             )
 
-    def _compare_objects(
-        self,
-        base_eval,
-        head_eval,
-        include_diff: bool = True,
-    ) -> RegressionReport:
-        """
-        Compare two evaluation objects directly (no DB lookup).
-
-        Extracted for testability — accepts any object with
-        ``overall_score`` and ``{dim}_score`` attributes.
-        """
-
-            all_dims = ["planning", "tactical", "tool_use", "memory", "replan", "retrieval"]
-            dims: Dict[str, DimensionChange] = {}
-
-            for dim in all_dims:
-                base_score = getattr(base_eval, f"{dim}_score", None) or 0.0
-                head_score = getattr(head_eval, f"{dim}_score", None) or 0.0
-                delta = head_score - base_score
-                threshold = self.thresholds.get(dim, -10.0)
-                is_reg = delta < threshold
-
-                dims[dim] = DimensionChange(
-                    dimension=dim,
-                    base_score=base_score,
-                    head_score=head_score,
-                    delta=round(delta, 1),
-                    is_regression=is_reg,
-                    threshold=threshold,
-                )
-
-            overall_base = base_eval.overall_score or 0.0
-            overall_head = head_eval.overall_score or 0.0
-            overall_delta = round(overall_head - overall_base, 1)
-            overall_threshold = self.thresholds.get("overall", -5.0)
-            has_regression = overall_delta < overall_threshold or any(
-                d.is_regression for d in dims.values()
-            )
-
-            # Build human-readable summary
-            regressed_dims = [d for d in dims.values() if d.is_regression]
-            if regressed_dims:
-                dim_summaries = [f"{d.dimension}: {d.base_score}→{d.head_score} ({d.delta})" for d in regressed_dims]
-                summary = (
-                    f"⚠️ Regression detected! Overall: {overall_base}→{overall_head} ({overall_delta}). "
-                    f"Regressed dimensions: {', '.join(dim_summaries)}"
-                )
-            else:
-                summary = (
-                    f"✅ No regression. Overall: {overall_base}→{overall_head} ({overall_delta})."
-                )
-
-            # Optionally include trajectory diff
-            diff = None
+            # Optionally include trajectory diff (needs DB access)
             if include_diff:
                 try:
-                    from app.services.diff_service import DiffService
+                    from sqlalchemy import select
 
                     from app.db.models import AgentTask, AgentTrajectory
-                    from sqlalchemy import select
+                    from app.services.diff_service import DiffService
 
                     async def _get_traj(task_id: str) -> list:
                         r = await db.execute(
@@ -177,7 +126,7 @@ class RegressionDetectionService:
                     head_task = await db.get(AgentTask, head_eval.task_id)
 
                     diff_service = DiffService()
-                    diff = await diff_service.compare(
+                    report.diff = await diff_service.compare(
                         base_trajectory=base_traj,
                         head_trajectory=head_traj,
                         base_eval_id=base_eval_id,
@@ -188,6 +137,61 @@ class RegressionDetectionService:
                 except Exception as e:
                     logger.warning("Failed to compute diff for regression report: %s", e)
 
+            return report
+
+    def _compare_objects(
+        self,
+        base_eval: Any,
+        head_eval: Any,
+        base_eval_id: str = "",
+        head_eval_id: str = "",
+    ) -> RegressionReport:
+        """
+        Compare two evaluation objects directly (no DB lookup).
+
+        Extracted for testability — accepts any object with
+        ``overall_score`` and ``{dim}_score`` attributes.
+        """
+        dims: Dict[str, DimensionChange] = {}
+
+        for dim in ALL_DIMS:
+            base_score = float(getattr(base_eval, f"{dim}_score", None) or 0)
+            head_score = float(getattr(head_eval, f"{dim}_score", None) or 0)
+            delta = head_score - base_score
+            threshold = self.thresholds.get(dim, -10.0)
+            is_reg = delta < threshold
+
+            dims[dim] = DimensionChange(
+                dimension=dim,
+                base_score=base_score,
+                head_score=head_score,
+                delta=round(delta, 1),
+                is_regression=is_reg,
+                threshold=threshold,
+            )
+
+        overall_base = float(base_eval.overall_score or 0)
+        overall_head = float(head_eval.overall_score or 0)
+        overall_delta = round(overall_head - overall_base, 1)
+        overall_threshold = self.thresholds.get("overall", -5.0)
+        has_regression = overall_delta < overall_threshold or any(d.is_regression for d in dims.values())
+
+        # Build human-readable summary
+        regressed_dims = [d for d in dims.values() if d.is_regression]
+        if regressed_dims:
+            dim_summaries = [f"{d.dimension}: {d.base_score}→{d.head_score} ({d.delta})" for d in regressed_dims]
+            summary = (
+                f"Regression detected! Overall: {overall_base}→{overall_head} ({overall_delta}). "
+                f"Regressed dimensions: {', '.join(dim_summaries)}"
+            )
+        elif has_regression:
+            summary = (
+                f"Regression detected! Overall: {overall_base}→{overall_head} ({overall_delta}). "
+                f"(No individual dimension exceeded its threshold, but overall did.)"
+            )
+        else:
+            summary = f"No regression. Overall: {overall_base}→{overall_head} ({overall_delta})."
+
         return RegressionReport(
             base_evaluation_id=base_eval_id,
             head_evaluation_id=head_eval_id,
@@ -195,5 +199,4 @@ class RegressionDetectionService:
             dimensions=dims,
             overall_change=overall_delta,
             summary=summary,
-            diff=diff,
         )

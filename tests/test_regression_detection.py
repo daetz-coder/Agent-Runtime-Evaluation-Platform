@@ -40,7 +40,7 @@ class TestRegressionDetection:
             overall=80.0,
         )
 
-        report = self.service.compare(base, head, include_diff=False)
+        report = self.service._compare_objects(base, head)
 
         assert isinstance(report, RegressionReport)
         assert report.has_regression is False
@@ -58,7 +58,7 @@ class TestRegressionDetection:
             overall=60.0,  # -20, threshold is -5
         )
 
-        report = self.service.compare(base, head, include_diff=False)
+        report = self.service._compare_objects(base, head)
 
         assert report.has_regression is True
         assert report.overall_change == -20.0
@@ -75,7 +75,7 @@ class TestRegressionDetection:
             overall=75.0,
         )
 
-        report = self.service.compare(base, head, include_diff=False)
+        report = self.service._compare_objects(base, head)
 
         assert report.has_regression is True
         # planning dropped by 15, threshold is -10
@@ -92,7 +92,7 @@ class TestRegressionDetection:
         base = self._make_mock_eval({"planning": 80.0}, overall=80.0)
         head = self._make_mock_eval({"planning": 76.0}, overall=76.0)
 
-        report = strict_service.compare(base, head, include_diff=False)
+        report = strict_service._compare_objects(base, head)
 
         # -4 is below -3 threshold
         assert report.dimensions["planning"].is_regression is True
@@ -108,7 +108,7 @@ class TestRegressionDetection:
             overall=80.0,
         )
 
-        report = self.service.compare(base, head, include_diff=False)
+        report = self.service._compare_objects(base, head)
 
         for dim in ("planning", "tactical", "tool_use", "memory", "replan", "retrieval"):
             assert dim in report.dimensions
@@ -131,7 +131,7 @@ class TestRegressionDetection:
         for d in ("planning", "tactical", "tool_use", "memory", "replan", "retrieval"):
             setattr(head, f"{d}_score", None)
 
-        report = self.service.compare(base, head, include_diff=False)
+        report = self.service._compare_objects(base, head)
 
         assert report.overall_change == 0.0
         assert report.has_regression is False
