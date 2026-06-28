@@ -98,7 +98,21 @@ def setup_logging() -> None:
     root.setLevel(logging.INFO if settings.APP_ENV == "production" else logging.DEBUG)
 
     # Suppress noisy third-party loggers
-    for name in ("uvicorn.access", "docker", "httpcore", "httpx", "sqlalchemy.engine"):
+    for name in (
+        "uvicorn.access",
+        "docker",
+        "httpcore",
+        "httpx",
+        "sqlalchemy.engine",
+        "aiosqlite",
+        "sqlite3",
+        "openai",
+        "openai._base_client",
+        "langchain",
+        "langchain_core",
+        "langchain_openai",
+        "sdk.collector",
+    ):
         logging.getLogger(name).setLevel(logging.WARNING)
 
 
