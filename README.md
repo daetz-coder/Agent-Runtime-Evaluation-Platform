@@ -135,7 +135,15 @@ docker compose up --build
 ```bash
 # 健康检查
 curl http://localhost:8000/health
-# → {"status":"healthy","app":"Agent Evaluation Platform","version":"0.1.0"}
+# → 健康检查响应示例:
+# {
+#   "status": "healthy",
+#   "app": "Agent Evaluation Platform",
+#   "version": "0.1.0",
+#   "database": "connected",
+#   "sandbox": "ready",
+#   "wiki": "initialized"
+# }
 
 # 运行示例评估
 python example_evaluation.py
@@ -202,7 +210,7 @@ SDK 收集器特性: 线程安全 · 批量上传 · 失败回退 · 离线模�
 │   │   ├── diff_service.py          # Trajectory Diff
 │   │   ├── incremental_eval.py      # 增量评估
 │   │   ├── regression_detection.py  # 回归检测
-│   │   ├── quota_service.py         # 多租户资源配额
+│   │   ├── quota.py                 # 多租户资源配额
 │   │   └── webhook.py               # Webhook 通知（指数退避重试）
 │   ├── core/                # 基础设施
 │   │   ├── config.py        #   pydantic-settings 配置
@@ -241,32 +249,79 @@ POST   /api/v1/evaluations/run-legacy              # 一步式评估（提交 go
 
 # 传统评估流程
 POST   /api/v1/tasks/                              # 创建任务
+GET    /api/v1/tasks/                              # 列出任务（支持 ?skip=&limit=）
+GET    /api/v1/tasks/dashboard                     # 仪表板统计
 GET    /api/v1/tasks/{id}                          # 获取任务
+PUT    /api/v1/tasks/{id}                          # 更新任务
+DELETE /api/v1/tasks/{id}                          # 删除任务
 POST   /api/v1/tasks/{id}/trajectory               # 上传轨迹（deprecated → 使用 /run）
+GET    /api/v1/tasks/{id}/trajectory               # 获取轨迹
 POST   /api/v1/evaluations/                        # 运行评估（异步，支持 use_stream）
 POST   /api/v1/evaluations/stream                  # SSE 流式评估进度
-GET    /api/v1/evaluations/{id}                    # 获取评估结果
+POST   /api/v1/evaluations/quick                   # 同步评估（阻塞，返回完整结果）
+POST   /api/v1/evaluations/batch                   # 批量评估
+POST   /api/v1/evaluations/consensus               # 多模型共识评估
+GET    /api/v1/evaluations/                        # 列出评估
+GET    /api/v1/evaluations/{id}                    # 获取评估详情
+DELETE /api/v1/evaluations/{id}                    # 删除评估记录
 
 # 高级评估
 GET    /api/v1/evaluations/{id}/replay             # Replay 调试器
-GET    /api/v1/evaluations/{id}/judge-raw/{dim}    # Judge 透明度
+GET    /api/v1/evaluations/{id}/judge-raw[/{dim}]  # Judge 透明度
 GET    /api/v1/evaluations/diff                    # Trajectory 对比
 POST   /api/v1/evaluations/incremental             # 增量评估
 GET    /api/v1/evaluations/regression/check        # 回归检测
 
-# 报告 & 基准
-GET    /api/v1/benchmark/monotonicity              # 单调性基准元数据
-POST   /api/v1/benchmark/monotonicity/run          # SSE 实时跑单调性基准
+# 报告
 GET    /api/v1/reports/summary                     # 评估摘要（含六维 AVG）
 GET    /api/v1/reports/trends                      # 评估趋势
+GET    /api/v1/reports/tasks/{task_id}/history     # 某任务的所有评估历史
 GET    /api/v1/reports/compare/{task_id}           # 迭代对比
 GET    /api/v1/reports/export/{task_id}            # 导出 Markdown 报告
 GET    /api/v1/reports/dimensions/{dim}            # 维度统计
 
+# 基准
+GET    /api/v1/benchmark/monotonicity              # 单调性基准元数据
+POST   /api/v1/benchmark/monotonicity/run          # SSE 实时跑单调性基准
+
 # 运维
 GET    /api/v1/system/health                       # 健康检查
 GET    /api/v1/system/metrics                      # Prometheus 指标
-GET    /api/v1/settings                            # 运行时配置
+GET    /api/v1/evaluations/settings                 # 评估运行时配置
+GET    /api/v1/settings/prompts                    # Prompt 模板版本列表
+GET    /api/v1/settings/prompts/{version}          # 获取指定 Prompt 版本内容
+PUT    /api/v1/settings/prompts/{version}          # 创建/更新 Prompt 版本
+
+# 多租户工作区
+POST   /api/v1/workspaces/                         # 创建工作区
+GET    /api/v1/workspaces/                         # 列出工作区
+GET    /api/v1/workspaces/{id}                     # 获取工作区详情
+POST   /api/v1/workspaces/{id}/rotate-key          # 轮换 API Key
+POST   /api/v1/workspaces/{id}/members             # 添加成员
+DELETE /api/v1/workspaces/{id}/members/{uid}       # 移除成员
+GET    /api/v1/workspaces/{id}/audit               # 审计日志
+
+# Wiki Agent 知识库
+GET    /api/wiki/tree                              # 知识库目录树
+GET    /api/wiki/page/{path}                       # 获取页面内容
+POST   /api/wiki/page/{path}                       # 创建/更新页面
+PUT    /api/wiki/page/{path}                       # 更新页面
+DELETE /api/wiki/page/{path}                       # 删除页面
+POST   /api/wiki/page/{path}/rollback              # Git 回滚
+GET    /api/wiki/history                           # 版本历史
+GET    /api/wiki/search?q=                         # 搜索知识库
+POST   /api/wiki/import                            # 导入 Markdown
+POST   /api/wiki/auto-tag                          # LLM 自动生成标签
+GET    /api/wiki/export                            # 知识库 ZIP 导出
+GET    /api/wiki/vector-stats                      # 向量数据库统计
+POST   /api/chat/stream                            # SSE 流式对话
+POST   /api/chat/message                           # 同步对话
+POST   /api/chat/confirm                           # HITL CRUD 确认
+POST   /api/chat/save-knowledge                    # 保存对话为知识
+POST   /api/chat/sessions                          # 创建对话会话
+GET    /api/chat/sessions                          # 列出对话会话
+GET    /api/chat/sessions/{session_id}             # 获取对话会话历史
+DELETE /api/chat/sessions/{session_id}             # 删除对话会话
 ```
 
 ## 开发者体验
