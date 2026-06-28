@@ -73,6 +73,53 @@ async def test_create_task_idempotent(client):
 
 
 @pytest.mark.asyncio
+async def test_create_evaluation_idempotent(client):
+    """Repeated create_evaluation for same task reuses IN_PROGRESS record."""
+    from app.db.database import async_session_factory
+    from app.services.evaluation_service import EvaluationService
+
+    task = await client.post(
+        "/api/v1/tasks/",
+        json={"goal": "Eval idempotency test", "context": {}},
+    )
+    assert task.status_code == 201
+    task_id = task.json()["id"]
+
+    async with async_session_factory() as db:
+        service = EvaluationService(db)
+        first = await service.create_evaluation(task_id)
+        await db.commit()
+        second = await service.create_evaluation(task_id)
+    assert first is not None and second is not None
+    assert first.id == second.id
+
+
+@pytest.mark.asyncio
+async def test_trajectory_step_dedupe(client):
+    """Trajectory upload skips duplicate step_number on retry."""
+    task = await client.post(
+        "/api/v1/tasks/",
+        json={"goal": "Trajectory dedupe test", "context": {}},
+    )
+    task_id = task.json()["id"]
+    steps = [
+        {
+            "step_number": 1,
+            "action_type": "plan",
+            "action_detail": {"goal": "test"},
+            "observation": None,
+        }
+    ]
+    r1 = await client.post(f"/api/v1/tasks/{task_id}/trajectory", json=steps)
+    r2 = await client.post(f"/api/v1/tasks/{task_id}/trajectory", json=steps)
+    assert r1.status_code == 201
+    assert r2.status_code == 201
+
+    traj = await client.get(f"/api/v1/tasks/{task_id}/trajectory")
+    assert len(traj.json()["steps"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_list_tasks(client):
     """Test task listing."""
     response = await client.get("/api/v1/tasks/")
