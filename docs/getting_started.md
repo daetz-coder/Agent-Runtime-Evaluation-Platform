@@ -5,7 +5,7 @@
 - Python 3.11+
 - Node.js 18+
 - Git
-- Redis 7+ (可选 — 应用会自动降级，无需 Redis 也能正常运行)
+- Redis (可选 — 应用会自动降级，无需 Redis 也能正常运行)
 
 ## 安装
 

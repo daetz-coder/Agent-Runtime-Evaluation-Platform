@@ -62,6 +62,7 @@ EVAL_API_BASE_URL="http://127.0.0.1:8000"
 | `example/wiki-agent/milvus.db` | Milvus 向量索引（Milvus Lite 本地模式） |
 | `example/wiki-agent/models/` | 本地 Embedding 模型 |
 | `data/wiki_agent/` | Wiki 会话、BM25 索引、Checkpoint |
+| `agent_eval.db` | SQLite 数据库（开发模式） |
 
 ## 旧版独立启动（已弃用）
 
