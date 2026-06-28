@@ -849,7 +849,7 @@ class EvaluationService:
 
     def _build_summary(self, feedback: Dict[str, Any], overall_score: float) -> str:
         """Rebuild a useful summary from persisted dimension feedback."""
-        scores = {name: (value or {}).get("overall", 0) for name, value in feedback.items()}
+        scores = {name: float((value or {}).get("overall") or 0) for name, value in feedback.items()}
         if not scores:
             return f"Overall score: {overall_score:.1f}/100."
         strongest = max(scores, key=scores.get)

@@ -211,12 +211,16 @@ class WorkspaceManager:
     @staticmethod
     def _resolve_path(path: str) -> str:
         """Resolve a relative path to an absolute /workspace path (POSIX slashes)."""
-        # Strip leading slashes and workspace prefix for safety
-        clean = path.lstrip("/").replace("..", "")
+        # Strip leading slashes and workspace prefix
+        clean = path.lstrip("/")
         if clean.startswith("workspace/"):
             clean = clean[len("workspace/") :]
-        # Use posixpath since Docker containers are Linux
-        return posixpath.join(WORKSPACE_ROOT, clean)
+        # Normalize to resolve ../ and prevent traversal
+        resolved = posixpath.normpath(posixpath.join(WORKSPACE_ROOT, clean))
+        # Ensure the resolved path stays within /workspace
+        if not resolved.startswith(WORKSPACE_ROOT):
+            resolved = WORKSPACE_ROOT
+        return resolved
 
     @staticmethod
     async def _put_archive(container: Container, path: str, tar_data: bytes) -> None:

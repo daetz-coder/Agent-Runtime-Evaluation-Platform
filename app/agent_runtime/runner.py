@@ -135,6 +135,14 @@ class AgentRunner:
 
             # ── 1. Acquire sandbox session ──
             pool = get_session_pool()
+            if pool is None:
+                root_span.set_attribute("error", "pool_not_initialized")
+                return AgentRunResult(
+                    success=False,
+                    trajectory=[],
+                    final_answer="",
+                    error="Session pool not initialized",
+                )
             with tracer.start_as_current_span("session_acquire") as span:
                 session = await pool.acquire_session()
                 if session is None:

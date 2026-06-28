@@ -49,15 +49,25 @@ class DiffService:
         steps_removed = 0
         steps_modified = 0
 
-        # Index steps by step_number for comparison
-        base_by_number: Dict[int, dict] = {s.get("step_number", 0): s for s in base_trajectory}
-        head_by_number: Dict[int, dict] = {s.get("step_number", 0): s for s in head_trajectory}
+        # Index steps by step_number for comparison (group by number to handle duplicates)
+        from collections import defaultdict
+
+        base_by_number: Dict[int, List[dict]] = defaultdict(list)
+        head_by_number: Dict[int, List[dict]] = defaultdict(list)
+        for s in base_trajectory:
+            base_by_number[s.get("step_number", 0)].append(s)
+        for s in head_trajectory:
+            head_by_number[s.get("step_number", 0)].append(s)
 
         all_numbers = sorted(set(base_by_number.keys()) | set(head_by_number.keys()))
 
         for step_num in all_numbers:
-            base_step = base_by_number.get(step_num)
-            head_step = head_by_number.get(step_num)
+            base_steps = base_by_number.get(step_num, [])
+            head_steps = head_by_number.get(step_num, [])
+
+            # Use first step in each group for comparison
+            base_step = base_steps[0] if base_steps else None
+            head_step = head_steps[0] if head_steps else None
 
             if base_step and not head_step:
                 # Removed

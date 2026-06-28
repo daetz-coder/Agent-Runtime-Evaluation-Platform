@@ -93,8 +93,8 @@ def create_agent_graph(
             if current_step == 0:
                 messages.insert(0, SystemMessage(content=system_prompt))
 
-            # Prompt the LLM to continue or provide final answer
-            if current_step > 0:
+            # Prompt the LLM to consider final answer (only near step limit to avoid context bloat)
+            if current_step > 0 and current_step >= max_s - 3:
                 messages.append(HumanMessage(content=FINAL_ANSWER_INSTRUCTION))
 
             # Call LLM

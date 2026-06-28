@@ -46,13 +46,11 @@ class IncrementalEvalService:
         self.diff_service = DiffService()
         self.eval_service: Optional[EvaluationService] = None
 
-    async def _get_eval_service(self) -> EvaluationService:
-        if self.eval_service is None:
-            from app.services.evaluation_service import EvaluationService
+    async def _get_eval_service(self, db) -> EvaluationService:
+        """Create an EvaluationService with a valid database session."""
+        from app.services.evaluation_service import EvaluationService
 
-            # Create with a session bound to the async_session_factory
-            self.eval_service = EvaluationService(db=None)  # type: ignore[arg-type]
-        return self.eval_service
+        return EvaluationService(db=db)
 
     async def incremental_evaluate(
         self,
