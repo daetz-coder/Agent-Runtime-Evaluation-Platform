@@ -20,7 +20,7 @@ SDK 已独立为 `sdk/` 包，外部项目只需 `pip install httpx langchain-co
 graph = build_graph()
 
 # 替换为 ↓  一行代码接入
-from agent_eval_sdk import instrument_langgraph
+from sdk import instrument_langgraph
 graph = instrument_langgraph(build_graph())
 
 # 后续使用完全相同
@@ -44,7 +44,7 @@ result = await graph.ainvoke(initial_state)
 llm = ChatZhipuAI(...)
 
 # 替换为 ↓
-from agent_eval_sdk import create_proxy_llm
+from sdk import create_proxy_llm
 llm = create_proxy_llm(ChatZhipuAI(...))
 
 # 后续使用完全相同
@@ -63,7 +63,7 @@ response = llm.invoke("Hello")
 适用于需要更细粒度控制的场景。
 
 ```python
-from agent_eval_sdk import create_callback_handler
+from sdk import create_callback_handler
 
 # 创建 handler
 handler = create_callback_handler()
@@ -112,7 +112,7 @@ graph = instrument_langgraph(build_graph())
 
 ```python
 # 在创建 LLM 时
-from agent_eval_sdk import create_proxy_llm
+from sdk import create_proxy_llm
 
 llm = create_proxy_llm(ChatZhipuAI(...))
 ```
@@ -138,6 +138,7 @@ python your_agent.py
 | **工具使用** | 工具调用是否准确 |
 | **记忆保持** | 是否记住关键信息 |
 | **重规划** | 是否需要重新规划 |
+| **检索质量** | RAG 检索的相关性和准确性 |
 
 ---
 
@@ -189,7 +190,7 @@ result = await graph.compile().ainvoke(initial_state)
 
 ```python
 from langchain_community.chat_models import ChatZhipuAI
-from agent_eval_sdk import create_proxy_llm
+from sdk import create_proxy_llm
 
 # 原来的代码
 # llm = ChatZhipuAI(...)
@@ -267,4 +268,4 @@ A: **支持所有 LangChain 系框架**，包括 LangGraph、LangChain Agent 等
 
 - [架构设计](docs/architecture.md)
 - [API 文档](docs/api.md)
-- [评估器说明](app/evaluators/README.md)
+- [评估器说明](app/evaluators/)
