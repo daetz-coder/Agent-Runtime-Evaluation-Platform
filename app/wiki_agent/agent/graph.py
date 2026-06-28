@@ -475,10 +475,10 @@ async def run_chat_stream(
             extraction = _extraction_from_result(result, thread_id)
             if extraction:
                 await queue.put({"type": "extraction", "data": extraction})
-            finish_session(auto_run=True)
+            await finish_session(auto_run=True)
             await queue.put({"type": "_done", "result": result})
         except Exception as e:
-            finish_session(auto_run=False)
+            await finish_session(auto_run=False)
             await queue.put({"type": "error", "message": str(e)})
         finally:
             await queue.put(None)
@@ -541,9 +541,9 @@ async def run_chat_invoke(
     try:
         result = await graph.ainvoke(initial_state, config)
     except Exception:
-        finish_session(auto_run=False)
+        await finish_session(auto_run=False)
         raise
-    finish_session(auto_run=True)
+    await finish_session(auto_run=True)
     return {
         "content": result.get("ai_response", ""),
         "wiki_text": result.get("wiki_text"),
@@ -593,9 +593,9 @@ async def resume_and_execute(
     try:
         result = await graph.ainvoke(Command(resume=confirm), config)
     except Exception:
-        finish_session(auto_run=False)
+        await finish_session(auto_run=False)
         raise
-    finish_session(auto_run=True)
+    await finish_session(auto_run=True)
 
     action_result = result.get("action_result")
     decision = result.get("decision", {})

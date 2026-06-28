@@ -18,6 +18,8 @@ import os
 import threading
 import time
 import uuid
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -127,10 +129,25 @@ class _BoundedSet:
         self._od.clear()
 
 
+@dataclass
+class _CollectorSession:
+    """Per-request collector state (isolated via ContextVar)."""
+
+    task_id: Optional[str] = None
+    remote_task_created: bool = False
+    step_counter: int = 0
+    steps: List[Dict[str, Any]] = field(default_factory=list)
+    seen_events: _BoundedSet = field(default_factory=lambda: _BoundedSet(max_size=5000))
+    eval_triggered: bool = False
+
+
+_collector_session: ContextVar[Optional[_CollectorSession]] = ContextVar("_collector_session", default=None)
+
+
 class TrajectoryCollector:
     """线程安全轨迹收集器。
 
-    单例模式，通过 get_collector() 获取。
+    单例 HTTP 客户端 + ContextVar 会话隔离，避免并发 Wiki 对话互相覆盖 task_id。
     支持 reset() 重置状态和 close() 释放资源。
     """
 
@@ -154,22 +171,30 @@ class TrajectoryCollector:
             return
         self._initialized = True
 
-        self._task_id: Optional[str] = None
-        self._remote_task_created = False
-        self._step_counter = 0
-        self._steps: List[Dict[str, Any]] = []
         self._buffer_lock = threading.Lock()
         self._flush_lock = threading.Lock()
-        self._seen_events = _BoundedSet(max_size=5000)
 
         self._enabled = _env_bool("EVAL_ENABLED", True)
         self._api_base = _env_str("EVAL_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
         self._api_key = _env_str("EVAL_API_KEY", "")
         self._batch_size = _env_int("EVAL_BATCH_SIZE", 10)
+        self._inprocess = _env_bool("EVAL_INPROCESS", True)
 
         import httpx
 
         self._client: Optional[httpx.Client] = None
+
+    def _session(self) -> _CollectorSession:
+        session = _collector_session.get()
+        if session is None:
+            session = _CollectorSession()
+            _collector_session.set(session)
+        return session
+
+    def _new_session(self) -> _CollectorSession:
+        session = _CollectorSession()
+        _collector_session.set(session)
+        return session
 
     @property
     def enabled(self) -> bool:
@@ -177,18 +202,24 @@ class TrajectoryCollector:
 
     @property
     def task_id(self) -> Optional[str]:
-        return self._task_id
+        return self._session().task_id
+
+    def use_inprocess(self) -> bool:
+        """Use direct DB writes instead of HTTP when embedded in the same platform."""
+        if not self._inprocess or not self._enabled:
+            return False
+        base = self._api_base.rstrip("/")
+        return base in (
+            "http://127.0.0.1:8000",
+            "http://localhost:8000",
+        ) or base.startswith("http://127.0.0.1:") or base.startswith("http://localhost:")
 
     # ── 生命周期管理 ──
 
     def reset(self) -> None:
-        """重置收集器状态（保留单例，清空任务数据）。"""
+        """重置当前上下文中的收集器状态。"""
         with self._buffer_lock:
-            self._task_id = None
-            self._remote_task_created = False
-            self._step_counter = 0
-            self._steps = []
-            self._seen_events.clear()
+            _collector_session.set(_CollectorSession())
 
     def close(self) -> None:
         """关闭 HTTP 客户端，释放资源。"""
@@ -211,25 +242,28 @@ class TrajectoryCollector:
 
     def start(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
         """创建评估任务，返回 task_id。"""
-        self._task_id = str(uuid.uuid4())
-        self._remote_task_created = False
-        self._step_counter = 0
-        self._steps = []
-        self._seen_events.clear()
+        session = self._new_session()
+        session.task_id = str(uuid.uuid4())
+        session.remote_task_created = False
+        session.step_counter = 0
+        session.steps = []
+        session.seen_events.clear()
+        session.eval_triggered = False
 
         if not self._enabled:
-            return self._task_id
+            return session.task_id
 
         try:
             r = self._http_with_retry(
                 "POST",
                 f"{self._api_base}/api/v1/tasks/",
-                json={"id": self._task_id, "goal": goal, "context": _short(context or {})},
+                json={"id": session.task_id, "goal": goal, "context": _short(context or {})},
                 timeout=30.0,
+                idempotent=True,
             )
             if r is not None:
-                self._task_id = r.json()["id"]
-                self._remote_task_created = True
+                session.task_id = r.json()["id"]
+                session.remote_task_created = True
             else:
                 logger.warning(
                     "Failed to create remote task (platform at %s unreachable). "
@@ -243,36 +277,92 @@ class TrajectoryCollector:
             ActionType.PLAN,
             {"goal": goal, "context": _short(context or {})},
         )
-        return self._task_id
+        return session.task_id
+
+    async def start_async(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """Async start — uses in-process DB when embedded (no HTTP loopback)."""
+        if not self.use_inprocess():
+            return self.start(goal, context)
+
+        session = self._new_session()
+        session.task_id = str(uuid.uuid4())
+        session.remote_task_created = False
+        session.eval_triggered = False
+
+        if not self._enabled:
+            return session.task_id
+
+        from app.collectors.inprocess_transport import create_task_record
+
+        session.task_id = await create_task_record(session.task_id, goal, context)
+        session.remote_task_created = True
+
+        self.record(
+            ActionType.PLAN,
+            {"goal": goal, "context": _short(context or {})},
+        )
+        return session.task_id
 
     def finish(self, *, auto_run: bool = False) -> Optional[str]:
         """结束任务，flush 轨迹，可选触发评估。"""
-        if not self._task_id:
+        session = self._session()
+        if not session.task_id:
             return None
         self.record(ActionType.THINK, {"thought": "Run finished"})
         self._flush(block=True)
 
         # 更新状态为 completed
-        if self._remote_task_created:
+        if session.remote_task_created:
             self.update_task(status="completed")
 
-        if auto_run and self._remote_task_created:
+        if auto_run and session.remote_task_created and not session.eval_triggered:
             try:
                 r = self._http_with_retry(
                     "POST",
                     f"{self._api_base}/api/v1/evaluations/",
-                    json={"task_id": self._task_id},
+                    json={"task_id": session.task_id},
+                    timeout=30.0,
+                    idempotent=True,
                 )
-                if r is None:
-                    logger.warning("Failed to trigger evaluation for task %s", self._task_id)
+                if r is not None:
+                    session.eval_triggered = True
+                else:
+                    logger.warning("Failed to trigger evaluation for task %s", session.task_id)
             except Exception as exc:
                 logger.warning("Evaluation trigger failed: %s", exc)
-        return self._task_id
+        return session.task_id
+
+    async def finish_async(self, *, auto_run: bool = False) -> Optional[str]:
+        """Async finish — in-process DB flush avoids HTTP self-deadlock."""
+        session = self._session()
+        if not session.task_id:
+            return None
+        self.record(ActionType.THINK, {"thought": "Run finished"})
+
+        if self.use_inprocess() and session.remote_task_created:
+            from app.collectors.inprocess_transport import persist_collector_session
+
+            with self._buffer_lock:
+                steps_to_send = list(session.steps)
+                session.steps = []
+
+            await persist_collector_session(
+                session.task_id,
+                steps_to_send,
+                auto_run=auto_run and not session.eval_triggered,
+            )
+            if auto_run:
+                session.eval_triggered = True
+            return session.task_id
+
+        return self.finish(auto_run=auto_run)
 
     def attach(self, task_id: str) -> None:
         """Bind to an existing remote task without POST /tasks (reuse for confirm/resume)."""
-        self._task_id = task_id
-        self._remote_task_created = True
+        session = self._session()
+        session.task_id = task_id
+        session.remote_task_created = True
+        session.eval_triggered = False
 
     def update_task(
         self,
@@ -285,7 +375,8 @@ class TrajectoryCollector:
 
         可更新 goal、context、status。返回是否成功。
         """
-        if not self._task_id or not self._remote_task_created:
+        session = self._session()
+        if not session.task_id or not session.remote_task_created:
             return False
 
         payload: Dict[str, Any] = {}
@@ -302,7 +393,7 @@ class TrajectoryCollector:
         try:
             r = self._http_with_retry(
                 "PUT",
-                f"{self._api_base}/api/v1/tasks/{self._task_id}",
+                f"{self._api_base}/api/v1/tasks/{session.task_id}",
                 json=payload,
             )
             return r is not None
@@ -320,28 +411,36 @@ class TrajectoryCollector:
         *,
         dedupe_key: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        if not self._task_id or not self._enabled:
+        session = self._session()
+        if not session.task_id or not self._enabled:
             return None
         if dedupe_key:
             key = f"{action_type}:{dedupe_key}"
-            if key in self._seen_events:
+            if key in session.seen_events:
                 return None
-            self._seen_events.add(key)
+            session.seen_events.add(key)
 
         with self._buffer_lock:
-            self._step_counter += 1
+            session.step_counter += 1
             step = {
-                "step_number": self._step_counter,
+                "step_number": session.step_counter,
                 "action_type": action_type,
                 "action_detail": _short(action_detail),
                 "observation": _observation_text(observation, 4000),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            self._steps.append(step)
+            session.steps.append(step)
 
-            if len(self._steps) >= self._batch_size:
-                t = threading.Thread(target=self._flush, daemon=True)
-                t.start()
+            if len(session.steps) >= self._batch_size and not self.use_inprocess():
+                steps_snapshot = list(session.steps)
+                session.steps = []
+                task_id = session.task_id
+                remote = session.remote_task_created
+                threading.Thread(
+                    target=self._flush_steps,
+                    args=(task_id, remote, steps_snapshot),
+                    daemon=True,
+                ).start()
 
             return step
 
@@ -573,7 +672,7 @@ class TrajectoryCollector:
 
     def get_steps(self) -> List[Dict[str, Any]]:
         with self._buffer_lock:
-            return list(self._steps)
+            return list(self._session().steps)
 
     # ── 内部方法 ──
 
@@ -584,8 +683,12 @@ class TrajectoryCollector:
         *,
         json: Any = None,
         timeout: float = 10.0,
+        idempotent: bool = False,
     ) -> Any:
-        """带指数退避重试的 HTTP 请求。失败返回 None。"""
+        """带指数退避重试的 HTTP 请求。失败返回 None。
+
+        配合服务端幂等（client task id / 轨迹 step 去重 / 评估 upsert）安全重试。
+        """
         import httpx
 
         last_exc: Optional[Exception] = None
@@ -602,6 +705,8 @@ class TrajectoryCollector:
                 logger.debug("HTTP %s %s timeout (attempt %d/%d)", method, url, attempt + 1, self._MAX_RETRIES)
             except httpx.HTTPStatusError as exc:
                 last_exc = exc
+                if idempotent and exc.response.status_code in (200, 201, 409):
+                    return exc.response
                 logger.debug(
                     "HTTP %s %s returned %d (attempt %d/%d)",
                     method,
@@ -621,32 +726,51 @@ class TrajectoryCollector:
         logger.warning("HTTP %s %s failed after %d retries: %s", method, url, self._MAX_RETRIES, last_exc)
         return None
 
+    def _flush_steps(
+        self,
+        task_id: Optional[str],
+        remote_created: bool,
+        steps_to_send: List[Dict[str, Any]],
+    ) -> None:
+        """Upload trajectory steps (may run in a background thread)."""
+        if not steps_to_send or not remote_created or not task_id:
+            return
+
+        r = self._http_with_retry(
+            "POST",
+            f"{self._api_base}/api/v1/tasks/{task_id}/trajectory",
+            json=steps_to_send,
+            timeout=30.0,
+            idempotent=True,
+        )
+        if r is None:
+            logger.warning("Trajectory flush failed, %d steps re-buffered", len(steps_to_send))
+            with self._buffer_lock:
+                session = self._session()
+                if session.task_id == task_id:
+                    session.steps = steps_to_send + session.steps
+
     def _flush(self, block: bool = False) -> None:
+        if self.use_inprocess():
+            return
         if not self._flush_lock.acquire(blocking=block):
             return
         try:
+            session = self._session()
             with self._buffer_lock:
-                if not self._steps:
+                if not session.steps:
                     return
-                steps_to_send = list(self._steps)
-                self._steps = []
+                steps_to_send = list(session.steps)
+                session.steps = []
+                task_id = session.task_id
+                remote = session.remote_task_created
 
-            if not self._remote_task_created or not self._task_id:
-                # 远端未创建，保留在本地缓冲
+            if not remote or not task_id:
                 with self._buffer_lock:
-                    self._steps = steps_to_send + self._steps
+                    session.steps = steps_to_send + session.steps
                 return
 
-            r = self._http_with_retry(
-                "POST",
-                f"{self._api_base}/api/v1/tasks/{self._task_id}/trajectory",
-                json=steps_to_send,
-            )
-            if r is None:
-                # 上传失败，回退缓冲
-                logger.warning("Trajectory flush failed, %d steps re-buffered", len(steps_to_send))
-                with self._buffer_lock:
-                    self._steps = steps_to_send + self._steps
+            self._flush_steps(task_id, remote, steps_to_send)
         finally:
             self._flush_lock.release()
 
@@ -667,4 +791,5 @@ def get_collector() -> TrajectoryCollector:
 
 def reset_collector() -> None:
     """Reset collector state and destroy singleton (for tests)."""
+    _collector_session.set(_CollectorSession())
     TrajectoryCollector._reset_singleton()

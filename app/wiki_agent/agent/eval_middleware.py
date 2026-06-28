@@ -49,7 +49,10 @@ async def start_session(
         **extra_context,
     }
 
-    task_id = collector.start(goal, context)
+    if collector.use_inprocess():
+        task_id = await collector.start_async(goal, context)
+    else:
+        task_id = collector.start(goal, context)
 
     if session_id and task_id:
         await session_store.set_active_eval_task_id(session_id, task_id)
@@ -57,9 +60,12 @@ async def start_session(
     return task_id
 
 
-def finish_session(auto_run: bool = True) -> str | None:
+async def finish_session(auto_run: bool = True) -> str | None:
     """结束评估会话，flush 轨迹，可选触发评估。"""
-    return get_collector().finish(auto_run=auto_run)
+    collector = get_collector()
+    if collector.use_inprocess():
+        return await collector.finish_async(auto_run=auto_run)
+    return collector.finish(auto_run=auto_run)
 
 
 # ── 语义事件记录（SDK 无法自动采集的部分）─────────────────

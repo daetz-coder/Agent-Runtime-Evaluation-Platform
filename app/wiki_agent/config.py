@@ -41,6 +41,7 @@ class WikiAgentSettings(BaseSettings):
     # Runtime evaluation platform (same process after integration)
     EVAL_ENABLED: bool = True
     EVAL_API_BASE_URL: str = "http://127.0.0.1:8000"
+    EVAL_INPROCESS: bool = True
     EVAL_AUTO_RUN: bool = False
     EVAL_BATCH_SIZE: int = 8
 
