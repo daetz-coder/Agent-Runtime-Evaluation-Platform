@@ -34,9 +34,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Create non-root user for execution (security)
 RUN useradd -m -u 1000 sandbox
 
+# Create workspace directory for Agent Runtime
+RUN mkdir -p /workspace && chmod 777 /workspace
+
+# Install additional Python packages commonly used by agents
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    matplotlib \
+    scikit-learn \
+    openpyxl
+
 # Switch to non-root user
 USER sandbox
-WORKDIR /tmp
+WORKDIR /workspace
 
 # Container will sleep until code is injected via exec_run
 CMD ["sleep", "infinity"]

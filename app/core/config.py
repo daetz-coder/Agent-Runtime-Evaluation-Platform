@@ -20,8 +20,11 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _ensure_secret_key(self):
         if not self.SECRET_KEY:
-            import secrets
-            self.SECRET_KEY = secrets.token_hex(32)  # 64 hex chars = 32 bytes
+            if self.APP_ENV == "development":
+                self.SECRET_KEY = "dev-insecure-secret-change-in-production"
+            else:
+                import secrets
+                self.SECRET_KEY = secrets.token_hex(32)
         return self
 
     # Server
@@ -101,6 +104,23 @@ class Settings(BaseSettings):
     SANDBOX_OUTPUT_LIMIT: int = 10_240_000   # 10 MB
     SANDBOX_ACQUIRE_TIMEOUT: float = 10.0    # seconds to wait for pool
     SANDBOX_CACHE_TTL: int = 86400           # 24h cache for identical executions
+
+    # Agent Runtime (Agent in Sandbox)
+    AGENT_RUNTIME_ENABLED: bool = True
+    AGENT_MAX_STEPS: int = 20
+    AGENT_TIMEOUT: int = 300                 # 5 minutes total agent timeout
+
+    # Sandbox Session (for Agent Runtime)
+    SANDBOX_SESSION_POOL_SIZE: int = 3
+    SANDBOX_SESSION_TIMEOUT: int = 600       # 10 minutes per container session
+    SANDBOX_WORKSPACE_SIZE_MB: int = 512     # /workspace tmpfs size
+    SANDBOX_TOOL_TIMEOUT: int = 60           # timeout per tool execution (seconds)
+
+    # Agent Default Tools
+    AGENT_DEFAULT_TOOLS: List[str] = [
+        "python_execute", "bash_execute",
+        "file_read", "file_write", "file_list",
+    ]
 
     model_config = SettingsConfigDict(
         env_file=".env",
