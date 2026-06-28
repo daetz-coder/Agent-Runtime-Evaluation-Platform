@@ -20,9 +20,14 @@ from app.models.schemas import (
     EvaluationListItem,
     EvaluationRequest,
     EvaluationResponse,
+    IncrementalEvalRequest,
+    IncrementalEvalResponse,
+    JudgeRawData,
+    ReplayResponse,
     SandboxEvalRequest,
     SandboxEvalResponse,
     StreamEvaluationRequest,
+    TrajectoryDiffResponse,
     TrajectoryStep,
 )
 from app.services.evaluation_service import EvaluationService
@@ -857,3 +862,244 @@ async def delete_evaluation(
         raise HTTPException(status_code=404, detail="Evaluation not found")
 
     return {"message": "Evaluation deleted", "evaluation_id": evaluation_id}
+
+
+# ============== Replay Debugger ==============
+
+
+@router.get("/{evaluation_id}/replay", response_model=ReplayResponse)
+async def get_evaluation_replay(
+    evaluation_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """
+    Get step-by-step replay data for an evaluation.
+
+    Returns each trajectory step with LLM raw prompt/response,
+    enabling the frontend replay debugger.
+    """
+    require_role(ctx, WorkspaceRole.VIEWER)
+    from app.db.models import Evaluation
+    from app.services.replay_service import ReplayService
+
+    evaluation = await db.get(Evaluation, evaluation_id)
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+
+    # Fetch trajectory
+    from app.db.models import AgentTask, AgentTrajectory
+
+    task = await db.get(AgentTask, evaluation.task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    result = await db.execute(
+        select(AgentTrajectory).where(AgentTrajectory.task_id == task.id).order_by(AgentTrajectory.step_number)
+    )
+    steps = result.scalars().all()
+    trajectory = [
+        {
+            "step_number": s.step_number,
+            "action_type": s.action_type,
+            "action_detail": s.action_detail,
+            "observation": s.observation,
+            "timestamp": s.timestamp.isoformat() if s.timestamp else None,
+        }
+        for s in steps
+    ]
+
+    service = ReplayService()
+    return await service.get_replay(
+        evaluation=evaluation,
+        trajectory=trajectory,
+        goal=task.goal,
+    )
+
+
+# ============== Judge Transparency ==============
+
+
+@router.get("/{evaluation_id}/judge-raw", response_model=Dict[str, JudgeRawData])
+@router.get("/{evaluation_id}/judge-raw/{dimension}", response_model=Dict[str, JudgeRawData])
+async def get_evaluation_judge_raw(
+    evaluation_id: str,
+    dimension: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """
+    Get raw judge LLM prompt and response for evaluation dimensions.
+
+    - **dimension**: Optional — one of planning/tactical/tool_use/memory/replan/retrieval.
+      Omit to get all dimensions with available judge raw data.
+    """
+    require_role(ctx, WorkspaceRole.VIEWER)
+    from app.db.models import Evaluation
+    from app.services.judge_service import JudgeService
+
+    evaluation = await db.get(Evaluation, evaluation_id)
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+
+    service = JudgeService()
+    return await service.get_judge_raw(evaluation, dimension=dimension)
+
+
+# ============== Trajectory Diff ==============
+
+
+@router.get("/diff", response_model=TrajectoryDiffResponse)
+async def compare_evaluations(
+    base_evaluation_id: str,
+    head_evaluation_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """
+    Compare trajectories between two evaluations.
+
+    Returns step-by-step diff showing added/removed/changed steps.
+    Useful for understanding what changed between two agent runs.
+    """
+    require_role(ctx, WorkspaceRole.VIEWER)
+    from app.db.models import Evaluation
+    from app.services.diff_service import DiffService
+
+    service = DiffService()
+
+    base_eval = await db.get(Evaluation, base_evaluation_id)
+    head_eval = await db.get(Evaluation, head_evaluation_id)
+
+    if not base_eval or not head_eval:
+        raise HTTPException(status_code=404, detail="One or both evaluations not found")
+
+    from app.db.models import AgentTask, AgentTrajectory
+
+    base_task = await db.get(AgentTask, base_eval.task_id)
+    head_task = await db.get(AgentTask, head_eval.task_id)
+
+    async def _get_traj(task_id: str) -> list:
+        r = await db.execute(
+            select(AgentTrajectory).where(AgentTrajectory.task_id == task_id).order_by(AgentTrajectory.step_number)
+        )
+        return [
+            {
+                "step_number": s.step_number,
+                "action_type": s.action_type,
+                "action_detail": s.action_detail,
+                "observation": s.observation,
+                "timestamp": s.timestamp.isoformat() if s.timestamp else None,
+            }
+            for s in r.scalars().all()
+        ]
+
+    base_traj = await _get_traj(base_eval.task_id)
+    head_traj = await _get_traj(head_eval.task_id)
+
+    return await service.compare(
+        base_trajectory=base_traj,
+        head_trajectory=head_traj,
+        base_eval_id=base_evaluation_id,
+        head_eval_id=head_evaluation_id,
+        base_goal=base_task.goal if base_task else "",
+        head_goal=head_task.goal if head_task else "",
+    )
+
+
+# ============== Incremental Evaluation ==============
+
+
+@router.post("/incremental", response_model=IncrementalEvalResponse)
+async def incremental_evaluation(
+    request: IncrementalEvalRequest,
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """
+    Run an incremental evaluation — only re-evaluate dimensions affected by changes.
+
+    Compares the head task's trajectory against the base evaluation's trajectory,
+    detects what changed, and re-evaluates only the affected dimensions.
+    Unaffected dimension scores are reused from the base evaluation.
+
+    Use ``force_dimensions`` to override and force specific dimensions to re-evaluate.
+    """
+    require_role(ctx, WorkspaceRole.EVALUATOR)
+    from app.services.incremental_eval import IncrementalEvalService
+
+    service = IncrementalEvalService()
+    eval_id, reused_dims, re_eval_dims, diff = await service.incremental_evaluate(
+        base_eval_id=request.base_evaluation_id,
+        head_task_id=request.head_task_id,
+        force_dims=request.force_dimensions,
+        workspace_id=ctx.filter_workspace_id(),
+    )
+
+    # Fetch the result
+    from app.db.models import Evaluation
+
+    async with async_session_factory() as db:
+        new_eval = await db.get(Evaluation, eval_id)
+        if not new_eval:
+            raise HTTPException(status_code=500, detail="Incremental evaluation failed")
+
+        return IncrementalEvalResponse(
+            evaluation_id=eval_id,
+            task_id=request.head_task_id,
+            status=new_eval.status.value,
+            overall_score=new_eval.overall_score or 0.0,
+            reused_dimensions=reused_dims,
+            re_evaluated_dimensions=re_eval_dims,
+            changes_detected=[
+                f"Step {s.step_number}: {s.change_type}" for s in diff.steps if s.change_type != "unchanged"
+            ],
+            diff_summary=diff,
+        )
+
+
+# ============== Regression Detection ==============
+
+
+@router.get("/regression/check")
+async def check_regression(
+    base_evaluation_id: str,
+    head_evaluation_id: str,
+    include_diff: bool = True,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """
+    Compare two evaluations and detect score regressions.
+
+    Returns per-dimension score deltas, regression flags, and optionally
+    a trajectory diff explaining *why* the regression occurred.
+    Useful for CI gate: block PRs that degrade agent performance.
+    """
+    require_role(ctx, WorkspaceRole.VIEWER)
+    from app.services.regression_detection import RegressionDetectionService
+
+    service = RegressionDetectionService()
+    report = await service.compare(
+        base_eval_id=base_evaluation_id,
+        head_eval_id=head_evaluation_id,
+        include_diff=include_diff,
+    )
+
+    return {
+        "base_evaluation_id": report.base_evaluation_id,
+        "head_evaluation_id": report.head_evaluation_id,
+        "has_regression": report.has_regression,
+        "overall_change": report.overall_change,
+        "summary": report.summary,
+        "dimensions": {
+            dim: {
+                "base_score": dim_info.base_score,
+                "head_score": dim_info.head_score,
+                "delta": dim_info.delta,
+                "is_regression": dim_info.is_regression,
+                "threshold": dim_info.threshold,
+            }
+            for dim, dim_info in report.dimensions.items()
+        },
+        "diff": report.diff.model_dump() if report.diff else None,
+    }

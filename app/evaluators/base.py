@@ -35,6 +35,17 @@ class BaseEvaluator(ABC):
     def __init__(self, llm: Optional[BaseChatModel] = None):
         """Initialize evaluator with optional LLM override."""
         self.llm = llm or self._get_default_llm()
+        # Store raw judge data for the transparency panel
+        self._last_judge_raw: Optional[Dict[str, Any]] = None
+        self._judge_raw_history: List[Dict[str, Any]] = []
+
+    def get_last_judge_raw(self) -> Optional[Dict[str, Any]]:
+        """Return raw judge prompt/response from the most recent LLM call."""
+        return self._last_judge_raw
+
+    def get_judge_raw_history(self) -> List[Dict[str, Any]]:
+        """Return all judge raw entries from this evaluation."""
+        return list(self._judge_raw_history)
 
     def _get_default_llm(self) -> BaseChatModel:
         """Get default LLM based on configuration."""
@@ -290,16 +301,45 @@ class BaseEvaluator(ABC):
         prompt_hash = hash_prompt(prompt_text)
         cache_key = f"llm:{evaluator_name}:{prompt_hash}"
 
+        import time
+
+        start_time = time.monotonic()
+
         # Check cache
         cached = await cache_hgetall(cache_key)
         if cached and "response" in cached:
             logger.debug("LLM cache hit: %s", cache_key)
+            latency_ms = (time.monotonic() - start_time) * 1000
+            # Store judge raw for cache hits too
+            self._last_judge_raw = {
+                "prompt": prompt_text[:10000],
+                "response": cached["response"],
+                "model": cached.get("model", "unknown"),
+                "latency_ms": latency_ms,
+                "cache_key": cache_key,
+                "cached": True,
+            }
+            self._judge_raw_history.append(self._last_judge_raw)
             # Reconstruct a minimal response object with .content
             return _CachedLLMResponse(content=cached["response"])
 
         # Cache miss — call LLM
         logger.debug("LLM cache miss: %s", cache_key)
+        start_time = time.monotonic()
         response = await chain.ainvoke(inputs)
+        latency_ms = (time.monotonic() - start_time) * 1000
+
+        # Store raw judge data for transparency
+        model_name = getattr(self.llm, "model_name", "unknown")
+        self._last_judge_raw = {
+            "prompt": prompt_text[:10000],  # cap to avoid huge payloads
+            "response": response.content[:10000],
+            "model": model_name,
+            "latency_ms": latency_ms,
+            "cache_key": cache_key,
+            "cached": False,
+        }
+        self._judge_raw_history.append(self._last_judge_raw)
 
         # Store in cache
         await cache_hset(

@@ -277,3 +277,101 @@ class EvaluationSummary(BaseModel):
     score_distribution: Dict[str, List[float]]
     top_issues: List[str]
     recommendations: List[str]
+
+
+# ============== Replay Debugger Schemas ==============
+
+
+class LLMTraceInfo(BaseModel):
+    """LLM trace data for a single trajectory step."""
+
+    step_number: int
+    action_type: str
+    llm_prompt: str = Field(default="", description="Full prompt sent to the LLM before this action")
+    llm_response: str = Field(default="", description="Raw response from the LLM")
+    llm_model: str = Field(default="unknown", description="Model that generated the response")
+    latency_ms: float = Field(default=0, description="LLM call latency in milliseconds")
+
+
+class ReplayResponse(BaseModel):
+    """Replay debug data for an evaluation."""
+
+    task_id: str
+    evaluation_id: str
+    goal: str
+    step_count: int
+    steps: List[LLMTraceInfo]
+
+
+# ============== Judge Transparency Schemas ==============
+
+
+DIMENSION_NAMES = ["planning", "tactical", "tool_use", "memory", "replan", "retrieval"]
+
+
+class JudgeRawData(BaseModel):
+    """Raw judge LLM prompt and response for a single evaluation dimension."""
+
+    dimension: str
+    judge_prompt: str = Field(default="", description="Complete prompt sent to the judge LLM")
+    judge_response: str = Field(default="", description="Raw JSON response from the judge LLM")
+    judge_model: str = Field(default="unknown", description="Judge model name")
+    score: Optional[float] = Field(None, description="The final score for this dimension")
+    score_breakdown: Dict[str, float] = Field(default_factory=dict, description="Sub-dimension scores")
+
+
+# ============== Diff Schemas ==============
+
+
+class StepDiff(BaseModel):
+    """A diff between two trajectory steps."""
+
+    step_number: int
+    change_type: str = Field(
+        ...,
+        description="One of: added, removed, changed, unchanged",
+    )
+    before: Optional[Dict[str, Any]] = Field(None, description="The step detail in the base trajectory")
+    after: Optional[Dict[str, Any]] = Field(None, description="The step detail in the head trajectory")
+    field_changes: List[str] = Field(default_factory=list, description="Which fields changed")
+
+
+class TrajectoryDiffResponse(BaseModel):
+    """Complete diff between two evaluation trajectories."""
+
+    base_evaluation_id: str
+    head_evaluation_id: str
+    base_task_goal: str
+    head_task_goal: str
+    total_changes: int = 0
+    steps_added: int = 0
+    steps_removed: int = 0
+    steps_modified: int = 0
+    steps: List[StepDiff]
+
+
+# ============== Incremental Evaluation Schemas ==============
+
+
+class IncrementalEvalRequest(BaseModel):
+    """Request an incremental evaluation — only re-evaluate changed dimensions."""
+
+    base_evaluation_id: str = Field(..., description="Previous evaluation to compare against")
+    head_task_id: str = Field(..., description="New task/trajectory to evaluate")
+    force_dimensions: Optional[List[str]] = Field(
+        None,
+        description="Override: force re-evaluate these dimensions regardless of detected changes",
+    )
+
+
+class IncrementalEvalResponse(BaseModel):
+    """Response from incremental evaluation."""
+
+    evaluation_id: str
+    task_id: str
+    status: str
+    overall_score: float
+    reused_dimensions: List[str]
+    re_evaluated_dimensions: List[str]
+    changes_detected: List[str]
+    diff_summary: TrajectoryDiffResponse

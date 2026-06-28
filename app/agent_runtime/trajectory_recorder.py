@@ -41,11 +41,19 @@ class TrajectoryRecorder:
             action_detail=plan,
         )
 
-    def record_think(self, thought: str) -> None:
-        """Record a thinking/reasoning step."""
+    def record_think(self, thought: str, llm_trace: Optional[Dict[str, Any]] = None) -> None:
+        """Record a thinking/reasoning step.
+
+        Args:
+            thought: The LLM's reasoning text.
+            llm_trace: Optional dict with keys prompt, response, model, latency_ms
+                       for the Replay Debugger.
+        """
+        detail = {"thought": thought}
         self._record(
             action_type=ActionType.THINK,
-            action_detail={"thought": thought},
+            action_detail=detail,
+            llm_trace=llm_trace,
         )
 
     def record_tool_call(
@@ -141,9 +149,22 @@ class TrajectoryRecorder:
         action_type: str,
         action_detail: Dict[str, Any],
         observation: Optional[str] = None,
+        llm_trace: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Record a single trajectory step."""
+        """Record a single trajectory step.
+
+        If llm_trace is provided, it is injected into action_detail as
+        ``_llm_trace`` for the Replay Debugger.
+        """
         self._step_counter += 1
+        if llm_trace:
+            # Store LLM trace in action_detail for the replay debugger
+            action_detail["_llm_trace"] = {
+                "prompt": llm_trace.get("prompt", "")[:10000],
+                "response": llm_trace.get("response", "")[:10000],
+                "model": llm_trace.get("model", "unknown"),
+                "latency_ms": llm_trace.get("latency_ms", 0),
+            }
         step = {
             "step_number": self._step_counter,
             "action_type": action_type,

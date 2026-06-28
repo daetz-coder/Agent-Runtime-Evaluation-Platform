@@ -414,10 +414,15 @@ async def evaluate_parallel(
         try:
             ev = EvalClass()
             result = await ev.evaluate(goal=goal, trajectory=trajectory, context=context)
-            return dim_name, result
+            # Capture judge raw data for transparency
+            judge_raw = ev.get_judge_raw_history()
+            result_dict = result.model_dump() if hasattr(result, "model_dump") else result
+            if judge_raw:
+                result_dict["_judge_raw"] = judge_raw
+            return dim_name, result_dict, judge_raw
         except Exception as e:
             logger.error("Parallel eval [%s] failed: %s", dim_name, e)
-            return dim_name, None
+            return dim_name, None, None
 
     tasks = [
         _eval("planning", PlanningEvaluator),
@@ -431,11 +436,15 @@ async def evaluate_parallel(
 
     # 聚合
     scores = {}
-    for dim_name, result in results:
+    all_judge_raw: Dict[str, list] = {}
+    for dim_name, result, judge_raw in results:
         if result is not None:
-            scores[dim_name] = result.model_dump() if hasattr(result, "model_dump") else result
+            scores[dim_name] = result
+            if judge_raw:
+                all_judge_raw[dim_name] = judge_raw
         else:
             scores[dim_name] = {"overall": 0, "feedback": "Evaluation failed"}
+    scores["_judge_raw_all"] = all_judge_raw
 
     # 计算加权总分
     weights = {"planning": 0.20, "tactical": 0.20, "tool_use": 0.15, "memory": 0.15, "replan": 0.15, "retrieval": 0.15}

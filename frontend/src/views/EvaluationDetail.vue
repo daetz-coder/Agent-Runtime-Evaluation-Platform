@@ -183,6 +183,17 @@
           <div class="card-header">
             <span>执行轨迹分析</span>
             <el-tag type="info">共 {{ trajectory.length }} 步</el-tag>
+            <el-button
+              v-if="evaluation?.status === 'completed'"
+              size="small"
+              type="primary"
+              plain
+              :icon="VideoPlay"
+              style="margin-left: auto"
+              @click="showReplayPanel = !showReplayPanel"
+            >
+              {{ showReplayPanel ? '隐藏调试器' : 'Replay 调试器' }}
+            </el-button>
           </div>
         </template>
 
@@ -213,6 +224,119 @@
             </el-timeline-item>
           </el-timeline>
         </div>
+      </el-card>
+
+      <!-- Replay Debugger Panel -->
+      <el-card
+        v-if="showReplayPanel && replayData"
+        class="replay-card"
+        shadow="hover"
+      >
+        <template #header>
+          <div class="card-header">
+            <span><el-icon color="#409eff"><VideoPlay /></el-icon> Replay 调试器</span>
+            <el-tag type="info">{{ replayData.step_count }} 步</el-tag>
+          </div>
+        </template>
+
+        <div class="replay-timeline">
+          <el-timeline>
+            <el-timeline-item
+              v-for="step in replayData.steps"
+              :key="step.step_number"
+              :type="getReplayStepType(step.action_type)"
+              placement="top"
+            >
+              <template #default>
+                <div class="replay-step-header">
+                  <strong>步骤 {{ step.step_number }}</strong>
+                  <el-tag :type="getReplayStepType(step.action_type)" size="small">
+                    {{ step.action_type }}
+                  </el-tag>
+                  <el-tag v-if="step.llm_model !== 'unknown'" size="small" type="info">
+                    {{ step.llm_model }}
+                  </el-tag>
+                  <el-tag v-if="step.latency_ms > 0" size="small" type="success">
+                    {{ step.latency_ms.toFixed(0) }}ms
+                  </el-tag>
+                </div>
+
+                <el-collapse>
+                  <el-collapse-item title="LLM 原始 Prompt" name="prompt">
+                    <pre class="llm-raw-text">{{ step.llm_prompt || '(无记录)' }}</pre>
+                  </el-collapse-item>
+                  <el-collapse-item title="LLM 原始 Response" name="response">
+                    <pre class="llm-raw-text">{{ step.llm_response || '(无记录)' }}</pre>
+                  </el-collapse-item>
+                </el-collapse>
+              </template>
+            </el-timeline-item>
+          </el-timeline>
+        </div>
+      </el-card>
+
+      <!-- Judge Raw Panel -->
+      <el-card
+        v-if="evaluation?.status === 'completed' && !loading"
+        class="judge-raw-card"
+        shadow="hover"
+      >
+        <template #header>
+          <div class="card-header">
+            <span><el-icon color="#e6a23c"><View /></el-icon> Judge 透明度面板</span>
+            <el-radio-group v-model="selectedJudgeDim" size="small">
+              <el-radio-button v-for="dim in dimensions" :key="dim.key" :label="dim.key">
+                {{ dim.name }}
+              </el-radio-button>
+            </el-radio-group>
+            <el-button
+              size="small"
+              type="warning"
+              plain
+              @click="fetchJudgeRaw()"
+              :loading="judgeRawLoading"
+            >
+              查看原始 Judge 输出
+            </el-button>
+          </div>
+        </template>
+
+        <div v-if="judgeRawData" class="judge-raw-content">
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="维度">{{ selectedJudgeDim }}</el-descriptions-item>
+            <el-descriptions-item label="Judge 模型">{{ judgeRawData[selectedJudgeDim]?.judge_model || 'N/A' }}</el-descriptions-item>
+            <el-descriptions-item label="综合得分" :span="2">
+              <el-tag :type="getScoreTagType(judgeRawData[selectedJudgeDim]?.score)">
+                {{ judgeRawData[selectedJudgeDim]?.score ?? 'N/A' }}
+              </el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <div v-if="judgeRawData[selectedJudgeDim]?.score_breakdown" style="margin-top:12px">
+            <h4>子维度得分</h4>
+            <div v-for="(val, key) in judgeRawData[selectedJudgeDim]?.score_breakdown" :key="key" class="subscore-row">
+              <span class="subscore-label">{{ key }}</span>
+              <el-progress
+                :percentage="Number(val)"
+                :color="getScoreColor(Number(val))"
+                :stroke-width="8"
+                style="flex:1;margin:0 8px"
+              />
+              <span class="subscore-value">{{ val }}</span>
+            </div>
+          </div>
+
+          <el-collapse style="margin-top:16px">
+            <el-collapse-item title="Judge Prompt（完整）">
+              <pre class="llm-raw-text">{{ judgeRawData[selectedJudgeDim]?.judge_prompt || '(无记录)' }}</pre>
+            </el-collapse-item>
+            <el-collapse-item title="Judge Response（原始 JSON）">
+              <pre class="llm-raw-text">{{ judgeRawData[selectedJudgeDim]?.judge_response || '(无记录)' }}</pre>
+            </el-collapse-item>
+          </el-collapse>
+        </div>
+
+        <el-empty v-else-if="!judgeRawLoading" description="点击 "查看原始 Judge 输出" 按钮加载数据" />
       </el-card>
 
       <!-- Multi-model Consensus -->
@@ -306,7 +430,7 @@
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { ArrowLeft, Warning, CircleCheck, Loading } from '@element-plus/icons-vue'
+import { ArrowLeft, VideoPlay, View, Warning, CircleCheck, Loading } from '@element-plus/icons-vue'
 import { evaluationApi, taskApi, withSilent } from '@/api'
 import { connectEvaluationStream } from '@/utils/evaluationStream'
 import dayjs from 'dayjs'
@@ -326,6 +450,22 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let streamAbort: AbortController | null = null
 const consensusData = ref<any>(null)
 const consensusChart = ref<HTMLElement>()
+
+// Replay Debugger
+const showReplayPanel = ref(false)
+const replayData = ref<any>(null)
+const replayLoading = ref(false)
+
+// Judge Transparency
+const selectedJudgeDim = ref('planning')
+const judgeRawData = ref<Record<string, any> | null>(null)
+const judgeRawLoading = ref(false)
+
+// Diff
+const diffDialogVisible = ref(false)
+const diffBaseEvalId = ref('')
+const diffData = ref<any>(null)
+const diffLoading = ref(false)
 
 const streamStartedForId = ref<string | null>(null)
 
@@ -534,6 +674,46 @@ const formatTime = (time: string) => {
 const formatActionDetail = (detail: any) => {
   if (typeof detail === 'string') return detail
   return JSON.stringify(detail, null, 2)
+}
+
+// ── Replay Debugger methods ──
+
+const getReplayStepType = (type: string) => {
+  const map: Record<string, string> = {
+    plan: 'primary',
+    tool_call: 'success',
+    think: 'warning',
+    replan: 'danger',
+    failure: 'danger',
+    memory_write: 'info',
+    memory_read: 'info',
+  }
+  return map[type] || 'info'
+}
+
+// ── Judge Transparency methods ──
+
+const fetchJudgeRaw = async () => {
+  if (!evaluation.value?.id) return
+  judgeRawLoading.value = true
+  try {
+    judgeRawData.value = await evaluationApi.getJudgeRaw(
+      evaluation.value.id,
+      undefined,
+      withSilent(),
+    )
+  } catch {
+    judgeRawData.value = null
+  } finally {
+    judgeRawLoading.value = false
+  }
+}
+
+const getScoreTagType = (score: number | null | undefined) => {
+  if (score == null) return 'info'
+  if (score >= 80) return 'success'
+  if (score >= 60) return 'warning'
+  return 'danger'
 }
 
 // Initialize radar chart
@@ -766,6 +946,25 @@ watch(() => route.params.id, () => {
 
 watch(selectedDimension, () => {
   // Update radar chart highlight if needed
+})
+
+// Fetch replay data when panel is opened
+watch(showReplayPanel, async (show) => {
+  if (show && !replayData.value && evaluation.value?.id) {
+    replayLoading.value = true
+    try {
+      replayData.value = await evaluationApi.getReplay(evaluation.value.id, withSilent())
+    } catch {
+      replayData.value = null
+    } finally {
+      replayLoading.value = false
+    }
+  }
+})
+
+// Watch judge dimension changes to auto-refresh if data already loaded
+watch(selectedJudgeDim, () => {
+  // Data is already fetched — just display different dimension
 })
 </script>
 

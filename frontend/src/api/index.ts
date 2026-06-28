@@ -146,6 +146,32 @@ export const evaluationApi = {
   getConsensus(taskId: string, includeAll?: boolean) {
     return api.post('/evaluations/consensus', { task_id: taskId, include_all: includeAll || false })
   },
+
+  // ── Replay Debugger ──
+  getReplay(evalId: string, config?: ApiRequestConfig) {
+    return api.get(`/evaluations/${evalId}/replay`, config)
+  },
+
+  // ── Judge Transparency ──
+  getJudgeRaw(evalId: string, dimension?: string, config?: ApiRequestConfig) {
+    const path = dimension
+      ? `/evaluations/${evalId}/judge-raw/${dimension}`
+      : `/evaluations/${evalId}/judge-raw`
+    return api.get(path, config)
+  },
+
+  // ── Trajectory Diff ──
+  getDiff(baseEvalId: string, headEvalId: string, config?: ApiRequestConfig) {
+    return api.get('/evaluations/diff', {
+      params: { base_evaluation_id: baseEvalId, head_evaluation_id: headEvalId },
+      ...config,
+    })
+  },
+
+  // ── Incremental Evaluation ──
+  runIncremental(data: { base_evaluation_id: string; head_task_id: string; force_dimensions?: string[] }) {
+    return api.post('/evaluations/incremental', data)
+  },
 }
 
 // Report API

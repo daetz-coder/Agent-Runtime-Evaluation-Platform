@@ -101,10 +101,15 @@ def create_agent_graph(
             with tracer.start_as_current_span("llm_call") as llm_span:
                 llm_span.set_attribute("provider", getattr(llm, "_llm_type", "unknown"))
                 llm_span.set_attribute("model", getattr(llm, "model_name", "unknown"))
+                import time as _time
+
+                llm_start = _time.monotonic()
                 try:
                     response = await llm_with_tools.ainvoke(messages)
+                    llm_latency_ms = (_time.monotonic() - llm_start) * 1000
                     llm_span.set_attribute("response_length", len(response.content or ""))
                 except Exception as e:
+                    llm_latency_ms = (_time.monotonic() - llm_start) * 1000
                     llm_span.set_attribute("error", str(e))
                     logger.error("LLM call failed at step %d: %s", current_step, e)
                     recorder.record_failure(f"LLM call failed: {e}")
@@ -115,10 +120,21 @@ def create_agent_graph(
                         "current_step": current_step + 1,
                     }
 
-            # Record the LLM's thinking
+            # Build LLM trace for Replay Debugger
+            llm_model = getattr(llm, "model_name", "unknown")
+            # Serialize the prompt messages to a readable string
+            prompt_text = _serialize_messages(messages)
+            llm_trace = {
+                "prompt": prompt_text,
+                "response": response.content or "",
+                "model": llm_model,
+                "latency_ms": llm_latency_ms,
+            }
+
+            # Record the LLM's thinking with LLM trace
             ai_content = response.content or ""
             if ai_content:
-                recorder.record_think(ai_content[:2000])
+                recorder.record_think(ai_content[:2000], llm_trace=llm_trace)
 
             # Check for tool calls
             tool_calls = getattr(response, "tool_calls", None)
@@ -266,3 +282,21 @@ def _extract_final_answer(content: str) -> str:
         if idx != -1:
             return content[idx + len(prefix) :].strip()
     return content.strip()
+
+
+def _serialize_messages(messages: List[Any]) -> str:
+    """Serialize LangChain message list to a readable prompt string.
+
+    Used by the Replay Debugger to capture what the LLM saw.
+    Truncated to 10_000 chars to avoid oversized payloads.
+    """
+    parts = []
+    for msg in messages:
+        role = getattr(msg, "type", "unknown")
+        content = getattr(msg, "content", "") or ""
+        # Truncate each message's content
+        if isinstance(content, str) and len(content) > 2000:
+            content = content[:2000] + "... [truncated]"
+        parts.append(f"[{role}]\n{content}")
+    result = "\n\n---\n\n".join(parts)
+    return result[:10000]
