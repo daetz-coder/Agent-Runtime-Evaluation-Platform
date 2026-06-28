@@ -224,7 +224,8 @@ class TrajectoryCollector:
             r = self._http_with_retry(
                 "POST",
                 f"{self._api_base}/api/v1/tasks/",
-                json={"goal": goal, "context": _short(context or {})},
+                json={"id": self._task_id, "goal": goal, "context": _short(context or {})},
+                timeout=30.0,
             )
             if r is not None:
                 self._task_id = r.json()["id"]
@@ -267,6 +268,11 @@ class TrajectoryCollector:
             except Exception as exc:
                 logger.warning("Evaluation trigger failed: %s", exc)
         return self._task_id
+
+    def attach(self, task_id: str) -> None:
+        """Bind to an existing remote task without POST /tasks (reuse for confirm/resume)."""
+        self._task_id = task_id
+        self._remote_task_created = True
 
     def update_task(
         self,
