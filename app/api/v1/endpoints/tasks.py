@@ -4,13 +4,13 @@ Task management endpoints.
 
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.workspace import AuditAction, WorkspaceRole, add_audit_log
-from app.api.workspace_context import WorkspaceContext, get_workspace_context, require_role
+from app.api.workspace_context import WorkspaceContext, get_workspace_context, require_role, resolve_task_workspace_id
 from app.core.cache import cache_get, cache_set
 from app.core.config import settings
 from app.db.database import get_db
@@ -24,14 +24,15 @@ router = APIRouter()
 @router.post("/", response_model=TaskResponse, status_code=201)
 async def create_task(
     task_data: TaskCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """Create a new agent task."""
     require_role(ctx, WorkspaceRole.EVALUATOR)
-    ws_id = ctx.require_workspace() or None
+    ws_id = resolve_task_workspace_id(ctx, request)
     service = EvaluationService(db)
-    task = await service.create_task(task_data, workspace_id=ws_id or None)
+    task = await service.create_task(task_data, workspace_id=ws_id)
     if ws_id:
         await add_audit_log(db, ws_id, ctx.user_id, AuditAction.TASK_CREATED, "task", task.id)
     return task
@@ -110,14 +111,19 @@ async def list_tasks(
     )
 
 
-@router.post("/{task_id}/trajectory", status_code=201)
+@router.post("/{task_id}/trajectory", status_code=201, deprecated=True)
 async def add_trajectory(
     task_id: str,
     steps: List[TrajectoryStep],
     db: AsyncSession = Depends(get_db),
     ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
-    """Add trajectory steps to a task."""
+    """
+    [DEPRECATED] Add trajectory steps to a task.
+
+    Use POST /api/v1/evaluations/run instead, which runs the agent
+    inside a sandbox and captures the trajectory automatically.
+    """
     require_role(ctx, WorkspaceRole.EVALUATOR)
     service = EvaluationService(db)
     steps_data = [step.model_dump() for step in steps]
@@ -127,7 +133,7 @@ async def add_trajectory(
     ws_id = ctx.filter_workspace_id() or ctx.workspace_id
     if ws_id:
         await add_audit_log(db, ws_id, ctx.user_id, AuditAction.TRAJECTORY_ADDED, "task", task_id, {"steps": len(steps)})
-    return {"message": f"Added {len(steps)} trajectory steps", "task_id": task_id}
+    return {"message": f"Added {len(steps)} trajectory steps", "task_id": task_id, "deprecated": True}
 
 
 @router.put("/{task_id}", response_model=TaskResponse)

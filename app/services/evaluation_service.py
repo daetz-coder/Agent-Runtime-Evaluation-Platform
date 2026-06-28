@@ -2,6 +2,7 @@
 Evaluation service for orchestrating agent evaluations.
 """
 
+import logging
 import uuid
 import json
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.tracing import get_tracer
 from app.db.models import AgentTask, AgentTrajectory, Evaluation, TaskStatus, EvaluationStatus
 from app.models.schemas import (
     TaskCreate,
@@ -20,8 +22,12 @@ from app.models.schemas import (
     EvaluationResponse,
     EvaluationListItem, RetrievalScore,
     OverallEvaluation, PlanningScore, TacticalScore, ToolUseScore, MemoryScore, ReplanScore,
+    SandboxEvalRequest, SandboxEvalResponse, AgentRunInfo,
 )
 from app.graphs.evaluation_graph import create_evaluation_graph, EvaluationState
+
+logger = logging.getLogger(__name__)
+tracer = get_tracer(__name__)
 
 
 class EvaluationService:
@@ -33,6 +39,20 @@ class EvaluationService:
     @staticmethod
     def _dashboard_cache_key(workspace_id: Optional[str]) -> str:
         return f"dashboard:{workspace_id or 'all'}:counters"
+
+    async def _fail_evaluation(
+        self,
+        evaluation: Evaluation,
+        task: AgentTask,
+        previous_status: TaskStatus,
+        task_id: str,
+    ) -> None:
+        """Mark evaluation failed and restore task status."""
+        evaluation.status = EvaluationStatus.FAILED
+        task.status = previous_status
+        await self.db.flush()
+        from app.core.cache import cache_delete
+        await cache_delete(f"task:{task_id}")
 
     @staticmethod
     def _task_to_response(task: AgentTask) -> TaskResponse:
@@ -222,6 +242,7 @@ class EvaluationService:
             await self.db.flush()
 
         # Task transitions to RUNNING when evaluation actually starts
+        previous_status = task.status
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
         await self.db.flush()
@@ -242,52 +263,50 @@ class EvaluationService:
                 "tool_use_score": None,
                 "memory_score": None,
                 "replan_score": None,
+                "retrieval_score": None,
                 "overall_evaluation": None,
                 "error": None,
             }
 
             # Run evaluation graph (parallel if configured)
             use_parallel = getattr(settings, 'EVAL_PARALLEL', True)  # 默认并行
-            if use_parallel:
-                from app.graphs.evaluation_graph import evaluate_parallel
-                from app.models.schemas import TrajectoryStep as TS
+            with tracer.start_as_current_span("evaluation") as eval_span:
+                eval_span.set_attribute("parallel", use_parallel)
+                if use_parallel:
+                    from app.graphs.evaluation_graph import evaluate_parallel
+                    from app.models.schemas import TrajectoryStep as TS
 
-                steps = [TS(
-                    step_number=s["step_number"],
-                    action_type=s["action_type"],
-                    action_detail=s.get("action_detail", {}),
-                    observation=s.get("observation"),
-                    timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
-                ) for s in trajectory]
-                parallel_result = await evaluate_parallel(task.goal, steps, context or task.context)
-                overall_eval = self._build_overall_from_parallel(parallel_result)
-                overall = overall_eval.model_dump()
-                result = {"overall_evaluation": overall, "error": None}
-            else:
-                graph = create_evaluation_graph()
-                result = await graph.ainvoke(state)
-                overall = result.get("overall_evaluation", {})
+                    steps = [TS(
+                        step_number=s["step_number"],
+                        action_type=s["action_type"],
+                        action_detail=s.get("action_detail", {}),
+                        observation=s.get("observation"),
+                        timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                    ) for s in trajectory]
+                    parallel_result = await evaluate_parallel(task.goal, steps, context or task.context)
+                    overall_eval = self._build_overall_from_parallel(parallel_result)
+                    overall = overall_eval.model_dump()
+                    result = {"overall_evaluation": overall, "error": None}
+                else:
+                    graph = create_evaluation_graph()
+                    result = await graph.ainvoke(state)
+                    overall = result.get("overall_evaluation", {})
 
             # Check for errors
             if result.get("error"):
-                evaluation.status = EvaluationStatus.FAILED
-                await self.db.flush()
+                await self._fail_evaluation(evaluation, task, previous_status, task_id)
                 return None
 
             if not overall:
-                evaluation.status = EvaluationStatus.FAILED
-                await self.db.flush()
+                await self._fail_evaluation(evaluation, task, previous_status, task_id)
                 return None
 
             return await self._persist_evaluation_results(evaluation, task, overall)
 
-        except Exception as e:
-            import traceback
-            print(f"❌ Evaluation failed: {str(e)}")
-            print(traceback.format_exc())
-            evaluation.status = EvaluationStatus.FAILED
-            await self.db.flush()
-            raise e
+        except Exception:
+            logger.exception("Evaluation failed for task %s", task_id)
+            await self._fail_evaluation(evaluation, task, previous_status, task_id)
+            raise
 
     async def get_evaluation(
         self,
@@ -338,6 +357,143 @@ class EvaluationService:
             completed_at=evaluation.completed_at,
             evaluation=overall,
         )
+
+    # ── Agent in Sandbox ──────────────────────────────────────
+
+    async def run_sandbox_evaluation(
+        self,
+        request: SandboxEvalRequest,
+        workspace_id: Optional[str] = None,
+    ) -> SandboxEvalResponse:
+        """
+        Run a full sandbox-based agent evaluation.
+
+        Steps:
+        1. Create a task in the DB
+        2. Run AgentRunner in sandbox (LLM reasoning + tool execution)
+        3. Save captured trajectory to DB
+        4. Run 6 evaluators on the trajectory
+        5. Save evaluation results
+        6. Return SandboxEvalResponse
+        """
+        from app.agent_runtime.runner import AgentRunner
+
+        with tracer.start_as_current_span("sandbox_evaluation") as root_span:
+            root_span.set_attribute("goal", request.goal[:200])
+            root_span.set_attribute("model", request.model or settings.DEFAULT_LLM_MODEL)
+            root_span.set_attribute("provider", request.provider or settings.DEFAULT_LLM_PROVIDER)
+
+            # 1. Create task
+            with tracer.start_as_current_span("task_creation"):
+                task_data = TaskCreate(goal=request.goal, context=request.context)
+                task_response = await self.create_task(task_data, workspace_id=workspace_id)
+                task_id = task_response.id
+                root_span.set_attribute("task_id", task_id)
+
+            # Mark task as running
+            task_model = await self._get_task_model(task_id)
+            if task_model:
+                task_model.status = TaskStatus.RUNNING
+                task_model.started_at = datetime.now(timezone.utc)
+                await self.db.flush()
+
+            # 2. Run agent in sandbox
+            runner = AgentRunner()
+            agent_result = await runner.run(
+                goal=request.goal,
+                workspace_files=request.workspace_files,
+                tools=request.tools,
+                model=request.model,
+                provider=request.provider,
+                context=request.context,
+                max_steps=request.max_steps,
+                temperature=request.temperature,
+            )
+            root_span.set_attribute("agent_success", agent_result.success)
+            root_span.set_attribute("agent_steps", agent_result.steps_taken)
+
+            # 3. Save trajectory to DB
+            with tracer.start_as_current_span("trajectory_persist") as span:
+                trajectory_steps = agent_result.trajectory
+                span.set_attribute("step_count", len(trajectory_steps))
+                if trajectory_steps:
+                    await self.add_trajectory(task_id, trajectory_steps, workspace_id=workspace_id)
+
+            # 4. Create evaluation record
+            eval_id = str(uuid.uuid4())
+            evaluation = Evaluation(
+                id=eval_id,
+                task_id=task_id,
+                status=EvaluationStatus.IN_PROGRESS,
+                created_at=datetime.now(timezone.utc),
+            )
+            self.db.add(evaluation)
+            await self.db.flush()
+
+            # 5. Run evaluators on the captured trajectory
+            overall = None
+            if trajectory_steps and agent_result.success:
+                try:
+                    with tracer.start_as_current_span("evaluation") as eval_span:
+                        eval_span.set_attribute("evaluator_count", 6)
+                        eval_span.set_attribute("parallel", True)
+
+                        from app.graphs.evaluation_graph import evaluate_parallel
+                        from app.models.schemas import TrajectoryStep as TS
+
+                        steps = [
+                            TS(
+                                step_number=s["step_number"],
+                                action_type=s["action_type"],
+                                action_detail=s.get("action_detail", {}),
+                                observation=s.get("observation"),
+                                timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                            )
+                            for s in trajectory_steps
+                        ]
+
+                        parallel_result = await evaluate_parallel(
+                            request.goal, steps, request.context
+                        )
+                        overall_eval = self._build_overall_from_parallel(parallel_result)
+                        overall = overall_eval.model_dump()
+                        eval_span.set_attribute("overall_score", overall.get("overall_score", 0))
+                        evaluation_result = await self._persist_evaluation_results(
+                            evaluation, task_model, overall
+                        )
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error("Evaluation failed: %s", e, exc_info=True)
+                    evaluation.status = EvaluationStatus.FAILED
+                    await self.db.flush()
+            else:
+                # No trajectory or agent failed — mark evaluation as failed
+                evaluation.status = EvaluationStatus.FAILED
+                if task_model:
+                    task_model.status = TaskStatus.FAILED
+                    task_model.completed_at = datetime.now(timezone.utc)
+                await self.db.flush()
+
+            # Build response
+            agent_run_info = AgentRunInfo(
+                success=agent_result.success,
+                steps_taken=agent_result.steps_taken,
+                duration_ms=agent_result.duration_ms,
+                final_answer=agent_result.final_answer,
+                workspace_state=agent_result.workspace_state,
+                workspace_files=agent_result.workspace_files,
+                error=agent_result.error,
+            )
+
+            return SandboxEvalResponse(
+                task_id=task_id,
+                evaluation_id=eval_id,
+                status=evaluation.status.value,
+                agent_run=agent_run_info,
+                evaluation=OverallEvaluation(**overall) if overall else None,
+                created_at=evaluation.created_at,
+                completed_at=evaluation.completed_at,
+            )
 
     async def list_evaluations_with_count(
         self,

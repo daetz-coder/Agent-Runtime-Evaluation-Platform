@@ -51,9 +51,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     sandbox_ok = await init_sandbox()
     logger.info("Sandbox: %s", "ready" if sandbox_ok else "disabled")
 
+    # Initialize Agent Runtime session pool
+    from app.agent_runtime.sandbox.session_pool import init_session_pool
+    session_ok = await init_session_pool()
+    logger.info("Agent Runtime: %s", "ready" if session_ok else "disabled")
+
+    # Initialize OpenTelemetry tracing
+    from app.core.tracing import init_tracing
+    tracing_ok = init_tracing()
+    logger.info("Tracing: %s", "active" if tracing_ok else "disabled")
+
     yield
     logger.info("Shutting down...")
 
+    from app.core.tracing import shutdown_tracing
+    shutdown_tracing()
+    from app.agent_runtime.sandbox.session_pool import close_session_pool
+    await close_session_pool()
     from app.sandbox.executor import close_sandbox
     await close_sandbox()
     await close_redis()
@@ -68,7 +82,8 @@ def create_app() -> FastAPI:
         description="""
 ## Agent Runtime Evaluation Platform
 
-Evaluate the runtime quality of AI agents across 6 dimensions:
+Evaluate AI agents using **Agent in Sandbox** architecture — the platform runs
+agents inside Docker sandbox containers and evaluates them across 6 dimensions:
 
 1. **Planning Quality** - Coverage, ordering, granularity, completeness
 2. **Tactical Decisions** - Relevance, efficiency, correctness of next actions
@@ -77,12 +92,18 @@ Evaluate the runtime quality of AI agents across 6 dimensions:
 5. **Replanning** - Trigger appropriateness, adaptation quality, learning from failure
 6. **Retrieval Quality** - Relevance, evidence accuracy, coverage, hallucination detection
 
-### Features
+### How It Works
 
-- **LangGraph Integration**: Evaluation workflow orchestrated with LangGraph
-- **Async Processing**: Full async support for high-performance evaluation
-- **Detailed Analytics**: Comprehensive reports and dimension-specific insights
-- **RESTful API**: Clean, well-documented API endpoints
+1. Submit a goal via `POST /api/v1/evaluations/run`
+2. Platform launches an agent inside a sandbox container
+3. Agent reasons with LLM, executes tools (Python, Bash, file I/O) in the sandbox
+4. Full trajectory is captured automatically
+5. 6 evaluators score the agent's performance
+
+### Legacy Mode
+
+External agents can still submit trajectories via `POST /api/v1/tasks/{id}/trajectory`
+(deprecated) for evaluation.
         """,
         version="0.1.0",
         docs_url="/docs",

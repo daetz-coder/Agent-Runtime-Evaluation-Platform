@@ -92,6 +92,48 @@ class StreamEvaluationRequest(BaseModel):
     evaluation_id: Optional[str] = Field(None, description="Existing IN_PROGRESS evaluation to persist into")
 
 
+# ============== Agent Runtime (Sandbox) Schemas ==============
+
+class SandboxEvalRequest(BaseModel):
+    """Request schema for sandbox-based agent evaluation (Agent in Sandbox)."""
+    goal: str = Field(..., description="The goal/objective for the agent to achieve")
+    model: Optional[str] = Field(None, description="LLM model name (default: from config)")
+    provider: Optional[str] = Field(None, description="LLM provider: deepseek/openai/anthropic/zhipuai/qwen")
+    workspace_files: Optional[Dict[str, str]] = Field(
+        None,
+        description="Initial files for /workspace {relative_path: content}",
+    )
+    tools: Optional[List[str]] = Field(
+        None,
+        description="Allowed tools: python_execute, bash_execute, file_read, file_write, file_list",
+    )
+    max_steps: Optional[int] = Field(None, ge=1, le=100, description="Max agent steps (default: 20)")
+    context: Optional[Dict[str, Any]] = Field(None, description="Additional context for the agent")
+    temperature: float = Field(0.0, ge=0.0, le=2.0, description="LLM sampling temperature")
+
+
+class AgentRunInfo(BaseModel):
+    """Agent run metadata included in the sandbox evaluation response."""
+    success: bool
+    steps_taken: int
+    duration_ms: float
+    final_answer: str
+    workspace_state: Dict[str, Any] = Field(default_factory=dict)
+    workspace_files: Dict[str, str] = Field(default_factory=dict)
+    error: Optional[str] = None
+
+
+class SandboxEvalResponse(BaseModel):
+    """Response schema for sandbox-based agent evaluation."""
+    task_id: str
+    evaluation_id: str
+    status: str
+    agent_run: AgentRunInfo
+    evaluation: Optional[OverallEvaluation] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+
 class PlanningScore(BaseModel):
     """Planning evaluation score."""
     coverage: float = Field(..., ge=0, le=100, description="Coverage of key milestones")

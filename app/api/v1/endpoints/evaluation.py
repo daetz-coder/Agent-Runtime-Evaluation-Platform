@@ -15,7 +15,7 @@ from app.api.workspace import AuditAction, WorkspaceRole, add_audit_log
 from app.api.workspace_context import WorkspaceContext, get_workspace_context, require_role
 from app.db.database import get_db, async_session_factory
 from app.core.config import settings
-from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem, TrajectoryStep, StreamEvaluationRequest
+from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem, TrajectoryStep, StreamEvaluationRequest, SandboxEvalRequest, SandboxEvalResponse
 from app.services.evaluation_service import EvaluationService
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,201 @@ async def get_eval_settings():
         "parallel_enabled": settings.EVAL_PARALLEL,
         "auth_enabled": settings.AUTH_ENABLED,
         "webhook_configured": bool(settings.EVAL_WEBHOOK_URL),
+        "agent_runtime_enabled": settings.AGENT_RUNTIME_ENABLED,
+        "agent_default_tools": settings.AGENT_DEFAULT_TOOLS,
+        "sandbox_available": _is_sandbox_ready(),
     }
+
+
+def _is_sandbox_ready() -> bool:
+    """Check if both sandbox subsystems are available."""
+    from app.sandbox.executor import is_sandbox_available
+    from app.agent_runtime.sandbox.session_pool import is_session_pool_available
+    return is_sandbox_available() or is_session_pool_available()
+
+
+# ── Agent in Sandbox Endpoints ────────────────────────────────
+
+@router.post("/run", response_model=SandboxEvalResponse)
+async def run_sandbox_evaluation(
+    request: SandboxEvalRequest,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """
+    Run agent in sandbox and evaluate (Agent in Sandbox mode).
+
+    The platform creates a sandbox container, runs a built-in agent that:
+    - Reasons with an LLM (configurable model/provider)
+    - Executes tools inside the sandbox (python, bash, file operations)
+    - Captures full trajectory automatically
+
+    After the agent completes, the 6-dimension evaluation runs on the captured trajectory.
+
+    - **goal**: Task objective for the agent
+    - **model**: LLM model (default: from config)
+    - **provider**: LLM provider (deepseek/openai/anthropic/zhipuai/qwen)
+    - **workspace_files**: Initial files {path: content} for /workspace
+    - **tools**: Allowed tools list
+    - **max_steps**: Maximum agent steps (default: 20)
+    """
+    require_role(ctx, WorkspaceRole.EVALUATOR)
+    ws_filter = ctx.filter_workspace_id()
+
+    if not settings.AGENT_RUNTIME_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Agent runtime is disabled (AGENT_RUNTIME_ENABLED=false)",
+        )
+
+    service = EvaluationService(db)
+    result = await service.run_sandbox_evaluation(request, workspace_id=ws_filter)
+
+    ws_id = ws_filter or ctx.workspace_id
+    if ws_id:
+        await add_audit_log(
+            db, ws_id, ctx.user_id, AuditAction.EVAL_CREATED,
+            "evaluation", result.evaluation_id,
+            {"mode": "sandbox", "task_id": result.task_id},
+        )
+
+    await db.commit()
+    return result
+
+
+@router.post("/run/stream")
+async def run_sandbox_evaluation_stream(
+    request: SandboxEvalRequest,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """
+    SSE streaming sandbox evaluation — real-time agent steps + evaluation progress.
+
+    Events:
+    - agent_step: {step_number, action_type, detail}
+    - agent_done: {success, steps_taken, final_answer}
+    - eval_progress: {dimension, score, progress, total}
+    - result: {evaluation}
+    - error: {message}
+    - done
+    """
+    from sse_starlette.sse import EventSourceResponse
+    from app.agent_runtime.runner import AgentRunner
+    from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
+    require_role(ctx, WorkspaceRole.EVALUATOR)
+    ws_filter = ctx.filter_workspace_id()
+
+    if not settings.AGENT_RUNTIME_ENABLED:
+        raise HTTPException(status_code=503, detail="Agent runtime is disabled")
+
+    async def event_generator():
+        # Run agent and stream trajectory steps as they happen
+        service = EvaluationService(db)
+
+        # Create task first
+        from app.models.schemas import TaskCreate
+        task_data = TaskCreate(goal=request.goal, context=request.context)
+        task_response = await service.create_task(task_data, workspace_id=ws_filter)
+        task_id = task_response.id
+
+        yield {"event": "task_created", "data": json.dumps({"task_id": task_id})}
+
+        # Run agent (non-streaming for now — full result)
+        runner = AgentRunner()
+        agent_result = await runner.run(
+            goal=request.goal,
+            workspace_files=request.workspace_files,
+            tools=request.tools,
+            model=request.model,
+            provider=request.provider,
+            context=request.context,
+            max_steps=request.max_steps,
+            temperature=request.temperature,
+        )
+
+        # Stream trajectory steps
+        for step in agent_result.trajectory:
+            yield {"event": "agent_step", "data": json.dumps(step, default=str)}
+
+        yield {"event": "agent_done", "data": json.dumps({
+            "success": agent_result.success,
+            "steps_taken": agent_result.steps_taken,
+            "duration_ms": agent_result.duration_ms,
+            "final_answer": agent_result.final_answer[:500],
+        })}
+
+        # Save trajectory and run evaluation
+        if agent_result.trajectory:
+            await service.add_trajectory(task_id, agent_result.trajectory, workspace_id=ws_filter)
+
+        # Run evaluators with streaming progress
+        if agent_result.trajectory and agent_result.success:
+            from app.evaluators import (
+                PlanningEvaluator, TacticalEvaluator, ToolUseEvaluator,
+                MemoryEvaluator, ReplanEvaluator, RetrievalEvaluator,
+            )
+            from app.models.schemas import TrajectoryStep as TS
+
+            steps = [
+                TS(
+                    step_number=s["step_number"],
+                    action_type=s["action_type"],
+                    action_detail=s.get("action_detail", {}),
+                    observation=s.get("observation"),
+                    timestamp=s.get("timestamp"),
+                )
+                for s in agent_result.trajectory
+            ]
+
+            evaluators = [
+                ("planning", PlanningEvaluator),
+                ("tactical", TacticalEvaluator),
+                ("tool_use", ToolUseEvaluator),
+                ("memory", MemoryEvaluator),
+                ("replan", ReplanEvaluator),
+                ("retrieval", RetrievalEvaluator),
+            ]
+            total = len(evaluators)
+            dim_results = {}
+
+            for idx, (dim_name, EvalClass) in enumerate(evaluators, 1):
+                try:
+                    ev = EvalClass()
+                    r = await ev.evaluate(
+                        goal=request.goal, trajectory=steps, context=request.context
+                    )
+                    score = getattr(r, "overall", 0)
+                    dim_results[dim_name] = r.model_dump() if hasattr(r, "model_dump") else {"overall": score}
+                    yield {"event": "eval_progress", "data": json.dumps({
+                        "dimension": dim_name, "score": score,
+                        "progress": idx, "total": total,
+                    })}
+                except Exception as e:
+                    dim_results[dim_name] = {"overall": 0, "feedback": str(e)}
+                    yield {"event": "error", "data": json.dumps({
+                        "dimension": dim_name, "message": str(e),
+                    })}
+
+            # Compute overall score
+            weights = {
+                "planning": 0.20, "tactical": 0.20, "tool_use": 0.15,
+                "memory": 0.15, "replan": 0.15, "retrieval": 0.15,
+            }
+            score_values = {
+                d: (dim_results.get(d) or {}).get("overall", 0)
+                for d in weights
+            }
+            overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
+
+            yield {"event": "result", "data": json.dumps({
+                "scores": score_values, "overall": overall,
+            })}
+
+        yield {"event": "done", "data": "{}"}
+
+    return EventSourceResponse(event_generator())
 
 
 @router.get("/{evaluation_id}", response_model=EvaluationResponse)
@@ -336,6 +530,9 @@ async def evaluation_stream(
         if evaluation_id:
             eval_row = await db.get(Evaluation, evaluation_id)
             if eval_row and eval_row.status == EvaluationStatus.COMPLETED:
+                if eval_row.task_id != request.task_id:
+                    yield {"event": "error", "data": json.dumps({"message": "Evaluation not found for this task"})}
+                    return
                 async for msg in yield_completed_evaluation(eval_row):
                     yield msg
                 return
