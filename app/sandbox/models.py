@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class SandboxLanguage(str, Enum):
     """Supported sandbox execution languages."""
+
     PYTHON = "python"
     BASH = "bash"
     NODE = "node"

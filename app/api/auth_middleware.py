@@ -33,7 +33,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # 跳过公开路径
-        if request.url.path in _SKIP_PATHS or request.url.path.startswith("/docs") or request.url.path.startswith("/redoc"):
+        if (
+            request.url.path in _SKIP_PATHS
+            or request.url.path.startswith("/docs")
+            or request.url.path.startswith("/redoc")
+        ):
             return await call_next(request)
 
         # 认证未启用则放行

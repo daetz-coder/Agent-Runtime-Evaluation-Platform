@@ -11,7 +11,6 @@ Wiki-Agent 检索评估脚本
 """
 
 import sys
-import os
 from pathlib import Path
 
 # 确保能从项目根目录导入 app 包
@@ -19,7 +18,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from typing import List, Tuple
-
 
 # ══════════════════════════════════════════════════════════
 # 测试集：每个 (query, expected_doc_paths)
@@ -43,7 +41,6 @@ TEST_SET: List[Tuple[str, List[str]]] = [
         "项目开发分哪几步",
         ["知识汇总.md"],
     ),
-
     # ── LangChain / Agent 技术 ──
     (
         "bind_tools 第一次发送什么给 LLM",
@@ -57,7 +54,6 @@ TEST_SET: List[Tuple[str, List[str]]] = [
         "LangChain 结构化输出方法",
         ["notes/langchain-知识提取方法对比.md"],
     ),
-
     # ── Kubernetes ──
     (
         "Kubernetes 容器编排核心架构",
@@ -67,7 +63,6 @@ TEST_SET: List[Tuple[str, List[str]]] = [
         "K8S 的主要特点",
         ["notes/kubernetes-k8s.md", "development/tools/kubernetes-k8s-全面介绍.md"],
     ),
-
     # ── Ubuntu / Linux ──
     (
         "Ubuntu 20.04 和 18.04 版本区别",
@@ -77,7 +72,6 @@ TEST_SET: List[Tuple[str, List[str]]] = [
         "Ubuntu 系统介绍",
         ["notes/ubuntu系统全面介绍.md"],
     ),
-
     # ── Python ──
     (
         "Python 语言核心特点",
@@ -87,7 +81,6 @@ TEST_SET: List[Tuple[str, List[str]]] = [
         "Python 变量定义和基本语法",
         ["programming/python/python-基础知识.md"],
     ),
-
     # ── 开发工具 ──
     (
         "CRUD 同步机制中如何集成 ChromaDB",
@@ -97,7 +90,6 @@ TEST_SET: List[Tuple[str, List[str]]] = [
         "Git 常用命令",
         ["development/tools/git-常用命令.md"],
     ),
-
     # ── 软件测试 ──
     (
         "黑盒测试的方法和特点",
@@ -107,7 +99,6 @@ TEST_SET: List[Tuple[str, List[str]]] = [
         "什么是黑盒测试",
         ["software/testing/黑盒测试.md"],
     ),
-
     # ── 个人知识管理 ──
     (
         "个人 Wiki 知识库设计理念",
@@ -125,6 +116,7 @@ assert len(TEST_SET) == 20, f"Expected 20 test cases, got {len(TEST_SET)}"
 # ══════════════════════════════════════════════════════════
 # 评估指标
 # ══════════════════════════════════════════════════════════
+
 
 def hit_rate_at_k(results_paths: List[str], expected: List[str], k: int) -> bool:
     """Top-K 中是否包含至少一个预期文档。"""
@@ -144,6 +136,7 @@ def mean_reciprocal_rank(results_paths: List[str], expected: List[str]) -> float
 # 主流程
 # ══════════════════════════════════════════════════════════
 
+
 def main():
     print("=" * 72)
     print("  Wiki-Agent 检索评估 — 三种策略对比")
@@ -152,9 +145,9 @@ def main():
     # ── 导入搜索函数（延迟导入，避免影响测试集合加载） ──
     try:
         from app.wiki_agent.agent.tools.search_tools import (
+            hybrid_search,
             keyword_search,
             semantic_search,
-            hybrid_search,
         )
     except ImportError as e:
         print(f"\n❌ 导入搜索模块失败: {e}")
@@ -173,10 +166,7 @@ def main():
     }
 
     # ── 逐条评估 ──
-    results: dict[str, dict] = {
-        name: {"hits_1": 0, "hits_3": 0, "mrr": 0.0, "n": 0}
-        for name in strategies
-    }
+    results: dict[str, dict] = {name: {"hits_1": 0, "hits_3": 0, "mrr": 0.0, "n": 0} for name in strategies}
 
     print()
     for i, (query, expected) in enumerate(TEST_SET, 1):

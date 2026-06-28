@@ -90,10 +90,17 @@ dev = [
 [tool.ruff]
 target-version = "py311"
 line-length = 120
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]
 
-[tool.ruff.isort]
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = [
+    "E402",   # Module import not at top (intentional: env vars, logging setup)
+    "E501",   # Line too long
+    "F401",   # Unused import (re-exports in __init__.py)
+    "F841",   # Unused variable (common in try/except patterns)
+]
+
+[tool.ruff.lint.isort]
 known-first-party = ["app"]
 
 [tool.mypy]

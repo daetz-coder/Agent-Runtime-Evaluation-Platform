@@ -8,12 +8,11 @@ Evaluates the quality of next-action decisions:
 """
 
 from typing import Any, Dict, List, Optional
+
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
-from app.models.action_types import ActionType
-from app.models.schemas import TrajectoryStep, TacticalScore
-
+from app.models.schemas import TacticalScore, TrajectoryStep
 
 TACTICAL_EVALUATION_PROMPT = """You are an expert at evaluating AI agent tactical decisions.
 
@@ -110,12 +109,15 @@ class TacticalEvaluator(BaseEvaluator):
 
         # Get LLM evaluation (with Redis caching)
         chain = prompt | self.llm
-        response = await self._invoke_llm_cached(chain, {
-            "goal": goal,
-            "current_state": current_state,
-            "actions": actions_text,
-            "context": context or "No additional context provided.",
-        })
+        response = await self._invoke_llm_cached(
+            chain,
+            {
+                "goal": goal,
+                "current_state": current_state,
+                "actions": actions_text,
+                "context": context or "No additional context provided.",
+            },
+        )
 
         # Parse response
         scores = self._parse_scores(response.content)
@@ -232,7 +234,9 @@ class TacticalEvaluator(BaseEvaluator):
                 docs_count = sources.get("retrieved_docs_count", 0)
                 tools_count = sources.get("tool_results_count", 0)
                 mem_count = sources.get("memory_results_count", 0)
-                lines.append(f"Step {step_num}: EVIDENCE [{etype}] docs={docs_count} tools={tools_count} memory={mem_count}")
+                lines.append(
+                    f"Step {step_num}: EVIDENCE [{etype}] docs={docs_count} tools={tools_count} memory={mem_count}"
+                )
             elif action_type == "state_change":
                 trigger = detail.get("trigger", "")
                 lines.append(f"Step {step_num}: State changed by '{trigger}'")

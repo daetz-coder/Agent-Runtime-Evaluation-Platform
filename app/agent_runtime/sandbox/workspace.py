@@ -15,7 +15,7 @@ import logging
 import os
 import posixpath
 import tarfile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from docker.models.containers import Container
 
@@ -76,9 +76,7 @@ class WorkspaceManager:
 
             loop = __import__("asyncio").get_event_loop()
             try:
-                data, stat = await loop.run_in_executor(
-                    None, lambda: container.get_archive(full_path)
-                )
+                data, stat = await loop.run_in_executor(None, lambda: container.get_archive(full_path))
             except Exception as e:
                 span.set_attribute("error", "file_not_found")
                 raise FileNotFoundError(f"File not found: {full_path}") from e
@@ -111,9 +109,7 @@ class WorkspaceManager:
             tar_data = self._make_tar(filename, content.encode("utf-8"))
             await self._put_archive(container, dir_path, tar_data)
 
-    async def list_files(
-        self, container: Container, path: str = ""
-    ) -> List[Dict[str, Any]]:
+    async def list_files(self, container: Container, path: str = "") -> List[Dict[str, Any]]:
         """
         List files in a directory within /workspace.
 
@@ -145,9 +141,7 @@ class WorkspaceManager:
 
     # ── Capture & Diff ────────────────────────────────────────
 
-    async def capture_workspace_state(
-        self, container: Container
-    ) -> Dict[str, Any]:
+    async def capture_workspace_state(self, container: Container) -> Dict[str, Any]:
         """
         Capture the final workspace state after agent execution.
 
@@ -220,7 +214,7 @@ class WorkspaceManager:
         # Strip leading slashes and workspace prefix for safety
         clean = path.lstrip("/").replace("..", "")
         if clean.startswith("workspace/"):
-            clean = clean[len("workspace/"):]
+            clean = clean[len("workspace/") :]
         # Use posixpath since Docker containers are Linux
         return posixpath.join(WORKSPACE_ROOT, clean)
 
@@ -228,9 +222,7 @@ class WorkspaceManager:
     async def _put_archive(container: Container, path: str, tar_data: bytes) -> None:
         """Put a tar archive into a container path."""
         loop = __import__("asyncio").get_event_loop()
-        await loop.run_in_executor(
-            None, lambda: container.put_archive(path, tar_data)
-        )
+        await loop.run_in_executor(None, lambda: container.put_archive(path, tar_data))
 
     @staticmethod
     async def _ensure_dir(container: Container, path: str) -> None:
@@ -337,9 +329,11 @@ class WorkspaceManager:
             except (ValueError, IndexError):
                 size = 0
 
-            files.append({
-                "name": name,
-                "size": size,
-                "is_dir": is_dir,
-            })
+            files.append(
+                {
+                    "name": name,
+                    "size": size,
+                    "is_dir": is_dir,
+                }
+            )
         return files

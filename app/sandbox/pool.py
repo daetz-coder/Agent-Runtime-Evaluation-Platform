@@ -55,8 +55,7 @@ class ContainerPool:
             self._client.images.get(_SANDBOX_IMAGE)
         except NotFound:
             logger.warning(
-                "Sandbox image '%s' not found. Build with: "
-                "docker build -t agent-eval-sandbox -f sandbox.Dockerfile .",
+                "Sandbox image '%s' not found. Build with: docker build -t agent-eval-sandbox -f sandbox.Dockerfile .",
                 _SANDBOX_IMAGE,
             )
             self._client = None

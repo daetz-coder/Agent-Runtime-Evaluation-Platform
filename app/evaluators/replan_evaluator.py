@@ -8,12 +8,11 @@ Evaluates the quality of replanning decisions:
 """
 
 from typing import Any, Dict, List, Optional
+
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
-from app.models.action_types import ActionType
-from app.models.schemas import TrajectoryStep, ReplanScore
-
+from app.models.schemas import ReplanScore, TrajectoryStep
 
 REPLAN_EVALUATION_PROMPT = """You are an expert at evaluating AI agent replanning decisions.
 
@@ -124,12 +123,15 @@ class ReplanEvaluator(BaseEvaluator):
 
         # Get LLM evaluation (with Redis caching)
         chain = prompt | self.llm
-        response = await self._invoke_llm_cached(chain, {
-            "goal": goal,
-            "trajectory": trajectory_text,
-            "replan_events": replan_events_text,
-            "context": context or "No additional context provided.",
-        })
+        response = await self._invoke_llm_cached(
+            chain,
+            {
+                "goal": goal,
+                "trajectory": trajectory_text,
+                "replan_events": replan_events_text,
+                "context": context or "No additional context provided.",
+            },
+        )
 
         # Parse response
         scores = self._parse_scores(response.content)
@@ -171,10 +173,12 @@ class ReplanEvaluator(BaseEvaluator):
 
             # Detect missed replan opportunity
             if consecutive_failures >= 5 and replan_count == 0:
-                missed.append({
-                    "step": step.step_number,
-                    "reason": f"Agent had {consecutive_failures} consecutive failures without replanning",
-                })
+                missed.append(
+                    {
+                        "step": step.step_number,
+                        "reason": f"Agent had {consecutive_failures} consecutive failures without replanning",
+                    }
+                )
 
         return missed
 
@@ -190,7 +194,9 @@ class ReplanEvaluator(BaseEvaluator):
 
                 if is_failure:
                     consecutive_failures += 1
-                    lines.append(f"Step {step.step_number}: TOOL CALL - FAILED (consecutive failures: {consecutive_failures})")
+                    lines.append(
+                        f"Step {step.step_number}: TOOL CALL - FAILED (consecutive failures: {consecutive_failures})"
+                    )
                     lines.append(f"  Tool: {step.action_detail.get('tool_name')}")
                     lines.append(f"  Error: {step.observation[:200] if step.observation else 'Unknown error'}")
                 else:
@@ -201,7 +207,9 @@ class ReplanEvaluator(BaseEvaluator):
             elif step.action_type == "failure":
                 consecutive_failures += 1
                 lines.append(f"Step {step.step_number}: FAILURE (consecutive failures: {consecutive_failures})")
-                lines.append(f"  Error: {step.action_detail.get('error_type', '')}: {step.action_detail.get('error_message', '')[:200]}")
+                lines.append(
+                    f"  Error: {step.action_detail.get('error_type', '')}: {step.action_detail.get('error_message', '')[:200]}"
+                )
                 lines.append(f"  Context: {step.action_detail.get('context', '')}")
                 lines.append(f"  Recoverable: {step.action_detail.get('recoverable', True)}")
 

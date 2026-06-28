@@ -8,7 +8,6 @@ External KB (RAG)  → hybrid_search（知识库检索）
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
@@ -25,6 +24,7 @@ HISTORY_RECENT_COUNT = 10
 @dataclass
 class RetrievedContext:
     """统一检索结果"""
+
     wiki_results: list[dict] = field(default_factory=list)
     key_facts: list[str] = field(default_factory=list)
     history_summary: str = ""
@@ -87,7 +87,7 @@ def build_context_block(ctx: RetrievedContext) -> str:
             wiki_lines.append(line)
             used += len(line)
         if wiki_lines:
-            blocks.append(f"[知识库搜索结果]\n" + "\n".join(wiki_lines))
+            blocks.append("[知识库搜索结果]\n" + "\n".join(wiki_lines))
             budget -= used
 
     # ── 优先级 3: history_summary ──

@@ -9,7 +9,6 @@
 
 import asyncio
 import sys
-import os
 import time
 from pathlib import Path
 
@@ -17,26 +16,28 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 
 def _make_trajectory(num_steps: int, has_replan: bool = True) -> List[Dict[str, Any]]:
     """生成指定步数的模拟 trajectory。"""
     steps = []
-    steps.append({
-        "step_number": 1,
-        "action_type": "plan",
-        "action_detail": {
-            "goal": "实现用户注册与邮箱验证功能",
-            "steps": [
-                {"description": "设计数据库 User 模型"},
-                {"description": "实现邮箱格式验证"},
-                {"description": "创建注册 API 端点"},
-                {"description": "编写单元测试"},
-            ],
-        },
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    steps.append(
+        {
+            "step_number": 1,
+            "action_type": "plan",
+            "action_detail": {
+                "goal": "实现用户注册与邮箱验证功能",
+                "steps": [
+                    {"description": "设计数据库 User 模型"},
+                    {"description": "实现邮箱格式验证"},
+                    {"description": "创建注册 API 端点"},
+                    {"description": "编写单元测试"},
+                ],
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
     tool_calls = [
         ("search_code", {"query": "user model"}),
@@ -50,30 +51,43 @@ def _make_trajectory(num_steps: int, has_replan: bool = True) -> List[Dict[str, 
     for i in range(min(num_steps - 2, len(tool_calls) * 4)):
         idx = i % len(tool_calls)
         name, inp = tool_calls[idx]
-        steps.append({
-            "step_number": step_num, "action_type": "tool_call",
-            "action_detail": {"tool_name": name, "input": inp},
-            "observation": f"Result from {name}",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        steps.append(
+            {
+                "step_number": step_num,
+                "action_type": "tool_call",
+                "action_detail": {"tool_name": name, "input": inp},
+                "observation": f"Result from {name}",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         step_num += 1
         if i % 3 == 0:
-            steps.append({
-                "step_number": step_num, "action_type": "think",
-                "action_detail": {"thought": f"Processing step {i}..."},
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
+            steps.append(
+                {
+                    "step_number": step_num,
+                    "action_type": "think",
+                    "action_detail": {"thought": f"Processing step {i}..."},
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
             step_num += 1
 
     if has_replan:
-        steps.append({
-            "step_number": step_num, "action_type": "replan",
-            "action_detail": {
-                "reason": "测试失败，修复验证逻辑",
-                "new_plan": [{"description": "分析失败用例"}, {"description": "修复 token 生成"}, {"description": "重新测试"}],
-            },
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        steps.append(
+            {
+                "step_number": step_num,
+                "action_type": "replan",
+                "action_detail": {
+                    "reason": "测试失败，修复验证逻辑",
+                    "new_plan": [
+                        {"description": "分析失败用例"},
+                        {"description": "修复 token 生成"},
+                        {"description": "重新测试"},
+                    ],
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     return steps
 
@@ -84,17 +98,20 @@ async def main():
     print("=" * 72)
 
     from app.evaluators import (
-        PlanningEvaluator, TacticalEvaluator,
-        ToolUseEvaluator, MemoryEvaluator, ReplanEvaluator,
+        MemoryEvaluator,
+        PlanningEvaluator,
+        ReplanEvaluator,
+        TacticalEvaluator,
+        ToolUseEvaluator,
     )
     from app.models.schemas import TrajectoryStep
 
     evaluators_def = [
-        ("Planning",  PlanningEvaluator),
-        ("Tactical",  TacticalEvaluator),
-        ("Tool Use",  ToolUseEvaluator),
-        ("Memory",    MemoryEvaluator),
-        ("Replan",    ReplanEvaluator),
+        ("Planning", PlanningEvaluator),
+        ("Tactical", TacticalEvaluator),
+        ("Tool Use", ToolUseEvaluator),
+        ("Memory", MemoryEvaluator),
+        ("Replan", ReplanEvaluator),
     ]
 
     scenarios = [
@@ -134,7 +151,7 @@ async def main():
         print(f"    {'总耗时':12s}  {total_time:.2f}s")
         print(f"    {'预估 Token':12s}  {est_tokens}")
         print(f"    {'预估成本(DS)':12s}  {cost_yuan:.4f}元 ({cost_usd:.6f}$)")
-        print(f"    {'对比 GPT-4':12s}  ~{cost_yuan*30:.4f}元 ({cost_usd*30:.6f}$)")
+        print(f"    {'对比 GPT-4':12s}  ~{cost_yuan * 30:.4f}元 ({cost_usd * 30:.6f}$)")
 
     print()
     print("=" * 72)

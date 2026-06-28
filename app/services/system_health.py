@@ -31,6 +31,7 @@ async def get_system_health() -> dict:
     }
     if settings.SANDBOX_ENABLED:
         from app.sandbox.executor import is_sandbox_available
+
         sandbox_health["available"] = is_sandbox_available()
 
     return {

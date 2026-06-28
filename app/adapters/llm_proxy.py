@@ -9,8 +9,8 @@ LLM Proxy Adapter - 一行代码接入，自动收集轨迹。
 """
 
 from sdk.adapters.llm_proxy import (
-    create_proxy_llm,
     ProxyChatModel,
+    create_proxy_llm,
 )
 
 __all__ = [

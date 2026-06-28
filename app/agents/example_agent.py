@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.tools import BaseTool, tool
+from langchain_core.tools import tool
 
 from app.agents.base import BaseAgent
 
@@ -112,10 +112,12 @@ class ExampleAgent(BaseAgent):
         prompt = ChatPromptTemplate.from_template(PLANNING_PROMPT)
         chain = prompt | self.llm
 
-        response = await chain.ainvoke({
-            "goal": goal,
-            "tools": tools_desc,
-        })
+        response = await chain.ainvoke(
+            {
+                "goal": goal,
+                "tools": tools_desc,
+            }
+        )
 
         # Parse plan
         steps = self._parse_plan_steps(response.content)
@@ -173,7 +175,7 @@ class ExampleAgent(BaseAgent):
 
             else:
                 # Record as thinking step
-                self._record_think(f"Executing step {i+1}: {desc}")
+                self._record_think(f"Executing step {i + 1}: {desc}")
 
         return "Task completed"
 

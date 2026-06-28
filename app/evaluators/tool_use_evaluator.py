@@ -8,12 +8,11 @@ Evaluates the quality of tool selection and usage:
 """
 
 from typing import Any, Dict, List, Optional
+
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
-from app.models.action_types import ActionType
-from app.models.schemas import TrajectoryStep, ToolUseScore
-
+from app.models.schemas import ToolUseScore, TrajectoryStep
 
 TOOL_USE_EVALUATION_PROMPT = """You are an expert at evaluating AI agent tool usage.
 
@@ -120,12 +119,15 @@ class ToolUseEvaluator(BaseEvaluator):
 
         # Get LLM evaluation (with Redis caching)
         chain = prompt | self.llm
-        response = await self._invoke_llm_cached(chain, {
-            "goal": goal,
-            "tool_calls": tool_calls_text,
-            "context": context or "No additional context provided.",
-            "execution_results": execution_results_text,
-        })
+        response = await self._invoke_llm_cached(
+            chain,
+            {
+                "goal": goal,
+                "tool_calls": tool_calls_text,
+                "context": context or "No additional context provided.",
+                "execution_results": execution_results_text,
+            },
+        )
 
         # Parse response
         scores = self._parse_scores(response.content)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from git import Repo, InvalidGitRepositoryError
+from git import InvalidGitRepositoryError, Repo
 
 from app.wiki_agent.config import settings
 from app.wiki_agent.wiki.schemas import WikiCommit

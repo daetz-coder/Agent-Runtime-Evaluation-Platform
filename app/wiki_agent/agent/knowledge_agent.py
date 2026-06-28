@@ -30,6 +30,7 @@ def _get_llm() -> ChatOpenAI:
 
 class KnowledgeDecision(BaseModel):
     """知识操作决策"""
+
     action: Literal["create", "update", "delete", "none"] = Field(description="操作类型")
     reason: str = Field(description="判断原因")
     path: str = Field(default="", description="知识条目路径，update/delete 时必填")

@@ -15,14 +15,14 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
 from pydantic import create_model
 
 from app.agent_runtime.prompts import FINAL_ANSWER_INSTRUCTION, build_system_prompt
 from app.agent_runtime.state import AgentState
-from app.agent_runtime.tools.base import SandboxTool, ToolProxy
+from app.agent_runtime.tools.base import ToolProxy
 from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
 from app.core.tracing import get_tracer
 
@@ -95,9 +95,7 @@ def create_agent_graph(
 
             # Prompt the LLM to continue or provide final answer
             if current_step > 0:
-                messages.append(
-                    HumanMessage(content=FINAL_ANSWER_INSTRUCTION)
-                )
+                messages.append(HumanMessage(content=FINAL_ANSWER_INSTRUCTION))
 
             # Call LLM
             with tracer.start_as_current_span("llm_call") as llm_span:
@@ -138,19 +136,19 @@ def create_agent_graph(
 
                     # Record planning if the first tool call
                     if current_step == 0:
-                        recorder.record_plan({
-                            "goal": goal,
-                            "first_action": tool_name,
-                            "args": {k: str(v)[:100] for k, v in tool_args.items()},
-                        })
+                        recorder.record_plan(
+                            {
+                                "goal": goal,
+                                "first_action": tool_name,
+                                "args": {k: str(v)[:100] for k, v in tool_args.items()},
+                            }
+                        )
 
                     # Execute through proxy (validates, audits, records)
                     result = await tool_proxy.execute(tool_name, tool_args)
 
                     # Add tool result to messages
-                    new_messages.append(
-                        ToolMessage(content=result, tool_call_id=tool_id)
-                    )
+                    new_messages.append(ToolMessage(content=result, tool_call_id=tool_id))
 
                 return {
                     "messages": new_messages,
@@ -177,7 +175,7 @@ def create_agent_graph(
                     return {
                         "messages": [response],
                         "current_step": current_step + 1,
-                }
+                    }
 
         # Empty response — force completion
         return {
@@ -200,6 +198,7 @@ def create_agent_graph(
 
 
 # ── Helpers ───────────────────────────────────────────────────
+
 
 def _build_langchain_tools(proxy: ToolProxy) -> List[BaseTool]:
     """Convert SandboxTool instances to LangChain StructuredTool definitions."""
@@ -265,5 +264,5 @@ def _extract_final_answer(content: str) -> str:
     for prefix in ["final answer:", "final answer\n"]:
         idx = lower.find(prefix)
         if idx != -1:
-            return content[idx + len(prefix):].strip()
+            return content[idx + len(prefix) :].strip()
     return content.strip()

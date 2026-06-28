@@ -30,14 +30,13 @@ from __future__ import annotations
 import logging
 import time
 import traceback
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
 
 from sdk.collector import get_collector
-from sdk.collector import ActionType
 
 logger = logging.getLogger(__name__)
 
@@ -91,11 +90,13 @@ class EvalCallbackHandler(BaseCallbackHandler):
         msg_list = []
         if messages and messages[-1]:
             for msg in messages[-1][:3]:
-                if hasattr(msg, 'content'):
-                    msg_list.append({
-                        "role": getattr(msg, 'type', 'unknown'),
-                        "content": str(msg.content)[:200],
-                    })
+                if hasattr(msg, "content"):
+                    msg_list.append(
+                        {
+                            "role": getattr(msg, "type", "unknown"),
+                            "content": str(msg.content)[:200],
+                        }
+                    )
 
         self._pending_llm[str(run_id)] = {
             "model": serialized.get("name", "unknown"),
@@ -122,13 +123,12 @@ class EvalCallbackHandler(BaseCallbackHandler):
         if response.generations:
             for gen_list in response.generations:
                 for gen in gen_list:
-                    if hasattr(gen, 'message'):
+                    if hasattr(gen, "message"):
                         msg = gen.message
                         response_text = str(msg.content)[:500]
-                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        if hasattr(msg, "tool_calls") and msg.tool_calls:
                             tool_calls = [
-                                {"name": tc.get("name", ""), "args": tc.get("args", {})}
-                                for tc in msg.tool_calls
+                                {"name": tc.get("name", ""), "args": tc.get("args", {})} for tc in msg.tool_calls
                             ]
                         break
                 break
@@ -143,9 +143,7 @@ class EvalCallbackHandler(BaseCallbackHandler):
 
         # 记录工具调用决策
         if tool_calls:
-            self._collector.record_think(
-                f"LLM decided to call tools: {[tc['name'] for tc in tool_calls]}"
-            )
+            self._collector.record_think(f"LLM decided to call tools: {[tc['name'] for tc in tool_calls]}")
 
     def on_llm_error(
         self,

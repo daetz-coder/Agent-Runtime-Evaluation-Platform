@@ -60,6 +60,7 @@ async def get_overview():
 
     try:
         import chromadb
+
         client = chromadb.PersistentClient(path=settings.CHROMA_DIR)
         col = client.get_collection("wiki_knowledge")
         result["vectors"] = col.count()
@@ -85,13 +86,9 @@ async def list_sessions():
             select_parts.append("s.key_facts")
         if has_active_task:
             select_parts.append("s.active_eval_task_id")
-        select_parts.append(
-            "(SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as msg_count"
-        )
+        select_parts.append("(SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as msg_count")
 
-        cursor = await db.execute(
-            f"SELECT {', '.join(select_parts)} FROM sessions s ORDER BY s.updated_at DESC"
-        )
+        cursor = await db.execute(f"SELECT {', '.join(select_parts)} FROM sessions s ORDER BY s.updated_at DESC")
         rows = await cursor.fetchall()
         sessions = []
         for row in rows:
@@ -108,15 +105,17 @@ async def list_sessions():
                 active_task = row[idx]
                 idx += 1
 
-            sessions.append({
-                "id": row[0],
-                "name": row[1],
-                "created_at": row[2],
-                "updated_at": row[3],
-                "key_facts": key_facts,
-                "active_eval_task_id": active_task,
-                "message_count": row[idx],
-            })
+            sessions.append(
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "created_at": row[2],
+                    "updated_at": row[3],
+                    "key_facts": key_facts,
+                    "active_eval_task_id": active_task,
+                    "message_count": row[idx],
+                }
+            )
         return sessions
     finally:
         await db.close()
@@ -161,7 +160,8 @@ async def get_session_detail(session_id: str):
 
         cursor = await db.execute(
             "SELECT id, role, content, wiki_results, extraction, created_at "
-            "FROM messages WHERE session_id = ? ORDER BY id", (session_id,),
+            "FROM messages WHERE session_id = ? ORDER BY id",
+            (session_id,),
         )
         msg_rows = await cursor.fetchall()
         messages = []
@@ -175,13 +175,21 @@ async def get_session_detail(session_id: str):
                 extraction = json.loads(msg[4]) if msg[4] else None
             except Exception:
                 pass
-            messages.append({
-                "id": msg[0], "role": msg[1], "content": msg[2],
-                "wiki_results": wiki_results, "extraction": extraction,
-                "created_at": msg[5],
-            })
+            messages.append(
+                {
+                    "id": msg[0],
+                    "role": msg[1],
+                    "content": msg[2],
+                    "wiki_results": wiki_results,
+                    "extraction": extraction,
+                    "created_at": msg[5],
+                }
+            )
         return {
-            "id": row[0], "name": row[1], "created_at": row[2], "updated_at": row[3],
+            "id": row[0],
+            "name": row[1],
+            "created_at": row[2],
+            "updated_at": row[3],
             "key_facts": key_facts,
             "active_eval_task_id": active_task,
             "messages": messages,
@@ -203,22 +211,26 @@ async def list_checkpoints():
             threads = []
             for row in rows:
                 cursor2 = await db.execute(
-                    "SELECT metadata FROM checkpoints WHERE checkpoint_id = ?", (row[2],),
+                    "SELECT metadata FROM checkpoints WHERE checkpoint_id = ?",
+                    (row[2],),
                 )
                 meta_row = await cursor2.fetchone()
                 metadata = None
                 if meta_row and meta_row[0]:
                     try:
                         from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
                         metadata = JsonPlusSerializer().loads(meta_row[0])
                     except Exception:
                         metadata = {"raw_size": len(meta_row[0])}
-                threads.append({
-                    "thread_id": row[0],
-                    "checkpoint_count": row[1],
-                    "latest_checkpoint_id": row[2],
-                    "metadata": metadata,
-                })
+                threads.append(
+                    {
+                        "thread_id": row[0],
+                        "checkpoint_count": row[1],
+                        "latest_checkpoint_id": row[2],
+                        "metadata": metadata,
+                    }
+                )
             return threads
     except FileNotFoundError:
         return []
@@ -229,6 +241,7 @@ async def get_checkpoint_detail(thread_id: str):
     """单个 thread 的 checkpoint 时间线"""
     try:
         from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
         serde = JsonPlusSerializer()
 
         async with aiosqlite.connect(_CHECKPOINT_DB) as db:
@@ -255,13 +268,15 @@ async def get_checkpoint_detail(thread_id: str):
                     val = _safe_deser_typed(serde, w[1], w[2])
                     channels[w[0]] = _trunc(val)
 
-                checkpoints.append({
-                    "checkpoint_id": cp[0],
-                    "parent_checkpoint_id": cp[1],
-                    "channels": channels,
-                    "metadata": metadata,
-                    "checkpoint_summary": _summary(cp_data),
-                })
+                checkpoints.append(
+                    {
+                        "checkpoint_id": cp[0],
+                        "parent_checkpoint_id": cp[1],
+                        "channels": channels,
+                        "metadata": metadata,
+                        "checkpoint_summary": _summary(cp_data),
+                    }
+                )
             return {"thread_id": thread_id, "checkpoints": checkpoints}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Checkpoint DB not found")
@@ -285,8 +300,12 @@ async def get_bm25_stats():
             "top_tokens": [{"token": t, "count": c} for t, c in freq.most_common(30)],
             "path_distribution": [{"path": p, "chunks": c} for p, c in paths.most_common(50)],
             "chunks": [
-                {"path": m.get("path", ""), "title": m.get("title", ""),
-                 "snippet": m.get("snippet", "")[:100], "chunk_index": m.get("chunk_index", 0)}
+                {
+                    "path": m.get("path", ""),
+                    "title": m.get("title", ""),
+                    "snippet": m.get("snippet", "")[:100],
+                    "chunk_index": m.get("chunk_index", 0),
+                }
                 for m in meta[:100]
             ],
         }

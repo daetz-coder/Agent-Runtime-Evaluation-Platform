@@ -2,21 +2,26 @@
 Pydantic schemas for API request/response validation.
 """
 
-from datetime import datetime
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from __future__ import annotations
 
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 # ============== Task Schemas ==============
 
+
 class TaskCreate(BaseModel):
     """Schema for creating a new agent task."""
+
     goal: str = Field(..., description="The goal/objective for the agent to achieve")
     context: Optional[Dict[str, Any]] = Field(None, description="Additional context for the task")
 
 
 class TaskUpdate(BaseModel):
     """Schema for updating an existing task."""
+
     goal: Optional[str] = Field(None, description="Updated goal/objective")
     context: Optional[Dict[str, Any]] = Field(None, description="Updated context")
     status: Optional[str] = Field(None, description="New status: pending/running/completed/failed/timeout")
@@ -24,6 +29,7 @@ class TaskUpdate(BaseModel):
 
 class TaskResponse(BaseModel):
     """Schema for task response."""
+
     id: str
     goal: str
     context: Optional[Dict[str, Any]] = None
@@ -37,6 +43,7 @@ class TaskResponse(BaseModel):
 
 
 # ============== Trajectory Schemas ==============
+
 
 class TrajectoryStep(BaseModel):
     """Schema for a single trajectory step.
@@ -55,6 +62,7 @@ class TrajectoryStep(BaseModel):
     - node_execute      — 节点执行（LangGraph 节点）
     - tool_decision     — 工具选择决策（LLM 决定调用哪个工具）
     """
+
     step_number: int
     action_type: str = Field(
         ...,
@@ -71,13 +79,16 @@ class TrajectoryStep(BaseModel):
 
 class TrajectoryCreate(BaseModel):
     """Schema for creating trajectory steps."""
+
     steps: List[TrajectoryStep]
 
 
 # ============== Evaluation Schemas ==============
 
+
 class EvaluationRequest(BaseModel):
     """Schema for evaluation request."""
+
     task_id: str
     include_details: bool = Field(True, description="Include detailed feedback")
     use_stream: bool = Field(
@@ -88,14 +99,17 @@ class EvaluationRequest(BaseModel):
 
 class StreamEvaluationRequest(BaseModel):
     """Schema for SSE streaming evaluation."""
+
     task_id: str
     evaluation_id: Optional[str] = Field(None, description="Existing IN_PROGRESS evaluation to persist into")
 
 
 # ============== Agent Runtime (Sandbox) Schemas ==============
 
+
 class SandboxEvalRequest(BaseModel):
     """Request schema for sandbox-based agent evaluation (Agent in Sandbox)."""
+
     goal: str = Field(..., description="The goal/objective for the agent to achieve")
     model: Optional[str] = Field(None, description="LLM model name (default: from config)")
     provider: Optional[str] = Field(None, description="LLM provider: deepseek/openai/anthropic/zhipuai/qwen")
@@ -114,6 +128,7 @@ class SandboxEvalRequest(BaseModel):
 
 class AgentRunInfo(BaseModel):
     """Agent run metadata included in the sandbox evaluation response."""
+
     success: bool
     steps_taken: int
     duration_ms: float
@@ -125,6 +140,7 @@ class AgentRunInfo(BaseModel):
 
 class SandboxEvalResponse(BaseModel):
     """Response schema for sandbox-based agent evaluation."""
+
     task_id: str
     evaluation_id: str
     status: str
@@ -136,6 +152,7 @@ class SandboxEvalResponse(BaseModel):
 
 class PlanningScore(BaseModel):
     """Planning evaluation score."""
+
     coverage: float = Field(..., ge=0, le=100, description="Coverage of key milestones")
     ordering: float = Field(..., ge=0, le=100, description="Logical ordering of steps")
     granularity: float = Field(..., ge=0, le=100, description="Appropriate level of detail")
@@ -146,6 +163,7 @@ class PlanningScore(BaseModel):
 
 class TacticalScore(BaseModel):
     """Tactical evaluation score (next action quality)."""
+
     relevance: float = Field(..., ge=0, le=100, description="Relevance of next action")
     efficiency: float = Field(..., ge=0, le=100, description="Efficiency of action choice")
     correctness: float = Field(..., ge=0, le=100, description="Correctness of action")
@@ -155,6 +173,7 @@ class TacticalScore(BaseModel):
 
 class ToolUseScore(BaseModel):
     """Tool use evaluation score."""
+
     selection_quality: float = Field(..., ge=0, le=100, description="Quality of tool selection")
     parameter_accuracy: float = Field(..., ge=0, le=100, description="Accuracy of tool parameters")
     result_utilization: float = Field(..., ge=0, le=100, description="How well results are used")
@@ -168,6 +187,7 @@ class ToolUseScore(BaseModel):
 
 class MemoryScore(BaseModel):
     """Memory evaluation score."""
+
     retention: float = Field(..., ge=0, le=100, description="Key fact retention")
     relevance: float = Field(..., ge=0, le=100, description="Relevance of recalled information")
     consistency: float = Field(..., ge=0, le=100, description="Consistency with previous context")
@@ -177,6 +197,7 @@ class MemoryScore(BaseModel):
 
 class ReplanScore(BaseModel):
     """Replan evaluation score."""
+
     trigger_appropriateness: float = Field(..., ge=0, le=100, description="Was replan triggered appropriately?")
     adaptation_quality: float = Field(..., ge=0, le=100, description="Quality of plan adaptation")
     learning_from_failure: float = Field(..., ge=0, le=100, description="Did agent learn from failures?")
@@ -186,6 +207,7 @@ class ReplanScore(BaseModel):
 
 class RetrievalScore(BaseModel):
     """Retrieval quality evaluation (RAG Eval)."""
+
     relevance: float = Field(0, ge=0, le=100)
     evidence_accuracy: float = Field(0, ge=0, le=100)
     coverage: float = Field(0, ge=0, le=100)
@@ -197,6 +219,7 @@ class RetrievalScore(BaseModel):
 
 class OverallEvaluation(BaseModel):
     """Overall evaluation combining all dimensions."""
+
     planning: PlanningScore
     tactical: TacticalScore
     tool_use: ToolUseScore
@@ -210,6 +233,7 @@ class OverallEvaluation(BaseModel):
 
 class EvaluationResponse(BaseModel):
     """Schema for evaluation response."""
+
     id: str
     task_id: str
     status: str
@@ -223,6 +247,7 @@ class EvaluationResponse(BaseModel):
 
 class EvaluationListItem(BaseModel):
     """Lightweight evaluation item for list views."""
+
     id: str
     task_id: str
     task_goal: Optional[str] = None
@@ -243,8 +268,10 @@ class EvaluationListItem(BaseModel):
 
 # ============== Report Schemas ==============
 
+
 class EvaluationSummary(BaseModel):
     """Summary of multiple evaluations."""
+
     total_evaluations: int
     average_scores: Dict[str, float]
     score_distribution: Dict[str, List[float]]

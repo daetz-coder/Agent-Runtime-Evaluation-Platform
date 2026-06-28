@@ -2,7 +2,7 @@
 Task management endpoints.
 """
 
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -15,7 +15,7 @@ from app.core.cache import cache_get, cache_set
 from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import AgentTask, TaskStatus
-from app.models.schemas import TaskCreate, TaskUpdate, TaskResponse, TrajectoryStep
+from app.models.schemas import TaskCreate, TaskResponse, TaskUpdate, TrajectoryStep
 from app.services.evaluation_service import EvaluationService
 
 router = APIRouter()
@@ -67,7 +67,9 @@ async def get_tasks_dashboard(
         for status, count in status_result.all():
             status_counts[status.value if hasattr(status, "value") else str(status)] = count
 
-        await cache_set(cache_key, {"total_tasks": total_tasks, "status_counts": status_counts}, ttl=settings.CACHE_DASHBOARD_TTL)
+        await cache_set(
+            cache_key, {"total_tasks": total_tasks, "status_counts": status_counts}, ttl=settings.CACHE_DASHBOARD_TTL
+        )
 
     recent_query = select(AgentTask).order_by(AgentTask.created_at.desc()).limit(5)
     if ws_filter:
@@ -132,7 +134,9 @@ async def add_trajectory(
         raise HTTPException(status_code=404, detail="Task not found")
     ws_id = ctx.filter_workspace_id() or ctx.workspace_id
     if ws_id:
-        await add_audit_log(db, ws_id, ctx.user_id, AuditAction.TRAJECTORY_ADDED, "task", task_id, {"steps": len(steps)})
+        await add_audit_log(
+            db, ws_id, ctx.user_id, AuditAction.TRAJECTORY_ADDED, "task", task_id, {"steps": len(steps)}
+        )
     return {"message": f"Added {len(steps)} trajectory steps", "task_id": task_id, "deprecated": True}
 
 

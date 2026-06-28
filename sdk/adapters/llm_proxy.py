@@ -26,16 +26,15 @@ LLM Proxy Adapter - 代理 LLM 调用，自动收集轨迹
 
 from __future__ import annotations
 
-import time
 import logging
-from typing import Any, Dict, Iterator, List, Optional, Union
+import time
+from typing import Any, List, Optional
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.messages import BaseMessage
+from langchain_core.outputs import ChatResult
 
 from sdk.collector import get_collector
-from sdk.collector import ActionType
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +54,8 @@ class ProxyChatModel(BaseChatModel):
 
     def __init__(self, original_llm: BaseChatModel, **kwargs):
         super().__init__(**kwargs)
-        object.__setattr__(self, '_original_llm', original_llm)
-        object.__setattr__(self, '_collector', get_collector())
+        object.__setattr__(self, "_original_llm", original_llm)
+        object.__setattr__(self, "_collector", get_collector())
 
     @property
     def _llm_type(self) -> str:
@@ -73,9 +72,7 @@ class ProxyChatModel(BaseChatModel):
         start_time = time.time()
 
         # 调用原始 LLM
-        result = self._original_llm._generate(
-            messages, stop=stop, run_manager=run_manager, **kwargs
-        )
+        result = self._original_llm._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
         # 记录调用
         duration_ms = (time.time() - start_time) * 1000
@@ -94,9 +91,7 @@ class ProxyChatModel(BaseChatModel):
         start_time = time.time()
 
         # 调用原始 LLM
-        result = await self._original_llm._agenerate(
-            messages, stop=stop, run_manager=run_manager, **kwargs
-        )
+        result = await self._original_llm._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
         # 记录调用
         duration_ms = (time.time() - start_time) * 1000
@@ -115,17 +110,19 @@ class ProxyChatModel(BaseChatModel):
             # 提取消息内容
             msg_list = []
             for msg in messages:
-                if hasattr(msg, 'content'):
-                    msg_list.append({
-                        "role": getattr(msg, 'type', 'unknown'),
-                        "content": str(msg.content)[:200],
-                    })
+                if hasattr(msg, "content"):
+                    msg_list.append(
+                        {
+                            "role": getattr(msg, "type", "unknown"),
+                            "content": str(msg.content)[:200],
+                        }
+                    )
 
             # 提取响应内容
             response_text = ""
             if result.generations:
                 for gen in result.generations:
-                    if gen and hasattr(gen[0], 'message'):
+                    if gen and hasattr(gen[0], "message"):
                         response_text = str(gen[0].message.content)[:500]
                         break
 
@@ -133,14 +130,16 @@ class ProxyChatModel(BaseChatModel):
             tool_calls = []
             if result.generations:
                 for gen in result.generations:
-                    if gen and hasattr(gen[0], 'message'):
+                    if gen and hasattr(gen[0], "message"):
                         msg = gen[0].message
-                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        if hasattr(msg, "tool_calls") and msg.tool_calls:
                             for tc in msg.tool_calls:
-                                tool_calls.append({
-                                    "name": tc.get("name", ""),
-                                    "args": tc.get("args", {}),
-                                })
+                                tool_calls.append(
+                                    {
+                                        "name": tc.get("name", ""),
+                                        "args": tc.get("args", {}),
+                                    }
+                                )
 
             # 记录到收集器
             self._collector.record_llm_call(
@@ -152,10 +151,8 @@ class ProxyChatModel(BaseChatModel):
 
             # 如果有工具调用，记录工具决策 + 工具调用
             if tool_calls:
-                tool_names = [tc['name'] for tc in tool_calls]
-                self._collector.record_think(
-                    f"LLM decided to call tools: {tool_names}"
-                )
+                tool_names = [tc["name"] for tc in tool_calls]
+                self._collector.record_think(f"LLM decided to call tools: {tool_names}")
 
                 # 为每个工具调用记录独立的 tool_call
                 for tc in tool_calls:
@@ -173,7 +170,7 @@ class ProxyChatModel(BaseChatModel):
 
     def __getattr__(self, name: str) -> Any:
         """转发所有其他属性到原始 LLM，避免递归"""
-        if name.startswith('_'):
+        if name.startswith("_"):
             raise AttributeError(name)
         return getattr(self._original_llm, name)
 

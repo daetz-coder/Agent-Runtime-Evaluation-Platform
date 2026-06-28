@@ -21,11 +21,11 @@ import tarfile
 import time
 from typing import List, Optional
 
-from app.core.config import settings
 from app.core.cache import cache_get, cache_set
+from app.core.config import settings
+from app.sandbox.detector import DetectedCodeSnippet
 from app.sandbox.models import ExecutionResult, SandboxLanguage
 from app.sandbox.pool import ContainerPool
-from app.sandbox.detector import DetectedCodeSnippet
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +111,7 @@ class SandboxExecutor:
 
     # ── Internal ──────────────────────────────────────────────
 
-    async def _run_in_container(
-        self, container_id: str, snippet: DetectedCodeSnippet
-    ) -> ExecutionResult:
+    async def _run_in_container(self, container_id: str, snippet: DetectedCodeSnippet) -> ExecutionResult:
         """Inject code into container, execute, and collect output."""
         loop = asyncio.get_event_loop()
 
@@ -133,7 +131,11 @@ class SandboxExecutor:
                 loop.run_in_executor(
                     None,
                     lambda: container.exec_run(
-                        cmd=cmd, stdout=True, stderr=True, demux=True, workdir="/tmp",
+                        cmd=cmd,
+                        stdout=True,
+                        stderr=True,
+                        demux=True,
+                        workdir="/tmp",
                     ),
                 ),
                 timeout=settings.SANDBOX_TIMEOUT,

@@ -5,7 +5,6 @@ file_list — List files and directories in the sandbox container's /workspace.
 from __future__ import annotations
 
 import asyncio
-import os
 import posixpath
 from typing import Any
 
@@ -19,8 +18,7 @@ WORKSPACE_ROOT = "/workspace"
 class FileListTool(SandboxTool):
     name = "file_list"
     description = (
-        "List files and directories in the workspace. "
-        "Provide a path relative to /workspace, or leave empty for root."
+        "List files and directories in the workspace. Provide a path relative to /workspace, or leave empty for root."
     )
     parameters_schema = {
         "path": "str — Directory path relative to /workspace (default: root)",

@@ -8,12 +8,11 @@ Evaluates the quality of agent memory:
 """
 
 from typing import Any, Dict, List, Optional
+
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
-from app.models.action_types import ActionType
-from app.models.schemas import TrajectoryStep, MemoryScore
-
+from app.models.schemas import MemoryScore, TrajectoryStep
 
 MEMORY_EVALUATION_PROMPT = """You are an expert at evaluating AI agent memory quality.
 
@@ -119,12 +118,15 @@ class MemoryEvaluator(BaseEvaluator):
 
         # Get LLM evaluation (with Redis caching)
         chain = prompt | self.llm
-        response = await self._invoke_llm_cached(chain, {
-            "goal": goal,
-            "trajectory": trajectory_text,
-            "key_facts": key_facts_text,
-            "context": context or "No additional context provided.",
-        })
+        response = await self._invoke_llm_cached(
+            chain,
+            {
+                "goal": goal,
+                "trajectory": trajectory_text,
+                "key_facts": key_facts_text,
+                "context": context or "No additional context provided.",
+            },
+        )
 
         # Parse response
         scores = self._parse_scores(response.content)

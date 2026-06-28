@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
 
 
 def load_document(file_path: str | Path) -> str:
@@ -25,6 +24,7 @@ def _load_pdf(file_path: Path) -> str:
     """加载 PDF（需要 pypdf）。"""
     try:
         from pypdf import PdfReader
+
         reader = PdfReader(str(file_path))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
     except ImportError:
@@ -35,6 +35,7 @@ def _load_docx(file_path: Path) -> str:
     """加载 Word 文档（需要 python-docx）。"""
     try:
         from docx import Document
+
         doc = Document(str(file_path))
         return "\n".join(p.text for p in doc.paragraphs)
     except ImportError:

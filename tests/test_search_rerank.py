@@ -46,8 +46,12 @@ def test_rerank_results_updates_scores_and_type() -> None:
 
 def test_hybrid_search_applies_rerank_after_rrf() -> None:
     """hybrid_search pipeline should call rerank on RRF output."""
-    semantic = [{"path": "a.md", "title": "A", "snippet": "alpha", "content": "alpha", "score": 0.9, "search_type": "semantic"}]
-    keyword = [{"path": "b.md", "title": "B", "snippet": "beta", "content": "beta", "score": 12.0, "search_type": "bm25"}]
+    semantic = [
+        {"path": "a.md", "title": "A", "snippet": "alpha", "content": "alpha", "score": 0.9, "search_type": "semantic"}
+    ]
+    keyword = [
+        {"path": "b.md", "title": "B", "snippet": "beta", "content": "beta", "score": 12.0, "search_type": "bm25"}
+    ]
     reranked = [{"path": "b.md", "title": "B", "snippet": "beta", "score": 0.95, "search_type": "hybrid_rerank"}]
 
     with (

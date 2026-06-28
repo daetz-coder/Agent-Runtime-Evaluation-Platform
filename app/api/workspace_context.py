@@ -77,9 +77,7 @@ async def authenticate_request(request: Request, db: AsyncSession) -> WorkspaceC
             role=WorkspaceRole.ADMIN,
         )
 
-    result = await db.execute(
-        select(Workspace).where(Workspace.api_key == api_key, Workspace.is_active.is_(True))
-    )
+    result = await db.execute(select(Workspace).where(Workspace.api_key == api_key, Workspace.is_active.is_(True)))
     workspace = result.scalar_one_or_none()
     if not workspace:
         return WorkspaceContext(is_authenticated=False)
@@ -135,7 +133,9 @@ def require_super_admin(ctx: WorkspaceContext) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin required")
 
 
-def require_workspace_access(ctx: WorkspaceContext, workspace_id: str, minimum: WorkspaceRole = WorkspaceRole.VIEWER) -> None:
+def require_workspace_access(
+    ctx: WorkspaceContext, workspace_id: str, minimum: WorkspaceRole = WorkspaceRole.VIEWER
+) -> None:
     """要求对指定工作区的访问权限。"""
     if not settings.AUTH_ENABLED:
         return

@@ -21,17 +21,14 @@ WORKSPACE_ROOT = "/workspace"
 class FileWriteTool(SandboxTool):
     name = "file_write"
     description = (
-        "Write content to a file in the workspace. "
-        "Creates parent directories if needed. Overwrites existing files."
+        "Write content to a file in the workspace. Creates parent directories if needed. Overwrites existing files."
     )
     parameters_schema = {
         "path": "str — File path relative to /workspace",
         "content": "str — Content to write to the file",
     }
 
-    async def execute(
-        self, container: Container, *, path: str = "", content: str = "", **kwargs: Any
-    ) -> str:
+    async def execute(self, container: Container, *, path: str = "", content: str = "", **kwargs: Any) -> str:
         if not path:
             return "Error: No file path provided."
 
@@ -53,9 +50,7 @@ class FileWriteTool(SandboxTool):
 
         # Write file via tar archive
         tar_data = self._make_tar(filename, content.encode("utf-8"))
-        await loop.run_in_executor(
-            None, lambda: container.put_archive(dir_path, tar_data)
-        )
+        await loop.run_in_executor(None, lambda: container.put_archive(dir_path, tar_data))
 
         return f"File written: {path} ({len(content)} bytes)"
 

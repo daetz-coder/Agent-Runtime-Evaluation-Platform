@@ -12,7 +12,7 @@ from collections.abc import AsyncGenerator
 from typing import Any, Literal, TypedDict
 
 import aiosqlite
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -29,7 +29,7 @@ from app.wiki_agent.agent.eval_middleware import (
     update_context,
     wrap_llm,
 )
-from app.wiki_agent.agent.tools import crud_tools, search_tools
+from app.wiki_agent.agent.tools import crud_tools
 from app.wiki_agent.config import settings
 from app.wiki_agent.session import store as session_store
 
@@ -76,17 +76,20 @@ _chat_llm_model = settings.ZHIPUAI_CHAT_MODEL if settings.ZHIPUAI_API_KEY else s
 _chat_llm_key = settings.ZHIPUAI_API_KEY or settings.DEEPSEEK_API_KEY
 _chat_llm_base = settings.ZHIPUAI_BASE_URL if settings.ZHIPUAI_API_KEY else settings.DEEPSEEK_BASE_URL
 
-chat_llm = wrap_llm(ChatOpenAI(
-    model=_chat_llm_model,
-    api_key=_chat_llm_key,
-    base_url=_chat_llm_base,
-    temperature=0.7,
-    streaming=True,
-))
+chat_llm = wrap_llm(
+    ChatOpenAI(
+        model=_chat_llm_model,
+        api_key=_chat_llm_key,
+        base_url=_chat_llm_base,
+        temperature=0.7,
+        streaming=True,
+    )
+)
 
 
 class WikiState(TypedDict, total=False):
     """Wiki Agent 共享状态"""
+
     user_message: str
     wiki_results: list[dict]
     wiki_text: str | None
@@ -168,10 +171,7 @@ async def _extract_key_facts(
 
     search_text = ""
     if search_results:
-        search_text = "\n".join(
-            f"- {r.get('title', '')}: {r.get('snippet', '')[:150]}"
-            for r in search_results[:5]
-        )
+        search_text = "\n".join(f"- {r.get('title', '')}: {r.get('snippet', '')[:150]}" for r in search_results[:5])
 
     prompt = KEY_FACTS_PROMPT.format(
         user_message=user_message,
@@ -180,8 +180,8 @@ async def _extract_key_facts(
     )
 
     try:
-        from langchain_openai import ChatOpenAI as _RawLLM
         from langchain_core.messages import HumanMessage as HM
+        from langchain_openai import ChatOpenAI as _RawLLM
 
         llm = _RawLLM(
             model=_chat_llm_model,
@@ -241,8 +241,10 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
 
     # 日志
     context_block = build_context_block(ctx)
-    print(f"[Context] wiki: {len(ctx.wiki_results)} docs, facts: {len(ctx.key_facts)}, "
-          f"history: {len(ctx.history_summary)} chars → {len(context_block)} chars")
+    print(
+        f"[Context] wiki: {len(ctx.wiki_results)} docs, facts: {len(ctx.key_facts)}, "
+        f"history: {len(ctx.history_summary)} chars → {len(context_block)} chars"
+    )
 
     return {
         **state,
@@ -415,7 +417,9 @@ async def run_chat_stream(
     queue: asyncio.Queue = asyncio.Queue()
 
     eval_task_id = await start_session(
-        user_message, session_id, "stream",
+        user_message,
+        session_id,
+        "stream",
         thread_id=thread_id,
         history_count=len(chat_history),
     )
@@ -485,7 +489,9 @@ async def run_chat_invoke(
     thread_id = str(uuid.uuid4())
 
     eval_task_id = await start_session(
-        user_message, session_id, "invoke",
+        user_message,
+        session_id,
+        "invoke",
         thread_id=thread_id,
         history_count=len(chat_history),
     )
@@ -528,7 +534,8 @@ async def resume_and_execute(thread_id: str, confirm: bool) -> dict:
 
     eval_task_id = await start_session(
         f"{'Confirm' if confirm else 'Cancel'} pending wiki knowledge-base action",
-        None, "resume",
+        None,
+        "resume",
         thread_id=thread_id,
         confirm=confirm,
     )

@@ -10,21 +10,20 @@ Configuration:
 """
 
 import logging
-from typing import Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.core.config import settings
 from app.core.cache import check_rate_limit
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 # Only rate-limit POST requests to these path prefixes
 _LIMITED_PATHS = {
-    "/api/v1/evaluations/",   # matches /, /quick, /batch, /stream, /consensus
-    "/api/v1/benchmark/",       # matches /monotonicity/run
+    "/api/v1/evaluations/",  # matches /, /quick, /batch, /stream, /consensus
+    "/api/v1/benchmark/",  # matches /monotonicity/run
 }
 
 # Paths that should never be rate-limited regardless of method
@@ -64,7 +63,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not allowed:
             logger.warning(
                 "Rate limit exceeded for %s on %s (limit=%d/min)",
-                client_id, path, settings.RATE_LIMIT_EVAL_PER_MINUTE,
+                client_id,
+                path,
+                settings.RATE_LIMIT_EVAL_PER_MINUTE,
             )
             return JSONResponse(
                 status_code=429,

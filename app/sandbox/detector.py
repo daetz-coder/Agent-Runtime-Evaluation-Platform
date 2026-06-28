@@ -13,11 +13,13 @@ from typing import Any, Dict, List, Optional
 
 from app.sandbox.models import SandboxLanguage
 
-
 # Tool name patterns that indicate code execution.
 # Order matters — first match wins.
 _CODE_TOOL_PATTERNS: list[tuple[re.Pattern, SandboxLanguage]] = [
-    (re.compile(r"(run_python|execute_python|python_exec|python_repl|run_code|execute_code)", re.I), SandboxLanguage.PYTHON),
+    (
+        re.compile(r"(run_python|execute_python|python_exec|python_repl|run_code|execute_code)", re.I),
+        SandboxLanguage.PYTHON,
+    ),
     (re.compile(r"(bash|shell|run_shell|run_bash|execute_shell|terminal|run_command)", re.I), SandboxLanguage.BASH),
     (re.compile(r"(run_node|execute_js|node_exec|run_javascript)", re.I), SandboxLanguage.NODE),
 ]
@@ -29,6 +31,7 @@ _CODE_KEYS = ["code", "command", "script", "query", "input", "body"]
 @dataclass
 class DetectedCodeSnippet:
     """A code snippet extracted from a trajectory tool call."""
+
     step: int
     tool_name: str
     language: SandboxLanguage
@@ -67,13 +70,15 @@ def detect_code_executions(tool_calls: List[Dict[str, Any]]) -> List[DetectedCod
         if not code or not code.strip():
             continue
 
-        results.append(DetectedCodeSnippet(
-            step=call.get("step", 0),
-            tool_name=tool_name,
-            language=matched_lang,
-            code=code,
-            original_output=str(call.get("output", "") or ""),
-        ))
+        results.append(
+            DetectedCodeSnippet(
+                step=call.get("step", 0),
+                tool_name=tool_name,
+                language=matched_lang,
+                code=code,
+                original_output=str(call.get("output", "") or ""),
+            )
+        )
 
     return results
 

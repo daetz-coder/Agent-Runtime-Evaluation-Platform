@@ -9,7 +9,6 @@ Wiki-Agent 检索评估 — 独立版（不需要后端运行）
 """
 
 import sys
-import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -17,37 +16,37 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from typing import List, Tuple
 
-
 # ══════════════════════════════════════════════════════════
 # 测试集
 # ══════════════════════════════════════════════════════════
 
 TEST_SET: List[Tuple[str, List[str]]] = [
-    ("Wiki Agent 有哪些核心功能",          ["system/wiki-agent-助手介绍.md"]),
-    ("如何用 AI 管理个人知识库",           ["welcome.md", "system/wiki-agent-助手介绍.md"]),
-    ("知识库内容有什么分类",               ["notes/知识库内容概述.md"]),
-    ("项目开发分几步",                     ["知识汇总.md"]),
-    ("bind_tools 第一次发送什么给 LLM",    ["notes/bind_tools-工作机制详解.md"]),
+    ("Wiki Agent 有哪些核心功能", ["system/wiki-agent-助手介绍.md"]),
+    ("如何用 AI 管理个人知识库", ["welcome.md", "system/wiki-agent-助手介绍.md"]),
+    ("知识库内容有什么分类", ["notes/知识库内容概述.md"]),
+    ("项目开发分几步", ["知识汇总.md"]),
+    ("bind_tools 第一次发送什么给 LLM", ["notes/bind_tools-工作机制详解.md"]),
     ("with_structured_output 和 PydanticOutputParser 区别", ["notes/langchain-知识提取方法对比.md"]),
-    ("LangChain 结构化输出方法",           ["notes/langchain-知识提取方法对比.md"]),
-    ("Kubernetes 容器编排核心架构",        ["development/tools/kubernetes-k8s-全面介绍.md", "notes/kubernetes-k8s.md"]),
-    ("K8S 的主要特点",                    ["notes/kubernetes-k8s.md", "development/tools/kubernetes-k8s-全面介绍.md"]),
-    ("Ubuntu 20.04 和 18.04 版本区别",    ["notes/ubuntu-2004与1804版本区别.md"]),
-    ("Ubuntu 系统介绍",                   ["notes/ubuntu系统全面介绍.md"]),
-    ("Python 语言核心特点",               ["programming/python-编程语言.md"]),
-    ("Python 变量定义和基本语法",         ["programming/python/python-基础知识.md"]),
-    ("CRUD 同步机制 ChromaDB",            ["development/knowledge-management/完整的crud同步机制架构.md"]),
-    ("Git 常用命令",                      ["development/tools/git-常用命令.md"]),
-    ("黑盒测试的方法和特点",              ["software/testing/黑盒测试.md"]),
-    ("什么是黑盒测试",                    ["software/testing/黑盒测试.md"]),
-    ("个人 Wiki 知识库设计理念",          ["welcome.md"]),
-    ("开发路线图",                        ["知识汇总.md"]),
-    ("LangGraph bind_tools 工具调用机制",  ["notes/bind_tools-工作机制详解.md"]),
+    ("LangChain 结构化输出方法", ["notes/langchain-知识提取方法对比.md"]),
+    ("Kubernetes 容器编排核心架构", ["development/tools/kubernetes-k8s-全面介绍.md", "notes/kubernetes-k8s.md"]),
+    ("K8S 的主要特点", ["notes/kubernetes-k8s.md", "development/tools/kubernetes-k8s-全面介绍.md"]),
+    ("Ubuntu 20.04 和 18.04 版本区别", ["notes/ubuntu-2004与1804版本区别.md"]),
+    ("Ubuntu 系统介绍", ["notes/ubuntu系统全面介绍.md"]),
+    ("Python 语言核心特点", ["programming/python-编程语言.md"]),
+    ("Python 变量定义和基本语法", ["programming/python/python-基础知识.md"]),
+    ("CRUD 同步机制 ChromaDB", ["development/knowledge-management/完整的crud同步机制架构.md"]),
+    ("Git 常用命令", ["development/tools/git-常用命令.md"]),
+    ("黑盒测试的方法和特点", ["software/testing/黑盒测试.md"]),
+    ("什么是黑盒测试", ["software/testing/黑盒测试.md"]),
+    ("个人 Wiki 知识库设计理念", ["welcome.md"]),
+    ("开发路线图", ["知识汇总.md"]),
+    ("LangGraph bind_tools 工具调用机制", ["notes/bind_tools-工作机制详解.md"]),
 ]
 
 
 def hit_rate_at_k(paths: List[str], expected: List[str], k: int) -> bool:
     return any(exp in paths[:k] for exp in expected)
+
 
 def mean_reciprocal_rank(paths: List[str], expected: List[str]) -> float:
     for rank, p in enumerate(paths, 1):
@@ -69,18 +68,21 @@ def main():
 
     try:
         from app.wiki_agent.agent.tools.search_tools import keyword_search
+
         strategies["BM25"] = keyword_search
     except Exception as e:
         errors["BM25"] = str(e)
 
     try:
         from app.wiki_agent.agent.tools.search_tools import semantic_search
+
         strategies["Semantic"] = semantic_search
     except Exception as e:
         errors["Semantic"] = str(e)
 
     try:
         from app.wiki_agent.agent.tools.search_tools import hybrid_search
+
         strategies["Hybrid"] = hybrid_search
     except Exception as e:
         errors["Hybrid"] = str(e)
@@ -106,10 +108,7 @@ def main():
     print()
 
     # ── 逐条评估 ──
-    results: dict = {
-        name: {"hits_1": 0, "hits_3": 0, "mrr_sum": 0.0, "n": 0}
-        for name in strategies
-    }
+    results: dict = {name: {"hits_1": 0, "hits_3": 0, "mrr_sum": 0.0, "n": 0} for name in strategies}
 
     for i, (query, expected) in enumerate(TEST_SET, 1):
         for name, search_fn in strategies.items():

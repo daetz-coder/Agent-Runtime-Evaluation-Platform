@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import io
-import os
 import posixpath
 import tarfile
 from typing import Any
@@ -20,10 +19,7 @@ WORKSPACE_ROOT = "/workspace"
 
 class FileReadTool(SandboxTool):
     name = "file_read"
-    description = (
-        "Read the contents of a file from the workspace. "
-        "Provide a path relative to /workspace."
-    )
+    description = "Read the contents of a file from the workspace. Provide a path relative to /workspace."
     parameters_schema = {
         "path": "str — File path relative to /workspace",
     }
@@ -36,9 +32,7 @@ class FileReadTool(SandboxTool):
         loop = asyncio.get_event_loop()
 
         try:
-            data, stat = await loop.run_in_executor(
-                None, lambda: container.get_archive(full_path)
-            )
+            data, stat = await loop.run_in_executor(None, lambda: container.get_archive(full_path))
         except Exception:
             return f"Error: File not found: {path}"
 

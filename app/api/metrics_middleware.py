@@ -20,7 +20,7 @@ from app.core.metrics import HTTP_REQUEST_COUNT, HTTP_REQUEST_DURATION
 class PrometheusMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         # Skip metrics endpoint itself
-        if request.url.path == "/metrics":
+        if request.url.path in ("/metrics", "/api/v1/system/metrics"):
             return await call_next(request)
 
         method = request.method
@@ -48,6 +48,7 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
 def _normalize_endpoint(path: str) -> str:
     """Normalize URL path by replacing UUIDs and IDs with placeholders."""
     import re
+
     # Replace UUIDs with {id}
     path = re.sub(
         r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",

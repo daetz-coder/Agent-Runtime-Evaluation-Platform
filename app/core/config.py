@@ -3,6 +3,7 @@ Application configuration using pydantic-settings.
 """
 
 from typing import List
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
                 self.SECRET_KEY = "dev-insecure-secret-change-in-production"
             else:
                 import secrets
+
                 self.SECRET_KEY = secrets.token_hex(32)
         return self
 
@@ -41,13 +43,13 @@ class Settings(BaseSettings):
 
     # Cache TTLs (seconds)
     CACHE_LLM_RESPONSES: bool = True
-    CACHE_LLM_TTL: int = 86400          # 24h
-    CACHE_REPORTS_TTL: int = 300        # 5min
-    CACHE_TRENDS_TTL: int = 600         # 10min
-    CACHE_TASK_TTL: int = 60            # 1min
-    CACHE_TRAJECTORY_TTL: int = 300     # 5min
-    CACHE_DASHBOARD_TTL: int = 30       # 30s
-    CACHE_SESSION_TTL: int = 3600       # 1h
+    CACHE_LLM_TTL: int = 86400  # 24h
+    CACHE_REPORTS_TTL: int = 300  # 5min
+    CACHE_TRENDS_TTL: int = 600  # 10min
+    CACHE_TASK_TTL: int = 60  # 1min
+    CACHE_TRAJECTORY_TTL: int = 300  # 5min
+    CACHE_DASHBOARD_TTL: int = 30  # 30s
+    CACHE_SESSION_TTL: int = 3600  # 1h
 
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = True
@@ -98,28 +100,31 @@ class Settings(BaseSettings):
     # Code Execution Sandbox (Docker-based)
     SANDBOX_ENABLED: bool = False
     SANDBOX_POOL_SIZE: int = 3
-    SANDBOX_TIMEOUT: int = 30                # seconds per snippet
+    SANDBOX_TIMEOUT: int = 30  # seconds per snippet
     SANDBOX_MEMORY_LIMIT_MB: int = 256
     SANDBOX_CPU_CORES: int = 1
-    SANDBOX_OUTPUT_LIMIT: int = 10_240_000   # 10 MB
-    SANDBOX_ACQUIRE_TIMEOUT: float = 10.0    # seconds to wait for pool
-    SANDBOX_CACHE_TTL: int = 86400           # 24h cache for identical executions
+    SANDBOX_OUTPUT_LIMIT: int = 10_240_000  # 10 MB
+    SANDBOX_ACQUIRE_TIMEOUT: float = 10.0  # seconds to wait for pool
+    SANDBOX_CACHE_TTL: int = 86400  # 24h cache for identical executions
 
     # Agent Runtime (Agent in Sandbox)
     AGENT_RUNTIME_ENABLED: bool = True
     AGENT_MAX_STEPS: int = 20
-    AGENT_TIMEOUT: int = 300                 # 5 minutes total agent timeout
+    AGENT_TIMEOUT: int = 300  # 5 minutes total agent timeout
 
     # Sandbox Session (for Agent Runtime)
     SANDBOX_SESSION_POOL_SIZE: int = 3
-    SANDBOX_SESSION_TIMEOUT: int = 600       # 10 minutes per container session
-    SANDBOX_WORKSPACE_SIZE_MB: int = 512     # /workspace tmpfs size
-    SANDBOX_TOOL_TIMEOUT: int = 60           # timeout per tool execution (seconds)
+    SANDBOX_SESSION_TIMEOUT: int = 600  # 10 minutes per container session
+    SANDBOX_WORKSPACE_SIZE_MB: int = 512  # /workspace tmpfs size
+    SANDBOX_TOOL_TIMEOUT: int = 60  # timeout per tool execution (seconds)
 
     # Agent Default Tools
     AGENT_DEFAULT_TOOLS: List[str] = [
-        "python_execute", "bash_execute",
-        "file_read", "file_write", "file_list",
+        "python_execute",
+        "bash_execute",
+        "file_read",
+        "file_write",
+        "file_list",
     ]
 
     model_config = SettingsConfigDict(

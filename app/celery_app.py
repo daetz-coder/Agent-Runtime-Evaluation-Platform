@@ -43,24 +43,19 @@ celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
-
     # Timezone
     timezone="UTC",
     enable_utc=True,
-
     # Task execution
-    task_acks_late=True,              # Ack after completion (not before)
+    task_acks_late=True,  # Ack after completion (not before)
     task_reject_on_worker_lost=True,  # Re-queue on worker crash
     task_time_limit=settings.AGENT_TIMEOUT + 120,  # Hard kill after timeout + buffer
     task_soft_time_limit=settings.AGENT_TIMEOUT + 60,  # Soft timeout (raises SoftTimeLimitExceeded)
-
     # Retry
-    task_default_retry_delay=10,      # Default retry delay (seconds)
-
+    task_default_retry_delay=10,  # Default retry delay (seconds)
     # Concurrency control
-    worker_prefetch_multiplier=1,     # Don't prefetch extra tasks (long-running)
-    worker_max_tasks_per_child=50,    # Restart worker after 50 tasks (memory leak prevention)
-
+    worker_prefetch_multiplier=1,  # Don't prefetch extra tasks (long-running)
+    worker_max_tasks_per_child=50,  # Restart worker after 50 tasks (memory leak prevention)
     # Task routes & priorities
     task_routes={
         "app.celery_app.run_evaluation_task": {"queue": "evaluation"},
@@ -68,7 +63,6 @@ celery_app.conf.update(
     },
     task_queue_max_priority=10,
     task_default_priority=5,
-
     # Result backend
     result_expires=86400,  # Results expire after 24h
 )
@@ -76,12 +70,14 @@ celery_app.conf.update(
 
 # ── Worker Initialization ─────────────────────────────────────
 
+
 @worker_process_init.connect
 def init_worker(**kwargs):
     """Initialize resources when a Celery worker process starts."""
     import asyncio
-    from app.db.database import init_db
+
     from app.core.cache import init_redis
+    from app.db.database import init_db
 
     logger.info("Initializing Celery worker...")
     loop = asyncio.new_event_loop()
@@ -91,6 +87,7 @@ def init_worker(**kwargs):
 
 
 # ── Task Definitions ──────────────────────────────────────────
+
 
 @celery_app.task(
     bind=True,
@@ -118,19 +115,17 @@ def run_evaluation_task(
       - Invalid trajectory data
     """
     import asyncio
-    from app.db.database import async_session_factory
-    from app.services.evaluation_service import EvaluationService
 
     logger.info(
         "Running evaluation task: task_id=%s, eval_id=%s, attempt=%d",
-        task_id, eval_id, self.request.retries + 1,
+        task_id,
+        eval_id,
+        self.request.retries + 1,
     )
 
     try:
         loop = asyncio.new_event_loop()
-        result = loop.run_until_complete(
-            _run_evaluation_async(task_id, workspace_id)
-        )
+        result = loop.run_until_complete(_run_evaluation_async(task_id, workspace_id))
         loop.close()
 
         logger.info("Evaluation completed: task_id=%s, eval_id=%s", task_id, eval_id)
@@ -139,13 +134,20 @@ def run_evaluation_task(
 
     except Exception as exc:
         logger.error(
-            "Evaluation failed (attempt %d): %s", self.request.retries + 1, exc,
+            "Evaluation failed (attempt %d): %s",
+            self.request.retries + 1,
+            exc,
             exc_info=True,
         )
         # Retry on transient errors
         if self.request.retries < self.max_retries:
             raise self.retry(exc=exc, countdown=15 * (self.request.retries + 1))
-        # Final failure
+        # Final failure — mark evaluation as failed so clients don't poll forever
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_abort_evaluation_async(task_id, eval_id, workspace_id))
+        finally:
+            loop.close()
         return {"task_id": task_id, "eval_id": eval_id, "status": "failed", "error": str(exc)}
 
 
@@ -175,9 +177,8 @@ def run_sandbox_evaluation_task(
     Lower max_retries because sandbox runs are long and expensive.
     """
     import asyncio
+
     from app.models.schemas import SandboxEvalRequest
-    from app.db.database import async_session_factory
-    from app.services.evaluation_service import EvaluationService
 
     logger.info("Running sandbox evaluation: goal=%s", goal[:100])
 
@@ -194,9 +195,7 @@ def run_sandbox_evaluation_task(
 
     try:
         loop = asyncio.new_event_loop()
-        result = loop.run_until_complete(
-            _run_sandbox_evaluation_async(request, workspace_id)
-        )
+        result = loop.run_until_complete(_run_sandbox_evaluation_async(request, workspace_id))
         loop.close()
 
         logger.info("Sandbox evaluation completed: task_id=%s", result.task_id)
@@ -210,6 +209,7 @@ def run_sandbox_evaluation_task(
 
 
 # ── Async Helpers ─────────────────────────────────────────────
+
 
 async def _run_evaluation_async(task_id: str, workspace_id: Optional[str] = None):
     """Async wrapper for evaluation service."""
@@ -235,12 +235,32 @@ async def _run_sandbox_evaluation_async(request, workspace_id: Optional[str] = N
         return result
 
 
+async def _abort_evaluation_async(
+    task_id: str,
+    eval_id: str,
+    workspace_id: Optional[str] = None,
+) -> None:
+    """Mark a stuck evaluation as failed after Celery exhausts retries."""
+    from app.db.database import async_session_factory
+    from app.services.evaluation_service import EvaluationService
+
+    async with async_session_factory() as db:
+        service = EvaluationService(db)
+        await service.abort_pending_evaluation(eval_id, task_id, workspace_id=workspace_id)
+        await db.commit()
+
+
 # ── Webhook Notification ──────────────────────────────────────
+
 
 def _notify_webhook(task_id: str, eval_id: str, result) -> None:
     """Send webhook notification on evaluation completion (sync, with retry)."""
     from app.services.webhook import WebhookService
-    WebhookService.notify_sync("evaluation.completed", {
-        "task_id": task_id,
-        "evaluation_id": eval_id,
-    })
+
+    WebhookService.notify_sync(
+        "evaluation.completed",
+        {
+            "task_id": task_id,
+            "evaluation_id": eval_id,
+        },
+    )

@@ -27,6 +27,7 @@ logger = logging.getLogger("sdk.collector")
 
 # ── 配置（纯环境变量，不依赖 pydantic-settings） ──
 
+
 def _env_bool(key: str, default: bool = True) -> bool:
     val = os.environ.get(key, "").lower()
     if val in ("1", "true", "yes", "on"):
@@ -49,6 +50,7 @@ def _env_str(key: str, default: str = "") -> str:
 
 # ── ActionType 常量 ──
 
+
 class ActionType:
     PLAN = "plan"
     PLAN_UPDATE = "plan_update"
@@ -66,10 +68,20 @@ class ActionType:
     EVIDENCE = "evidence"
 
     ALL_TYPES = {
-        PLAN, PLAN_UPDATE, TOOL_CALL, TOOL_RESULT,
-        MEMORY_WRITE, MEMORY_READ, STATE_CHANGE,
-        THINK, REPLAN, FAILURE, NODE_EXECUTE, TOOL_DECISION,
-        RETRIEVAL, EVIDENCE,
+        PLAN,
+        PLAN_UPDATE,
+        TOOL_CALL,
+        TOOL_RESULT,
+        MEMORY_WRITE,
+        MEMORY_READ,
+        STATE_CHANGE,
+        THINK,
+        REPLAN,
+        FAILURE,
+        NODE_EXECUTE,
+        TOOL_DECISION,
+        RETRIEVAL,
+        EVIDENCE,
     }
 
 
@@ -156,6 +168,7 @@ class TrajectoryCollector:
         self._batch_size = _env_int("EVAL_BATCH_SIZE", 10)
 
         import httpx
+
         self._client: Optional[httpx.Client] = None
 
     @property
@@ -329,41 +342,68 @@ class TrajectoryCollector:
     # ── 便捷记录方法（14 种 action type） ──
 
     def record_node_execute(self, node_name: str, input_data: Any = None, output_data: Any = None) -> None:
-        self.record(ActionType.NODE_EXECUTE, {
-            "node_name": node_name,
-            "input": _short(input_data),
-            "output": _short(output_data),
-        })
+        self.record(
+            ActionType.NODE_EXECUTE,
+            {
+                "node_name": node_name,
+                "input": _short(input_data),
+                "output": _short(output_data),
+            },
+        )
 
-    def record_tool_call(self, tool_name: str, tool_input: Any = None, tool_output: Any = None, duration_ms: Optional[float] = None) -> None:
-        self.record(ActionType.TOOL_CALL, {
-            "tool_name": tool_name,
-            "input": _short(tool_input),
-            "duration_ms": duration_ms,
-        }, observation=tool_output)
+    def record_tool_call(
+        self, tool_name: str, tool_input: Any = None, tool_output: Any = None, duration_ms: Optional[float] = None
+    ) -> None:
+        self.record(
+            ActionType.TOOL_CALL,
+            {
+                "tool_name": tool_name,
+                "input": _short(tool_input),
+                "duration_ms": duration_ms,
+            },
+            observation=tool_output,
+        )
 
-    def record_tool_result(self, tool_name: str, tool_output: Any = None, duration_ms: Optional[float] = None, success: bool = True, error_type: Optional[str] = None) -> None:
-        self.record(ActionType.TOOL_RESULT, {
-            "tool_name": tool_name,
-            "success": success,
-            "error_type": error_type,
-            "duration_ms": duration_ms,
-        }, observation=tool_output)
+    def record_tool_result(
+        self,
+        tool_name: str,
+        tool_output: Any = None,
+        duration_ms: Optional[float] = None,
+        success: bool = True,
+        error_type: Optional[str] = None,
+    ) -> None:
+        self.record(
+            ActionType.TOOL_RESULT,
+            {
+                "tool_name": tool_name,
+                "success": success,
+                "error_type": error_type,
+                "duration_ms": duration_ms,
+            },
+            observation=tool_output,
+        )
 
     def record_think(self, thought: str) -> None:
         self.record(ActionType.THINK, {"thought": thought})
 
-    def record_llm_call(self, model: str, messages: Any = None, response: Any = None, duration_ms: Optional[float] = None) -> None:
+    def record_llm_call(
+        self, model: str, messages: Any = None, response: Any = None, duration_ms: Optional[float] = None
+    ) -> None:
         """记录 LLM 调用（同时记录为 THINK 以保留 LLM 内容语义）。"""
-        self.record(ActionType.THINK, {
-            "thought": f"LLM call to {model}",
-            "model": model,
-            "messages": _short(messages, 1000),
-            "response": _short(response, 1000),
-            "duration_ms": duration_ms,
-        })
+        self.record(
+            ActionType.THINK,
+            {
+                "thought": f"LLM call to {model}",
+                "model": model,
+                "messages": _short(messages, 1000),
+                "response": _short(response, 1000),
+                "duration_ms": duration_ms,
+            },
+        )
 
-    def record_state_change(self, state_before: Dict[str, Any], state_after: Dict[str, Any], trigger: str = "", node_name: str = "") -> None:
+    def record_state_change(
+        self, state_before: Dict[str, Any], state_after: Dict[str, Any], trigger: str = "", node_name: str = ""
+    ) -> None:
         diff: Dict[str, Any] = {}
         all_keys = set(list(state_before.keys()) + list(state_after.keys()))
         for key in all_keys:
@@ -376,7 +416,8 @@ class TrajectoryCollector:
                     diff[key] = {
                         "type": "dict",
                         "changed_keys": [
-                            k for k in set(list(old_val.keys()) + list(new_val.keys()))
+                            k
+                            for k in set(list(old_val.keys()) + list(new_val.keys()))
                             if old_val.get(k) != new_val.get(k)
                         ][:10],
                     }
@@ -385,88 +426,144 @@ class TrajectoryCollector:
                         "old": str(old_val)[:100] if old_val is not None else "None",
                         "new": str(new_val)[:100] if new_val is not None else "None",
                     }
-        self.record(ActionType.STATE_CHANGE, {
-            "node_name": node_name,
-            "trigger": trigger,
-            "diff": diff,
-        })
+        self.record(
+            ActionType.STATE_CHANGE,
+            {
+                "node_name": node_name,
+                "trigger": trigger,
+                "diff": diff,
+            },
+        )
 
-    def record_failure(self, error_type: str, error_message: str, context: str = "", recoverable: bool = True, node_name: str = "", stack_trace: Optional[str] = None) -> None:
-        self.record(ActionType.FAILURE, {
-            "error_type": error_type,
-            "error_message": error_message[:2000],
-            "context": context,
-            "recoverable": recoverable,
-            "node_name": node_name,
-            "stack_trace": (stack_trace or "")[:1000],
-        })
+    def record_failure(
+        self,
+        error_type: str,
+        error_message: str,
+        context: str = "",
+        recoverable: bool = True,
+        node_name: str = "",
+        stack_trace: Optional[str] = None,
+    ) -> None:
+        self.record(
+            ActionType.FAILURE,
+            {
+                "error_type": error_type,
+                "error_message": error_message[:2000],
+                "context": context,
+                "recoverable": recoverable,
+                "node_name": node_name,
+                "stack_trace": (stack_trace or "")[:1000],
+            },
+        )
 
-    def record_plan_update(self, milestone_status: Dict[str, str], next_action: str, reason: str = "", remaining_steps: Optional[List[str]] = None) -> None:
-        self.record(ActionType.PLAN_UPDATE, {
-            "milestone_status": milestone_status,
-            "next_action": next_action,
-            "reason": reason,
-            "remaining_steps": remaining_steps or [],
-        })
+    def record_plan_update(
+        self,
+        milestone_status: Dict[str, str],
+        next_action: str,
+        reason: str = "",
+        remaining_steps: Optional[List[str]] = None,
+    ) -> None:
+        self.record(
+            ActionType.PLAN_UPDATE,
+            {
+                "milestone_status": milestone_status,
+                "next_action": next_action,
+                "reason": reason,
+                "remaining_steps": remaining_steps or [],
+            },
+        )
 
     def record_replan(self, reason: str, new_plan: str = "", trigger: str = "") -> None:
         """记录重规划事件（ReplanEvaluator 依赖此方法）。"""
-        self.record(ActionType.REPLAN, {
-            "reason": reason,
-            "new_plan": new_plan,
-            "trigger": trigger,
-        })
+        self.record(
+            ActionType.REPLAN,
+            {
+                "reason": reason,
+                "new_plan": new_plan,
+                "trigger": trigger,
+            },
+        )
 
     def record_memory_write(self, key: str, value: Any, source: str = "", memory_type: str = "fact") -> None:
-        self.record(ActionType.MEMORY_WRITE, {
-            "key": key,
-            "value": value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)[:2000],
-            "source": source,
-            "memory_type": memory_type,
-        })
+        self.record(
+            ActionType.MEMORY_WRITE,
+            {
+                "key": key,
+                "value": value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)[:2000],
+                "source": source,
+                "memory_type": memory_type,
+            },
+        )
 
     def record_memory_read(self, key: str, value: Any = None, context: str = "", hit: bool = True) -> None:
-        self.record(ActionType.MEMORY_READ, {
-            "key": key,
-            "value": value if isinstance(value, str) else (json.dumps(value, ensure_ascii=False, default=str)[:2000] if value else None),
-            "context": context,
-            "hit": hit,
-        })
+        self.record(
+            ActionType.MEMORY_READ,
+            {
+                "key": key,
+                "value": value
+                if isinstance(value, str)
+                else (json.dumps(value, ensure_ascii=False, default=str)[:2000] if value else None),
+                "context": context,
+                "hit": hit,
+            },
+        )
 
-    def record_retrieval(self, query: str, retrieved_docs: List[Dict[str, Any]], source: str = "", top_k: int = 3, duration_ms: Optional[float] = None) -> None:
-        self.record(ActionType.RETRIEVAL, {
-            "query": query,
-            "source": source,
-            "top_k": top_k,
-            "result_count": len(retrieved_docs),
-            "duration_ms": duration_ms,
-            "retrieved_docs": [
-                {
-                    "title": doc.get("title", ""),
-                    "path": doc.get("path", ""),
-                    "snippet": doc.get("snippet", "")[:500],
-                    "score": doc.get("score"),
-                }
-                for doc in retrieved_docs[:top_k]
-            ],
-        })
+    def record_retrieval(
+        self,
+        query: str,
+        retrieved_docs: List[Dict[str, Any]],
+        source: str = "",
+        top_k: int = 3,
+        duration_ms: Optional[float] = None,
+    ) -> None:
+        self.record(
+            ActionType.RETRIEVAL,
+            {
+                "query": query,
+                "source": source,
+                "top_k": top_k,
+                "result_count": len(retrieved_docs),
+                "duration_ms": duration_ms,
+                "retrieved_docs": [
+                    {
+                        "title": doc.get("title", ""),
+                        "path": doc.get("path", ""),
+                        "snippet": doc.get("snippet", "")[:500],
+                        "score": doc.get("score"),
+                    }
+                    for doc in retrieved_docs[:top_k]
+                ],
+            },
+        )
 
-    def record_evidence(self, evidence_type: str, sources: Dict[str, Any], final_prompt_messages: Optional[List[Dict[str, str]]] = None, context: str = "") -> None:
+    def record_evidence(
+        self,
+        evidence_type: str,
+        sources: Dict[str, Any],
+        final_prompt_messages: Optional[List[Dict[str, str]]] = None,
+        context: str = "",
+    ) -> None:
         truncated = None
         if final_prompt_messages:
-            truncated = [{"role": m.get("role", "unknown"), "content": str(m.get("content", ""))[:1000]} for m in final_prompt_messages]
-        self.record(ActionType.EVIDENCE, {
-            "evidence_type": evidence_type,
-            "context": context,
-            "sources": {
-                "retrieved_docs_count": len(sources.get("retrieved_docs") or []),
-                "tool_results_count": len(sources.get("tool_results") or []),
-                "memory_results_count": len(sources.get("memory_results") or []),
-                "chat_history_count": sources.get("chat_history_count", 0),
+            truncated = [
+                {"role": m.get("role", "unknown"), "content": str(m.get("content", ""))[:1000]}
+                for m in final_prompt_messages
+            ]
+        self.record(
+            ActionType.EVIDENCE,
+            {
+                "evidence_type": evidence_type,
+                "context": context,
+                "sources": {
+                    "retrieved_docs_count": len(sources.get("retrieved_docs") or []),
+                    "tool_results_count": len(sources.get("tool_results") or []),
+                    "memory_results_count": len(sources.get("memory_results") or []),
+                    "chat_history_count": sources.get("chat_history_count", 0),
+                },
+                "final_prompt_messages": truncated,
+                "total_message_count": len(truncated) if truncated else 0,
             },
-            "final_prompt_messages": truncated,
-            "total_message_count": len(truncated) if truncated else 0,
-        })
+        )
 
     def get_steps(self) -> List[Dict[str, Any]]:
         with self._buffer_lock:
@@ -499,13 +596,20 @@ class TrajectoryCollector:
                 logger.debug("HTTP %s %s timeout (attempt %d/%d)", method, url, attempt + 1, self._MAX_RETRIES)
             except httpx.HTTPStatusError as exc:
                 last_exc = exc
-                logger.debug("HTTP %s %s returned %d (attempt %d/%d)", method, url, exc.response.status_code, attempt + 1, self._MAX_RETRIES)
+                logger.debug(
+                    "HTTP %s %s returned %d (attempt %d/%d)",
+                    method,
+                    url,
+                    exc.response.status_code,
+                    attempt + 1,
+                    self._MAX_RETRIES,
+                )
             except Exception as exc:
                 last_exc = exc
                 logger.debug("HTTP %s %s failed: %s (attempt %d/%d)", method, url, exc, attempt + 1, self._MAX_RETRIES)
 
             if attempt < self._MAX_RETRIES - 1:
-                delay = self._RETRY_BASE_DELAY * (2 ** attempt)
+                delay = self._RETRY_BASE_DELAY * (2**attempt)
                 time.sleep(delay)
 
         logger.warning("HTTP %s %s failed after %d retries: %s", method, url, self._MAX_RETRIES, last_exc)
@@ -543,11 +647,13 @@ class TrajectoryCollector:
     def _http(self):
         if self._client is None:
             import httpx
+
             self._client = httpx.Client(timeout=10.0)
         return self._client
 
 
 # ── 全局单例 ──
+
 
 def get_collector() -> TrajectoryCollector:
     return TrajectoryCollector()

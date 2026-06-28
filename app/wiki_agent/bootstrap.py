@@ -55,10 +55,7 @@ def sync_indexes_if_needed() -> None:
     bm25_ok = len(bm25._tokenized_corpus) > 0
 
     if milvus_ok and bm25_ok:
-        print(
-            f"[Wiki Agent] Milvus: {store.count()} records, "
-            f"BM25: {len(bm25._tokenized_corpus)} chunks — skip sync"
-        )
+        print(f"[Wiki Agent] Milvus: {store.count()} records, BM25: {len(bm25._tokenized_corpus)} chunks — skip sync")
         return
 
     print("[Wiki Agent] Indexes incomplete, syncing knowledge base...")

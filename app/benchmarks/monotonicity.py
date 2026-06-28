@@ -56,12 +56,14 @@ async def run_monotonicity_benchmark_stream() -> AsyncIterator[Dict[str, str]]:
     for index, level in enumerate(QUALITY_ORDER, start=1):
         yield {
             "event": "progress",
-            "data": json.dumps({
-                "level": level,
-                "index": index,
-                "total": total,
-                "status": "running",
-            }),
+            "data": json.dumps(
+                {
+                    "level": level,
+                    "index": index,
+                    "total": total,
+                    "status": "running",
+                }
+            ),
         }
 
         try:
@@ -85,11 +87,13 @@ async def run_monotonicity_benchmark_stream() -> AsyncIterator[Dict[str, str]]:
 
             yield {
                 "event": "result",
-                "data": json.dumps({
-                    **item,
-                    "index": index,
-                    "total": total,
-                }),
+                "data": json.dumps(
+                    {
+                        **item,
+                        "index": index,
+                        "total": total,
+                    }
+                ),
             }
         except Exception as exc:
             yield {
@@ -100,10 +104,12 @@ async def run_monotonicity_benchmark_stream() -> AsyncIterator[Dict[str, str]]:
     monotonic = check_monotonicity(results)
     yield {
         "event": "complete",
-        "data": json.dumps({
-            "results": results,
-            "monotonic": monotonic,
-            "reference_scores": REFERENCE_SCORES,
-        }),
+        "data": json.dumps(
+            {
+                "results": results,
+                "monotonic": monotonic,
+                "reference_scores": REFERENCE_SCORES,
+            }
+        ),
     }
     yield {"event": "done", "data": "{}"}

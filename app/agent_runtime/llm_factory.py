@@ -50,8 +50,7 @@ def create_llm(
         return _create_qwen(model or settings.QWEN_MODEL, temperature)
     else:
         raise ValueError(
-            f"Unsupported LLM provider: '{provider}'. "
-            f"Supported: openai, anthropic, deepseek, zhipuai, qwen"
+            f"Unsupported LLM provider: '{provider}'. Supported: openai, anthropic, deepseek, zhipuai, qwen"
         )
 
 
@@ -59,6 +58,7 @@ def _create_openai(model: str, temperature: float) -> BaseChatModel:
     if not settings.OPENAI_API_KEY:
         raise ValueError("OPENAI_API_KEY is not configured")
     from langchain_openai import ChatOpenAI
+
     return ChatOpenAI(
         model=model,
         temperature=temperature,
@@ -70,6 +70,7 @@ def _create_anthropic(model: str, temperature: float) -> BaseChatModel:
     if not settings.ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY is not configured")
     from langchain_anthropic import ChatAnthropic
+
     return ChatAnthropic(
         model=model,
         temperature=temperature,
@@ -81,6 +82,7 @@ def _create_deepseek(model: str, temperature: float) -> BaseChatModel:
     if not settings.DEEPSEEK_API_KEY:
         raise ValueError("DEEPSEEK_API_KEY is not configured")
     from langchain_openai import ChatOpenAI
+
     return ChatOpenAI(
         model=model,
         temperature=temperature,
@@ -93,6 +95,7 @@ def _create_zhipuai(model: str, temperature: float) -> BaseChatModel:
     if not settings.ZHIPUAI_API_KEY:
         raise ValueError("ZHIPUAI_API_KEY is not configured")
     from langchain_openai import ChatOpenAI
+
     return ChatOpenAI(
         model=model,
         temperature=temperature,
@@ -105,6 +108,7 @@ def _create_qwen(model: str, temperature: float) -> BaseChatModel:
     if not settings.QWEN_API_KEY:
         raise ValueError("QWEN_API_KEY is not configured")
     from langchain_openai import ChatOpenAI
+
     return ChatOpenAI(
         model=model,
         temperature=temperature,

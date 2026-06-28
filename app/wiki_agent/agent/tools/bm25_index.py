@@ -12,14 +12,70 @@ from rank_bm25 import BM25Okapi
 from app.wiki_agent.config import settings
 
 # 停用词（常见无意义词）
-_STOPWORDS = frozenset([
-    "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都",
-    "一", "一个", "上", "也", "很", "到", "说", "要", "去", "你",
-    "会", "着", "没有", "看", "好", "自己", "这", "他", "她", "它",
-    "们", "那", "里", "为", "什么", "怎么", "如何", "可以", "以",
-    "及", "与", "或", "但", "而", "把", "被", "让", "从", "对",
-    "等", "能", "将", "已", "还", "更", "其", "中", "之", "则",
-])
+_STOPWORDS = frozenset(
+    [
+        "的",
+        "了",
+        "在",
+        "是",
+        "我",
+        "有",
+        "和",
+        "就",
+        "不",
+        "人",
+        "都",
+        "一",
+        "一个",
+        "上",
+        "也",
+        "很",
+        "到",
+        "说",
+        "要",
+        "去",
+        "你",
+        "会",
+        "着",
+        "没有",
+        "看",
+        "好",
+        "自己",
+        "这",
+        "他",
+        "她",
+        "它",
+        "们",
+        "那",
+        "里",
+        "为",
+        "什么",
+        "怎么",
+        "如何",
+        "可以",
+        "以",
+        "及",
+        "与",
+        "或",
+        "但",
+        "而",
+        "把",
+        "被",
+        "让",
+        "从",
+        "对",
+        "等",
+        "能",
+        "将",
+        "已",
+        "还",
+        "更",
+        "其",
+        "中",
+        "之",
+        "则",
+    ]
+)
 
 
 def _tokenize(text: str) -> list[str]:
@@ -33,7 +89,7 @@ class BM25Index:
 
     def __init__(self):
         self._tokenized_corpus: list[list[str]] = []  # 每个 chunk 的 token 列表
-        self._chunk_meta: list[dict] = []              # 每个 chunk 的元数据
+        self._chunk_meta: list[dict] = []  # 每个 chunk 的元数据
         self._bm25: BM25Okapi | None = None
         self._dirty = False  # 是否需要重建 BM25 实例
 
@@ -53,22 +109,21 @@ class BM25Index:
             text = f"{title}\n{chunk}"
             tokens = _tokenize(text)
             self._tokenized_corpus.append(tokens)
-            self._chunk_meta.append({
-                "path": path,
-                "title": title,
-                "snippet": chunk[:200],
-                "content": chunk,
-                "chunk_index": i,
-            })
+            self._chunk_meta.append(
+                {
+                    "path": path,
+                    "title": title,
+                    "snippet": chunk[:200],
+                    "content": chunk,
+                    "chunk_index": i,
+                }
+            )
 
         self._dirty = True
 
     def remove_document(self, path: str):
         """按文档路径移除所有相关 chunks"""
-        indices_to_remove = [
-            i for i, meta in enumerate(self._chunk_meta)
-            if meta["path"] == path
-        ]
+        indices_to_remove = [i for i, meta in enumerate(self._chunk_meta) if meta["path"] == path]
         # 从后往前删，避免索引偏移
         for i in reversed(indices_to_remove):
             self._tokenized_corpus.pop(i)
@@ -150,8 +205,8 @@ class BM25Index:
 
     def build_from_knowledge_dir(self):
         """从 knowledge 目录全量重建索引"""
+
         from app.wiki_agent.agent.tools.chunker import chunk_markdown
-        import re
 
         knowledge_dir = Path(settings.KNOWLEDGE_DIR)
         if not knowledge_dir.exists():
@@ -178,7 +233,7 @@ class BM25Index:
                 if len(parts) >= 3:
                     for line in parts[1].split("\n"):
                         if line.strip().startswith("title:"):
-                            title = line.split(":", 1)[1].strip().strip('"\'')
+                            title = line.split(":", 1)[1].strip().strip("\"'")
                     body = parts[2].strip()
 
             rel_path = str(md_file.relative_to(knowledge_dir)).replace("\\", "/")
@@ -190,13 +245,15 @@ class BM25Index:
                 text = f"{title}\n{chunk}"
                 tokens = _tokenize(text)
                 self._tokenized_corpus.append(tokens)
-                self._chunk_meta.append({
-                    "path": rel_path,
-                    "title": title,
-                    "snippet": chunk[:200],
-                    "content": chunk,
-                    "chunk_index": i,
-                })
+                self._chunk_meta.append(
+                    {
+                        "path": rel_path,
+                        "title": title,
+                        "snippet": chunk[:200],
+                        "content": chunk,
+                        "chunk_index": i,
+                    }
+                )
             count += 1
 
         self._rebuild_if_dirty()

@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
-from app.wiki_agent.agent.graph import run_chat_invoke, run_chat_stream, resume_and_execute
+from app.wiki_agent.agent.graph import resume_and_execute, run_chat_invoke, run_chat_stream
 from app.wiki_agent.agent.tools import crud_tools
 from app.wiki_agent.session import store as session_store
 
@@ -148,7 +148,9 @@ async def chat_message(req: ChatRequest):
             "wiki_results": result.get("wiki_text"),
             "extraction": result.get("extraction"),
             "evaluation_task_id": result.get("evaluation_task_id"),
-            "evaluation_link": result.get("evaluation_task_id") and f"/evaluations?task_id={result['evaluation_task_id']}" or None,
+            "evaluation_link": result.get("evaluation_task_id")
+            and f"/evaluations?task_id={result['evaluation_task_id']}"
+            or None,
         }
     except Exception as e:
         raise HTTPException(500, f"LLM 调用失败: {e}")
@@ -205,9 +207,7 @@ async def confirm_knowledge(req: ConfirmRequest):
 
         if req.session_id:
             status = "confirmed" if req.confirm else "rejected"
-            await session_store.update_extraction_status(
-                req.session_id, req.thread_id, status
-            )
+            await session_store.update_extraction_status(req.session_id, req.thread_id, status)
 
         return result
     except Exception as e:

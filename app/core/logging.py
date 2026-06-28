@@ -41,9 +41,7 @@ def set_correlation_id(cid: str | None = None) -> str:
     return cid
 
 
-def add_correlation_id(
-    logger: Any, method_name: str, event_dict: dict
-) -> dict:
+def add_correlation_id(logger: Any, method_name: str, event_dict: dict) -> dict:
     """structlog processor: inject correlation_id into every log entry."""
     event_dict["request_id"] = _correlation_id_var.get()
     return event_dict

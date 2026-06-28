@@ -6,8 +6,8 @@ so the application keeps working without a running Redis instance.
 """
 
 import json
-import time
 import logging
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import redis.asyncio as aioredis
@@ -67,6 +67,7 @@ def _key(key: str) -> str:
 # ---------------------------------------------------------------------------
 # String (JSON) operations
 # ---------------------------------------------------------------------------
+
 
 async def cache_get(key: str) -> Optional[Any]:
     """GET a JSON-serialized value.  Returns None on miss or error."""
@@ -133,6 +134,7 @@ async def cache_delete_pattern(pattern: str) -> int:
 # Hash operations
 # ---------------------------------------------------------------------------
 
+
 async def cache_hgetall(key: str) -> Optional[Dict[str, str]]:
     """HGETALL — returns dict or None."""
     r = _client()
@@ -178,6 +180,7 @@ async def cache_hincrby(key: str, field: str, amount: int = 1) -> Optional[int]:
 # Counter operations
 # ---------------------------------------------------------------------------
 
+
 async def cache_incr(key: str, amount: int = 1) -> Optional[int]:
     """INCRBY — atomically increment a string value."""
     r = _client()
@@ -193,6 +196,7 @@ async def cache_incr(key: str, amount: int = 1) -> Optional[int]:
 # ---------------------------------------------------------------------------
 # List operations
 # ---------------------------------------------------------------------------
+
 
 async def cache_lpush(key: str, *values: Any) -> Optional[int]:
     """LPUSH — prepend values to a list."""
@@ -236,6 +240,7 @@ async def cache_ltrim(key: str, start: int, end: int) -> bool:
 # ---------------------------------------------------------------------------
 # Rate limiter (Sorted Set sliding window)
 # ---------------------------------------------------------------------------
+
 
 async def check_rate_limit(
     key: str,
@@ -293,7 +298,9 @@ async def check_rate_limit(
 # Utility
 # ---------------------------------------------------------------------------
 
+
 def hash_prompt(text: str) -> str:
     """SHA-256 hash for LLM cache keys."""
     import hashlib
+
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]

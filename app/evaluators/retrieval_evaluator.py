@@ -72,6 +72,7 @@ Return a JSON object:
 
 class RetrievalScore(BaseModel):
     """检索质量评估分。"""
+
     relevance: float = 0
     evidence_accuracy: float = 0
     coverage: float = 0
@@ -102,9 +103,9 @@ class RetrievalEvaluator(BaseEvaluator):
         """
         # 提取检索结果
         retrievals = [
-            s for s in trajectory
-            if s.action_type in ("retrieval", "tool_call")
-            and s.action_detail.get("retrieved_docs")
+            s
+            for s in trajectory
+            if s.action_type in ("retrieval", "tool_call") and s.action_detail.get("retrieved_docs")
         ]
         retrieval_docs = []
         for s in retrievals:
@@ -132,18 +133,21 @@ class RetrievalEvaluator(BaseEvaluator):
 
         # 格式化检索文档
         docs_text = "\n\n".join(
-            f"[{i+1}] {d.get('title', 'Unknown')}: {d.get('snippet', '')[:300]}"
+            f"[{i + 1}] {d.get('title', 'Unknown')}: {d.get('snippet', '')[:300]}"
             for i, d in enumerate(retrieval_docs[:10])
         )
 
         prompt = ChatPromptTemplate.from_template(RETRIEVAL_EVAL_PROMPT)
         chain = prompt | self.llm
         try:
-            response = await self._invoke_llm_cached(chain, {
-                "goal": goal,
-                "retrieved_docs": docs_text,
-                "final_answer": final_answer or "No final answer found",
-            })
+            response = await self._invoke_llm_cached(
+                chain,
+                {
+                    "goal": goal,
+                    "retrieved_docs": docs_text,
+                    "final_answer": final_answer or "No final answer found",
+                },
+            )
             scores = self._parse_scores(response.content)
             return RetrievalScore(**scores)
         except Exception as e:
@@ -157,6 +161,7 @@ class RetrievalEvaluator(BaseEvaluator):
         """解析 LLM 返回的 JSON。"""
         try:
             import re
+
             match = re.search(r"\{.*\}", content, re.DOTALL)
             if match:
                 data = json.loads(match.group())
@@ -178,7 +183,11 @@ class RetrievalEvaluator(BaseEvaluator):
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("Failed to parse retrieval eval: %s", e)
         return {
-            "relevance": 50, "evidence_accuracy": 50, "coverage": 50,
-            "overall": 50, "feedback": f"Parse error: {content[:200]}",
-            "hallucination_detected": False, "missing_info": [],
+            "relevance": 50,
+            "evidence_accuracy": 50,
+            "coverage": 50,
+            "overall": 50,
+            "feedback": f"Parse error: {content[:200]}",
+            "hallucination_detected": False,
+            "missing_info": [],
         }

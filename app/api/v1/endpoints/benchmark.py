@@ -1,11 +1,11 @@
 """Benchmark endpoints."""
 
 from fastapi import APIRouter, Depends
+from sse_starlette.sse import EventSourceResponse
 
 from app.api.workspace import WorkspaceRole
 from app.api.workspace_context import WorkspaceContext, get_workspace_context, require_role
 from app.benchmarks.monotonicity import get_monotonicity_metadata, run_monotonicity_benchmark_stream
-from sse_starlette.sse import EventSourceResponse
 
 router = APIRouter()
 

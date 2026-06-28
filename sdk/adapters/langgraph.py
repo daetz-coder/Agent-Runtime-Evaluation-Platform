@@ -31,13 +31,12 @@ import inspect
 import logging
 import time
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Union
 
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage
 from langgraph.graph.state import CompiledStateGraph, StateGraph
 
-from sdk.collector import get_collector
-from sdk.collector import ActionType
+from sdk.collector import ActionType, get_collector
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,7 @@ class InstrumentedStateGraph:
 
     def _instrument_existing_nodes(self):
         """包装已添加的节点的 runnable"""
-        if hasattr(self._original, 'nodes'):
+        if hasattr(self._original, "nodes"):
             for node_name, spec in self._original.nodes.items():
                 if node_name not in self._instrumented_nodes:
                     self._wrap_spec_runnable(node_name, spec)
@@ -73,10 +72,10 @@ class InstrumentedStateGraph:
         """替换 StateNodeSpec 中的 runnable 为包装后的版本"""
         original = spec.runnable
         # 提取原始 callable（可能被 langgraph 包装过）
-        inner = getattr(original, 'func', None) or original
+        inner = getattr(original, "func", None) or original
         wrapped = self._wrap_node(node_name, inner)
         # 如果 original 是 RunnableCallable 类型，替换其 func
-        if hasattr(original, 'func'):
+        if hasattr(original, "func"):
             original.func = wrapped
         else:
             spec.runnable = wrapped
@@ -189,8 +188,8 @@ class InstrumentedStateGraph:
                 )
                 raise
 
-        async_wrapper.__name__ = getattr(node_func, '__name__', node_name)
-        async_wrapper.__doc__ = getattr(node_func, '__doc__', None)
+        async_wrapper.__name__ = getattr(node_func, "__name__", node_name)
+        async_wrapper.__doc__ = getattr(node_func, "__doc__", None)
         return async_wrapper
 
     def _extract_state_summary(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -203,7 +202,7 @@ class InstrumentedStateGraph:
                 summary["messages_count"] = len(messages)
                 if messages:
                     last_msg = messages[-1]
-                    if hasattr(last_msg, 'content'):
+                    if hasattr(last_msg, "content"):
                         summary["last_message"] = str(last_msg.content)[:100]
             elif isinstance(value, (str, int, float, bool)):
                 summary[key] = value
@@ -225,7 +224,7 @@ class InstrumentedStateGraph:
                 for msg in messages:
                     if isinstance(msg, AIMessage):
                         summary["ai_response"] = str(msg.content)[:200]
-                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        if hasattr(msg, "tool_calls") and msg.tool_calls:
                             summary["tool_calls"] = [
                                 {"name": tc.get("name", ""), "args": str(tc.get("args", {}))[:50]}
                                 for tc in msg.tool_calls
@@ -250,7 +249,7 @@ class InstrumentedStateGraph:
             return
 
         for msg in messages:
-            if not isinstance(msg, AIMessage) or not hasattr(msg, 'tool_calls'):
+            if not isinstance(msg, AIMessage) or not hasattr(msg, "tool_calls"):
                 continue
             if not msg.tool_calls:
                 continue
@@ -298,7 +297,7 @@ class InstrumentedCompiledGraph:
         start_time = time.time()
 
         # 记录开始
-        self._collector.record_think(f"Graph execution started")
+        self._collector.record_think("Graph execution started")
 
         # 调用原始图
         try:
@@ -315,9 +314,7 @@ class InstrumentedCompiledGraph:
 
         # 记录完成
         duration_ms = (time.time() - start_time) * 1000
-        self._collector.record_think(
-            f"Graph execution completed in {duration_ms:.0f}ms"
-        )
+        self._collector.record_think(f"Graph execution completed in {duration_ms:.0f}ms")
 
         return result
 
@@ -326,7 +323,7 @@ class InstrumentedCompiledGraph:
         start_time = time.time()
 
         # 记录开始
-        self._collector.record_think(f"Graph execution started")
+        self._collector.record_think("Graph execution started")
 
         # 调用原始图
         try:
@@ -343,9 +340,7 @@ class InstrumentedCompiledGraph:
 
         # 记录完成
         duration_ms = (time.time() - start_time) * 1000
-        self._collector.record_think(
-            f"Graph execution completed in {duration_ms:.0f}ms"
-        )
+        self._collector.record_think(f"Graph execution completed in {duration_ms:.0f}ms")
 
         return result
 

@@ -16,6 +16,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 def test_proxy_llm():
     """测试 LLM Proxy — BaseChatModel 透明代理，记录 llm_call + tool_decision"""
     from langchain_openai import ChatOpenAI
+
     from app.adapters.llm_proxy import create_proxy_llm
     from app.collectors import get_collector
 
@@ -30,8 +31,7 @@ def test_proxy_llm():
     proxy = create_proxy_llm(raw_llm)
 
     # 验证一行代码接入
-    assert hasattr(proxy, '_original_llm'), \
-        f"Proxy should wrap the original LLM, got {type(proxy).__name__}"
+    assert hasattr(proxy, "_original_llm"), f"Proxy should wrap the original LLM, got {type(proxy).__name__}"
     assert proxy._original_llm is raw_llm, "Proxy should hold reference to original LLM"
 
     # 验证重复包装不叠加
@@ -40,6 +40,7 @@ def test_proxy_llm():
 
     # 验证 bind_tools 代理
     from langchain_core.tools import tool
+
     @tool
     def dummy_search(query: str) -> str:
         """Search tool"""
@@ -53,21 +54,27 @@ def test_proxy_llm():
 
 def test_callback_handler():
     """测试 Callback Handler — on_llm_start/end, on_tool_start/end/error"""
-    from app.adapters.callback import create_callback_handler
     from langchain_core.callbacks import BaseCallbackHandler
+
+    from app.adapters.callback import create_callback_handler
 
     handler = create_callback_handler()
 
     # 验证一行代码接入
-    assert isinstance(handler, BaseCallbackHandler), \
-        f"Handler should be a BaseCallbackHandler, got {type(handler)}"
+    assert isinstance(handler, BaseCallbackHandler), f"Handler should be a BaseCallbackHandler, got {type(handler)}"
 
     # 验证具备所有声明的生命周期钩子
     required_methods = [
-        'on_llm_start', 'on_llm_end', 'on_llm_error',
-        'on_chat_model_start',
-        'on_tool_start', 'on_tool_end', 'on_tool_error',
-        'on_chain_start', 'on_chain_end', 'on_chain_error',
+        "on_llm_start",
+        "on_llm_end",
+        "on_llm_error",
+        "on_chat_model_start",
+        "on_tool_start",
+        "on_tool_end",
+        "on_tool_error",
+        "on_chain_start",
+        "on_chain_end",
+        "on_chain_error",
     ]
     for method in required_methods:
         assert hasattr(handler, method), f"Handler missing method: {method}"
@@ -77,8 +84,9 @@ def test_callback_handler():
 
 async def test_langgraph_instrument():
     """测试 LangGraph Instrument — sync + async 节点包装、add_node 拦截"""
-    from langgraph.graph import StateGraph
     from typing import TypedDict
+
+    from langgraph.graph import StateGraph
 
     class TestState(TypedDict):
         counter: int
@@ -99,10 +107,11 @@ async def test_langgraph_instrument():
 
     # 一行代码 instrument
     from app.adapters.langgraph import instrument_langgraph
+
     instrumented = instrument_langgraph(raw_graph)
 
     # 验证 _original 保存了原始图
-    assert hasattr(instrumented, '_original'), "Instrumented should hold reference to _original"
+    assert hasattr(instrumented, "_original"), "Instrumented should hold reference to _original"
 
     # 直接编译（不添加新节点），验证不崩溃
     compiled = instrumented.compile()

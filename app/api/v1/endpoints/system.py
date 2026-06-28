@@ -17,7 +17,7 @@ async def get_health():
 @router.get("/metrics", response_class=PlainTextResponse)
 async def metrics():
     """Prometheus metrics endpoint."""
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
     return PlainTextResponse(
         content=generate_latest(),

@@ -4,7 +4,7 @@ API v1 module.
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import tasks, evaluation, reports, benchmark
+from app.api.v1.endpoints import benchmark, evaluation, reports, tasks
 
 api_router = APIRouter()
 

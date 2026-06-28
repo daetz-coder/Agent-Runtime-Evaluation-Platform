@@ -2,23 +2,23 @@
 Tests for evaluator modules.
 """
 
-import pytest
 from datetime import datetime
 from typing import Any, List, Optional
 
+import pytest
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from app.models.schemas import TrajectoryStep
 from app.evaluators import (
+    MemoryEvaluator,
     PlanningEvaluator,
+    ReplanEvaluator,
     TacticalEvaluator,
     ToolUseEvaluator,
-    MemoryEvaluator,
-    ReplanEvaluator,
 )
+from app.models.schemas import TrajectoryStep
 
 
 class MockLLM(BaseChatModel):
@@ -53,6 +53,7 @@ class MockLLM(BaseChatModel):
 def sample_trajectory():
     """Create sample trajectory for testing."""
     from datetime import timezone
+
     return [
         TrajectoryStep(
             step_number=1,

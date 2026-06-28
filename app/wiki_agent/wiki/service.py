@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -55,7 +54,7 @@ def _parse_frontmatter(content: str) -> tuple[dict, str]:
             meta = yaml.safe_load(match.group(1)) or {}
         except yaml.YAMLError:
             meta = {}
-        body = content[match.end():]
+        body = content[match.end() :]
         return meta, body
     return {}, content
 
@@ -113,9 +112,7 @@ def get_tree(rel_path: str = "") -> WikiNode:
         if entry.is_dir():
             node.children.append(get_tree(entry_rel))
         elif entry.suffix in (".md", ".txt"):
-            node.children.append(
-                WikiNode(name=entry.name, path=entry_rel, is_dir=False)
-            )
+            node.children.append(WikiNode(name=entry.name, path=entry_rel, is_dir=False))
     return node
 
 
@@ -181,12 +178,13 @@ def delete_page(rel_path: str) -> None:
 def search_pages(query: str) -> list[WikiSearchResult]:
     """基于文件名 + 内容的简单全文搜索（MVP 阶段）"""
     import re
+
     results = []
     query_lower = query.lower()
     # 提取关键词（中文字符、英文单词、数字）
-    keywords = re.findall(r'[一-鿿]+|[a-z]+|[0-9]+', query_lower)
+    keywords = re.findall(r"[一-鿿]+|[a-z]+|[0-9]+", query_lower)
     # 过滤掉太短的词（1个字符的中文、2个字符的英文）
-    keywords = [k for k in keywords if len(k) > 1 or (len(k) == 1 and '一' <= k <= '鿿')]
+    keywords = [k for k in keywords if len(k) > 1 or (len(k) == 1 and "一" <= k <= "鿿")]
 
     for md_file in KNOWLEDGE_DIR.rglob("*.md"):
         if ".git" in md_file.parts:
@@ -232,9 +230,7 @@ def search_pages(query: str) -> list[WikiSearchResult]:
                 break
 
         if score > 0:
-            results.append(
-                WikiSearchResult(path=rel, title=title, snippet=snippet, score=score)
-            )
+            results.append(WikiSearchResult(path=rel, title=title, snippet=snippet, score=score))
 
     results.sort(key=lambda r: r.score, reverse=True)
     return results[:20]

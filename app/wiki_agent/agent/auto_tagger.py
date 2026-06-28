@@ -61,16 +61,19 @@ async def generate_tags(title: str, content: str, existing_tags: Optional[List[s
 
     try:
         chain = prompt | _get_llm()
-        response = await chain.ainvoke({
-            "title": title,
-            "content_preview": content[:500] if content else "",
-            "existing_tags": ", ".join(existing_tags or []),
-        })
+        response = await chain.ainvoke(
+            {
+                "title": title,
+                "content_preview": content[:500] if content else "",
+                "existing_tags": ", ".join(existing_tags or []),
+            }
+        )
 
         # 解析 JSON
         text = (response.content or "").strip()
         if "{" in text:
             import re
+
             match = re.search(r"\{.*\}", text, re.DOTALL)
             if match:
                 data = json.loads(match.group())

@@ -7,14 +7,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.workspace import (
-    Workspace, WorkspaceMember, WorkspaceRole, AuditAction, AuditLog,
-    WorkspaceCreate, WorkspaceResponse, MemberCreate, AuditLogResponse,
-    create_workspace, add_audit_log,
+    AuditAction,
+    AuditLog,
+    AuditLogResponse,
+    MemberCreate,
+    Workspace,
+    WorkspaceCreate,
+    WorkspaceMember,
+    WorkspaceResponse,
+    WorkspaceRole,
+    add_audit_log,
+    create_workspace,
 )
 from app.api.workspace_context import (
     WorkspaceContext,
     get_workspace_context,
-    require_role,
     require_super_admin,
     require_workspace_access,
 )
@@ -69,6 +76,7 @@ async def rotate_api_key(
 ):
     require_workspace_access(ctx, workspace_id, WorkspaceRole.ADMIN)
     import secrets
+
     result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
     ws = result.scalar_one_or_none()
     if not ws:
@@ -94,7 +102,12 @@ async def add_member(
     member = WorkspaceMember(workspace_id=workspace_id, user_id=data.user_id, role=data.role)
     db.add(member)
     await add_audit_log(
-        db, workspace_id, ctx.user_id, AuditAction.MEMBER_ADDED, "member", data.user_id,
+        db,
+        workspace_id,
+        ctx.user_id,
+        AuditAction.MEMBER_ADDED,
+        "member",
+        data.user_id,
         {"role": data.role.value},
     )
     await db.flush()

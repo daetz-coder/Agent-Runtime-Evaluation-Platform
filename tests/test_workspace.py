@@ -1,7 +1,7 @@
 """Multi-tenant workspace isolation and RBAC tests."""
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from app.core.config import settings
 from app.main import app

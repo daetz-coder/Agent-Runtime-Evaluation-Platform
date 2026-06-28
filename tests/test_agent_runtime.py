@@ -1,23 +1,26 @@
 """Tests for the Agent Runtime module (Agent in Sandbox)."""
 
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # ── TrajectoryRecorder Tests ──────────────────────────────────
+
 
 class TestTrajectoryRecorder:
     """Tests for TrajectoryRecorder."""
 
     def test_init_empty(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         assert rec.get_step_count() == 0
         assert rec.get_trajectory() == []
 
     def test_record_plan(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         rec.record_plan({"steps": ["step1", "step2"]})
         assert rec.get_step_count() == 1
@@ -28,6 +31,7 @@ class TestTrajectoryRecorder:
 
     def test_record_think(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         rec.record_think("Let me analyze this data...")
         steps = rec.get_trajectory()
@@ -37,6 +41,7 @@ class TestTrajectoryRecorder:
 
     def test_record_tool_call(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         rec.record_tool_call(
             tool_name="python_execute",
@@ -56,6 +61,7 @@ class TestTrajectoryRecorder:
 
     def test_record_tool_call_failure(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         rec.record_tool_call(
             tool_name="bash_execute",
@@ -69,6 +75,7 @@ class TestTrajectoryRecorder:
 
     def test_record_replan(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         rec.record_replan("Original plan failed", {"new_steps": ["retry"]})
         steps = rec.get_trajectory()
@@ -77,6 +84,7 @@ class TestTrajectoryRecorder:
 
     def test_record_failure(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         rec.record_failure("LLM timeout", context={"step": 5})
         steps = rec.get_trajectory()
@@ -85,6 +93,7 @@ class TestTrajectoryRecorder:
 
     def test_step_numbering_auto_increment(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         rec.record_plan({"step": "1"})
         rec.record_think("thinking")
@@ -95,6 +104,7 @@ class TestTrajectoryRecorder:
 
     def test_reset(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         rec.record_plan({"x": 1})
         rec.record_think("y")
@@ -105,6 +115,7 @@ class TestTrajectoryRecorder:
 
     def test_timestamps_present(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         rec.record_plan({"x": 1})
         steps = rec.get_trajectory()
@@ -113,6 +124,7 @@ class TestTrajectoryRecorder:
 
     def test_truncate_long_strings(self):
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         rec = TrajectoryRecorder()
         long_input = {"data": "x" * 1000}
         rec.record_tool_call("tool", long_input, "ok")
@@ -124,22 +136,26 @@ class TestTrajectoryRecorder:
 
 # ── SandboxTool Tests ─────────────────────────────────────────
 
+
 class TestSandboxTools:
     """Tests for sandbox tool definitions (without Docker)."""
 
     def test_tool_registry_has_all_tools(self):
         from app.agent_runtime.tools import TOOL_REGISTRY
+
         expected = {"python_execute", "bash_execute", "file_read", "file_write", "file_list"}
         assert set(TOOL_REGISTRY.keys()) == expected
 
     def test_tool_names_match(self):
         from app.agent_runtime.tools import TOOL_REGISTRY
+
         for name, cls in TOOL_REGISTRY.items():
             tool = cls()
             assert tool.name == name
 
     def test_tool_has_description(self):
         from app.agent_runtime.tools import TOOL_REGISTRY
+
         for name, cls in TOOL_REGISTRY.items():
             tool = cls()
             assert tool.description
@@ -147,6 +163,7 @@ class TestSandboxTools:
 
     def test_tool_has_parameters_schema(self):
         from app.agent_runtime.tools import TOOL_REGISTRY
+
         for name, cls in TOOL_REGISTRY.items():
             tool = cls()
             assert isinstance(tool.parameters_schema, dict)
@@ -154,32 +171,38 @@ class TestSandboxTools:
 
     def test_python_execute_schema(self):
         from app.agent_runtime.tools.python_execute import PythonExecuteTool
+
         tool = PythonExecuteTool()
         assert "code" in tool.parameters_schema
 
     def test_bash_execute_schema(self):
         from app.agent_runtime.tools.bash_execute import BashExecuteTool
+
         tool = BashExecuteTool()
         assert "command" in tool.parameters_schema
 
     def test_file_read_schema(self):
         from app.agent_runtime.tools.file_read import FileReadTool
+
         tool = FileReadTool()
         assert "path" in tool.parameters_schema
 
     def test_file_write_schema(self):
         from app.agent_runtime.tools.file_write import FileWriteTool
+
         tool = FileWriteTool()
         assert "path" in tool.parameters_schema
         assert "content" in tool.parameters_schema
 
     def test_file_list_schema(self):
         from app.agent_runtime.tools.file_list import FileListTool
+
         tool = FileListTool()
         assert "path" in tool.parameters_schema
 
 
 # ── ToolProxy Tests ───────────────────────────────────────────
+
 
 class TestToolProxy:
     """Tests for ToolProxy validation and routing."""
@@ -187,6 +210,7 @@ class TestToolProxy:
     def _make_proxy(self, allowed_tools=None):
         from app.agent_runtime.tools.base import ToolProxy
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         mock_container = MagicMock()
         mock_container.id = "test123456789"
         recorder = TrajectoryRecorder()
@@ -224,6 +248,7 @@ class TestToolProxy:
     def test_empty_tools_list(self):
         from app.agent_runtime.tools.base import ToolProxy
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         mock_container = MagicMock()
         mock_container.id = "test123456789"
         recorder = TrajectoryRecorder()
@@ -239,32 +264,40 @@ class TestToolProxy:
 
 # ── WorkspaceManager Tests ────────────────────────────────────
 
+
 class TestWorkspaceManager:
     """Tests for WorkspaceManager helper methods (no Docker)."""
 
     def test_resolve_path_basic(self):
         from app.agent_runtime.sandbox.workspace import WorkspaceManager
+
         wm = WorkspaceManager()
         assert wm._resolve_path("data.csv") == "/workspace/data.csv"
 
     def test_resolve_path_strips_leading_slash(self):
         from app.agent_runtime.sandbox.workspace import WorkspaceManager
+
         wm = WorkspaceManager()
         assert wm._resolve_path("/data.csv") == "/workspace/data.csv"
 
     def test_resolve_path_strips_workspace_prefix(self):
         from app.agent_runtime.sandbox.workspace import WorkspaceManager
+
         wm = WorkspaceManager()
         assert wm._resolve_path("workspace/data.csv") == "/workspace/data.csv"
 
     def test_resolve_path_strips_dotdot(self):
         from app.agent_runtime.sandbox.workspace import WorkspaceManager
+
         wm = WorkspaceManager()
         assert ".." not in wm._resolve_path("../../etc/passwd")
 
     def test_make_tar(self):
-        import tarfile, io
+        import io
+        import tarfile
+
         from app.agent_runtime.sandbox.workspace import WorkspaceManager
+
         wm = WorkspaceManager()
         tar_data = wm._make_tar("test.txt", b"hello world")
         buf = io.BytesIO(tar_data)
@@ -275,8 +308,11 @@ class TestWorkspaceManager:
             assert members[0].size == 11
 
     def test_make_multi_file_tar(self):
-        import tarfile, io
+        import io
+        import tarfile
+
         from app.agent_runtime.sandbox.workspace import WorkspaceManager
+
         wm = WorkspaceManager()
         files = {"a.txt": "hello", "sub/b.txt": "world"}
         tar_data = wm._make_multi_file_tar(files)
@@ -288,6 +324,7 @@ class TestWorkspaceManager:
 
     def test_parse_ls_output(self):
         from app.agent_runtime.sandbox.workspace import WorkspaceManager
+
         wm = WorkspaceManager()
         # Format matches: ls -la --time-style=+%s (epoch timestamps)
         ls_output = """total 8
@@ -305,17 +342,20 @@ drwxr-xr-x 1 root    root    4096 1700000000 ..
 
     def test_parse_ls_empty(self):
         from app.agent_runtime.sandbox.workspace import WorkspaceManager
+
         wm = WorkspaceManager()
         assert wm._parse_ls_output("total 0\n") == []
 
 
 # ── SessionPool Tests ─────────────────────────────────────────
 
+
 class TestSessionPool:
     """Tests for SessionPool (mocked Docker)."""
 
     def test_init_state(self):
         from app.agent_runtime.sandbox.session_pool import SessionPool
+
         pool = SessionPool()
         assert pool.available is False
         assert pool.client is None
@@ -323,6 +363,7 @@ class TestSessionPool:
     @pytest.mark.asyncio
     async def test_acquire_when_unavailable(self):
         from app.agent_runtime.sandbox.session_pool import SessionPool
+
         pool = SessionPool()
         session = await pool.acquire_session(timeout=0.1)
         assert session is None
@@ -330,11 +371,13 @@ class TestSessionPool:
 
 # ── AgentState Tests ──────────────────────────────────────────
 
+
 class TestAgentState:
     """Tests for AgentState definition."""
 
     def test_state_keys(self):
         from app.agent_runtime.state import AgentState
+
         # AgentState is a TypedDict, check it has the expected keys
         assert "goal" in AgentState.__annotations__
         assert "messages" in AgentState.__annotations__
@@ -346,11 +389,13 @@ class TestAgentState:
 
 # ── Prompts Tests ─────────────────────────────────────────────
 
+
 class TestPrompts:
     """Tests for agent prompt building."""
 
     def test_build_system_prompt_basic(self):
         from app.agent_runtime.prompts import build_system_prompt
+
         prompt = build_system_prompt(
             goal="Analyze data",
             tool_descriptions="- python_execute: Run Python code",
@@ -361,6 +406,7 @@ class TestPrompts:
 
     def test_build_system_prompt_with_context(self):
         from app.agent_runtime.prompts import build_system_prompt
+
         prompt = build_system_prompt(
             goal="Fix bug",
             tool_descriptions="- bash_execute: Run commands",
@@ -370,6 +416,7 @@ class TestPrompts:
 
     def test_build_system_prompt_no_context(self):
         from app.agent_runtime.prompts import build_system_prompt
+
         prompt = build_system_prompt(
             goal="Do something",
             tool_descriptions="- file_read: Read files",
@@ -380,26 +427,31 @@ class TestPrompts:
 
 # ── LLM Factory Tests ────────────────────────────────────────
 
+
 class TestLLMFactory:
     """Tests for LLM factory (without API keys)."""
 
     def test_unsupported_provider(self):
         from app.agent_runtime.llm_factory import create_llm
+
         with pytest.raises(ValueError, match="Unsupported"):
             create_llm(provider="nonexistent_provider")
 
     def test_missing_openai_key(self):
         from app.agent_runtime.llm_factory import create_llm
+
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
             create_llm(provider="openai")
 
     def test_missing_anthropic_key(self):
         from app.agent_runtime.llm_factory import create_llm
+
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             create_llm(provider="anthropic")
 
     def test_missing_deepseek_key(self):
         from app.agent_runtime.llm_factory import create_llm
+
         with patch("app.agent_runtime.llm_factory.settings") as mock_settings:
             mock_settings.DEEPSEEK_API_KEY = ""
             mock_settings.DEEPSEEK_MODEL = "deepseek-chat"
@@ -409,11 +461,13 @@ class TestLLMFactory:
 
 # ── Graph Helper Tests ───────────────────────────────────────
 
+
 class TestGraphHelpers:
     """Tests for graph utility functions."""
 
     def test_is_final_answer(self):
         from app.agent_runtime.graph import _is_final_answer
+
         assert _is_final_answer("FINAL ANSWER: The result is 42") is True
         assert _is_final_answer("Task complete. Here is the report.") is True
         assert _is_final_answer("Let me run some code first") is False
@@ -421,6 +475,7 @@ class TestGraphHelpers:
 
     def test_extract_final_answer(self):
         from app.agent_runtime.graph import _extract_final_answer
+
         assert _extract_final_answer("FINAL ANSWER: The sum is 42") == "The sum is 42"
         assert _extract_final_answer("Some other text") == "Some other text"
 
@@ -428,6 +483,7 @@ class TestGraphHelpers:
         from app.agent_runtime.graph import _build_langchain_tools
         from app.agent_runtime.tools.base import ToolProxy
         from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+
         mock_container = MagicMock()
         mock_container.id = "test123"
         recorder = TrajectoryRecorder()
@@ -441,11 +497,13 @@ class TestGraphHelpers:
 
 # ── AgentRunResult Tests ─────────────────────────────────────
 
+
 class TestAgentRunResult:
     """Tests for AgentRunResult dataclass."""
 
     def test_success_result(self):
         from app.agent_runtime.runner import AgentRunResult
+
         result = AgentRunResult(
             success=True,
             trajectory=[{"step": 1}],
@@ -459,6 +517,7 @@ class TestAgentRunResult:
 
     def test_failure_result(self):
         from app.agent_runtime.runner import AgentRunResult
+
         result = AgentRunResult(
             success=False,
             trajectory=[],
@@ -471,11 +530,13 @@ class TestAgentRunResult:
 
 # ── Config Tests ──────────────────────────────────────────────
 
+
 class TestAgentRuntimeConfig:
     """Tests that new config settings are properly defined."""
 
     def test_agent_runtime_defaults(self):
         from app.core.config import settings
+
         assert hasattr(settings, "AGENT_RUNTIME_ENABLED")
         assert hasattr(settings, "AGENT_MAX_STEPS")
         assert hasattr(settings, "AGENT_TIMEOUT")
@@ -486,25 +547,30 @@ class TestAgentRuntimeConfig:
 
     def test_default_tools_list(self):
         from app.core.config import settings
+
         expected = ["python_execute", "bash_execute", "file_read", "file_write", "file_list"]
         assert settings.AGENT_DEFAULT_TOOLS == expected
 
     def test_max_steps_default(self):
         from app.core.config import settings
+
         assert settings.AGENT_MAX_STEPS == 20
 
     def test_timeout_default(self):
         from app.core.config import settings
+
         assert settings.AGENT_TIMEOUT == 300
 
 
 # ── Schema Tests ─────────────────────────────────────────────
+
 
 class TestSandboxSchemas:
     """Tests for new sandbox evaluation schemas."""
 
     def test_sandbox_eval_request_minimal(self):
         from app.models.schemas import SandboxEvalRequest
+
         req = SandboxEvalRequest(goal="Analyze data")
         assert req.goal == "Analyze data"
         assert req.model is None
@@ -512,6 +578,7 @@ class TestSandboxSchemas:
 
     def test_sandbox_eval_request_full(self):
         from app.models.schemas import SandboxEvalRequest
+
         req = SandboxEvalRequest(
             goal="Process sales.csv",
             model="gpt-4",
@@ -527,6 +594,7 @@ class TestSandboxSchemas:
 
     def test_agent_run_info(self):
         from app.models.schemas import AgentRunInfo
+
         info = AgentRunInfo(
             success=True,
             steps_taken=5,
@@ -537,15 +605,17 @@ class TestSandboxSchemas:
         assert info.error is None
 
     def test_sandbox_eval_response(self):
-        from app.models.schemas import SandboxEvalResponse, AgentRunInfo
-        from datetime import datetime, timezone
+        from app.models.schemas import AgentRunInfo, SandboxEvalResponse
+
         resp = SandboxEvalResponse(
             task_id="t1",
             evaluation_id="e1",
             status="completed",
             agent_run=AgentRunInfo(
-                success=True, steps_taken=3,
-                duration_ms=5000, final_answer="ok",
+                success=True,
+                steps_taken=3,
+                duration_ms=5000,
+                final_answer="ok",
             ),
             created_at=datetime.now(timezone.utc),
         )

@@ -272,6 +272,7 @@ class MilvusVectorStore:
 
         try:
             import os
+
             # Fix gRPC "too_many_pings" GOAWAY — Milvus Lite default keepalive
             # (10s) is too aggressive for the embedded gRPC server.
             os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIME_MS", "120000")

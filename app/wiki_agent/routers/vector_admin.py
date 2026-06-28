@@ -30,8 +30,8 @@ def get_vector_stats() -> VectorStatsResponse:
 @api_router.post("/vector-rebuild")
 def rebuild_vector_index():
     """删除向量库和 BM25 索引，从 knowledge/ 目录全量重建。"""
-    from app.wiki_agent.agent.tools.sync_manager import sync_manager
     from app.wiki_agent.agent.tools.bm25_index import get_bm25_index
+    from app.wiki_agent.agent.tools.sync_manager import sync_manager
 
     store = get_vector_store()
     store.delete_all()

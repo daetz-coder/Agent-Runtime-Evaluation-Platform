@@ -1,9 +1,7 @@
 """Tests for sandbox code detection and execution models."""
 
-import pytest
-
+from app.sandbox.detector import DetectedCodeSnippet, detect_code_executions
 from app.sandbox.models import ExecutionResult, SandboxLanguage
-from app.sandbox.detector import detect_code_executions, DetectedCodeSnippet
 
 
 class TestSandboxModels:
@@ -11,7 +9,9 @@ class TestSandboxModels:
 
     def test_execution_result_success(self):
         r = ExecutionResult(
-            stdout="4\n", exit_code=0, duration_ms=120,
+            stdout="4\n",
+            exit_code=0,
+            duration_ms=120,
             language=SandboxLanguage.PYTHON,
         )
         assert r.success is True
@@ -20,7 +20,8 @@ class TestSandboxModels:
     def test_execution_result_failure(self):
         r = ExecutionResult(
             stderr="NameError: name 'x' is not defined",
-            exit_code=1, duration_ms=50,
+            exit_code=1,
+            duration_ms=50,
             language=SandboxLanguage.PYTHON,
         )
         assert r.success is False
@@ -28,7 +29,9 @@ class TestSandboxModels:
 
     def test_execution_result_timeout(self):
         r = ExecutionResult(
-            exit_code=-1, timed_out=True, duration_ms=30000,
+            exit_code=-1,
+            timed_out=True,
+            duration_ms=30000,
             language=SandboxLanguage.BASH,
         )
         assert r.success is False
@@ -36,14 +39,17 @@ class TestSandboxModels:
 
     def test_execution_result_oom(self):
         r = ExecutionResult(
-            exit_code=-1, oom_killed=True, duration_ms=5000,
+            exit_code=-1,
+            oom_killed=True,
+            duration_ms=5000,
             language=SandboxLanguage.PYTHON,
         )
         assert "OOM KILLED" in r.summary()
 
     def test_execution_result_sandbox_error(self):
         r = ExecutionResult(
-            exit_code=-1, error="Docker daemon down",
+            exit_code=-1,
+            error="Docker daemon down",
             language=SandboxLanguage.PYTHON,
         )
         assert r.success is False
@@ -51,7 +57,9 @@ class TestSandboxModels:
 
     def test_output_truncated_flag(self):
         r = ExecutionResult(
-            stdout="x" * 100, exit_code=0, output_truncated=True,
+            stdout="x" * 100,
+            exit_code=0,
+            output_truncated=True,
             language=SandboxLanguage.NODE,
         )
         assert r.output_truncated is True
@@ -161,17 +169,21 @@ class TestSandboxAvailability:
     def test_sandbox_unavailable_by_default(self):
         """Without init_sandbox(), is_sandbox_available() should be False."""
         from app.sandbox.executor import is_sandbox_available
+
         assert is_sandbox_available() is False
 
     def test_executor_returns_error_when_unavailable(self):
         """SandboxExecutor.execute() should return error result when unavailable."""
         import asyncio
+
         from app.sandbox.executor import SandboxExecutor
 
         snippet = DetectedCodeSnippet(
-            step=1, tool_name="run_python",
+            step=1,
+            tool_name="run_python",
             language=SandboxLanguage.PYTHON,
-            code="print(1)", original_output="1",
+            code="print(1)",
+            original_output="1",
         )
 
         async def run():
@@ -191,9 +203,11 @@ class TestSandboxCacheKey:
         from app.sandbox.executor import SandboxExecutor
 
         s = DetectedCodeSnippet(
-            step=1, tool_name="run_python",
+            step=1,
+            tool_name="run_python",
             language=SandboxLanguage.PYTHON,
-            code="print(1)", original_output="1",
+            code="print(1)",
+            original_output="1",
         )
         key1 = SandboxExecutor._cache_key(s)
         key2 = SandboxExecutor._cache_key(s)
@@ -204,14 +218,18 @@ class TestSandboxCacheKey:
         from app.sandbox.executor import SandboxExecutor
 
         s1 = DetectedCodeSnippet(
-            step=1, tool_name="run_python",
+            step=1,
+            tool_name="run_python",
             language=SandboxLanguage.PYTHON,
-            code="print(1)", original_output="1",
+            code="print(1)",
+            original_output="1",
         )
         s2 = DetectedCodeSnippet(
-            step=1, tool_name="run_python",
+            step=1,
+            tool_name="run_python",
             language=SandboxLanguage.PYTHON,
-            code="print(2)", original_output="2",
+            code="print(2)",
+            original_output="2",
         )
         assert SandboxExecutor._cache_key(s1) != SandboxExecutor._cache_key(s2)
 
@@ -219,14 +237,18 @@ class TestSandboxCacheKey:
         from app.sandbox.executor import SandboxExecutor
 
         s1 = DetectedCodeSnippet(
-            step=1, tool_name="run_python",
+            step=1,
+            tool_name="run_python",
             language=SandboxLanguage.PYTHON,
-            code="print(1)", original_output="1",
+            code="print(1)",
+            original_output="1",
         )
         s2 = DetectedCodeSnippet(
-            step=1, tool_name="run_node",
+            step=1,
+            tool_name="run_node",
             language=SandboxLanguage.NODE,
-            code="print(1)", original_output="1",
+            code="print(1)",
+            original_output="1",
         )
         assert SandboxExecutor._cache_key(s1) != SandboxExecutor._cache_key(s2)
 
@@ -238,9 +260,11 @@ class TestLanguageCommand:
         from app.sandbox.executor import SandboxExecutor
 
         s = DetectedCodeSnippet(
-            step=1, tool_name="run_python",
+            step=1,
+            tool_name="run_python",
             language=SandboxLanguage.PYTHON,
-            code="x=1", original_output="",
+            code="x=1",
+            original_output="",
         )
         filename, cmd = SandboxExecutor._get_language_command(s)
         assert filename == "script.py"
@@ -250,9 +274,11 @@ class TestLanguageCommand:
         from app.sandbox.executor import SandboxExecutor
 
         s = DetectedCodeSnippet(
-            step=1, tool_name="bash",
+            step=1,
+            tool_name="bash",
             language=SandboxLanguage.BASH,
-            code="ls", original_output="",
+            code="ls",
+            original_output="",
         )
         filename, cmd = SandboxExecutor._get_language_command(s)
         assert filename == "script.sh"
@@ -262,9 +288,11 @@ class TestLanguageCommand:
         from app.sandbox.executor import SandboxExecutor
 
         s = DetectedCodeSnippet(
-            step=1, tool_name="run_node",
+            step=1,
+            tool_name="run_node",
             language=SandboxLanguage.NODE,
-            code="console.log(1)", original_output="",
+            code="console.log(1)",
+            original_output="",
         )
         filename, cmd = SandboxExecutor._get_language_command(s)
         assert filename == "script.js"

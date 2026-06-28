@@ -2,11 +2,13 @@
 Database ORM models for Agent Evaluation Platform.
 """
 
+import enum
 from datetime import datetime, timezone
 from typing import List, Optional
-from sqlalchemy import String, Text, Float, Integer, DateTime, JSON, ForeignKey, Enum as SQLEnum
+
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-import enum
 
 from app.db.database import Base
 
@@ -18,6 +20,7 @@ def _utcnow() -> datetime:
 
 class TaskStatus(str, enum.Enum):
     """Task execution status."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -27,6 +30,7 @@ class TaskStatus(str, enum.Enum):
 
 class EvaluationStatus(str, enum.Enum):
     """Evaluation status."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -35,6 +39,7 @@ class EvaluationStatus(str, enum.Enum):
 
 class AgentTask(Base):
     """Agent task model."""
+
     __tablename__ = "agent_tasks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -55,6 +60,7 @@ class AgentTask(Base):
 
 class AgentTrajectory(Base):
     """Agent execution trajectory (steps)."""
+
     __tablename__ = "agent_trajectories"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -71,6 +77,7 @@ class AgentTrajectory(Base):
 
 class Evaluation(Base):
     """Evaluation results for a task."""
+
     __tablename__ = "evaluations"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

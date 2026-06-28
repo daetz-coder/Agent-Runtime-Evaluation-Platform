@@ -10,7 +10,7 @@ Trajectory 压缩管线
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
 from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep

@@ -14,7 +14,6 @@ from typing import Any
 from docker.models.containers import Container
 
 from app.agent_runtime.tools.base import SandboxTool
-from app.core.config import settings
 
 
 class PythonExecuteTool(SandboxTool):
@@ -37,9 +36,7 @@ class PythonExecuteTool(SandboxTool):
 
         # Write code to /workspace/script.py
         tar_data = self._make_tar("script.py", code.encode("utf-8"))
-        await loop.run_in_executor(
-            None, lambda: container.put_archive("/workspace", tar_data)
-        )
+        await loop.run_in_executor(None, lambda: container.put_archive("/workspace", tar_data))
 
         # Execute
         exit_code, output = await loop.run_in_executor(

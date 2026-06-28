@@ -17,14 +17,14 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 
 from app.core.config import settings
+from app.evaluators.trajectory_compressor import TrajectoryCompressor
 from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep
-from app.evaluators.trajectory_compressor import TrajectoryCompressor
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,7 @@ class BaseEvaluator(ABC):
             )
         elif provider == "glm":
             from langchain_community.chat_models import ChatZhipuAI
+
             return ChatZhipuAI(
                 model=settings.ZHIPUAI_MODEL,
                 api_key=settings.ZHIPUAI_API_KEY,
@@ -126,11 +127,7 @@ class BaseEvaluator(ABC):
 
     def _extract_plans(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
         """Extract planning steps from trajectory."""
-        return [
-            step.action_detail
-            for step in trajectory
-            if step.action_type == "plan"
-        ]
+        return [step.action_detail for step in trajectory if step.action_type == "plan"]
 
     def _extract_tool_calls(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
         """Extract tool call steps from trajectory."""

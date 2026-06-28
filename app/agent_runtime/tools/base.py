@@ -11,15 +11,17 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from docker.models.containers import Container
 
 from app.core.config import settings
-from app.core.tracing import get_tracer
 from app.core.metrics import TOOL_CALL_COUNT, TOOL_CALL_DURATION
+from app.core.tracing import get_tracer
 
 if TYPE_CHECKING:
+    from langchain_core.tools import BaseTool
+
     from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,7 @@ tracer = get_tracer(__name__)
 
 
 # ── Base Tool ─────────────────────────────────────────────────
+
 
 class SandboxTool(ABC):
     """Base class for all tools that execute inside a sandbox container."""
@@ -63,6 +66,7 @@ class SandboxTool(ABC):
 
 # ── Tool Proxy ────────────────────────────────────────────────
 
+
 class ToolProxy:
     """
     Unified gateway for all tool calls from the agent.
@@ -88,11 +92,11 @@ class ToolProxy:
 
     def _load_tools(self) -> None:
         """Load all registered sandbox tools into the proxy."""
-        from app.agent_runtime.tools.python_execute import PythonExecuteTool
         from app.agent_runtime.tools.bash_execute import BashExecuteTool
+        from app.agent_runtime.tools.file_list import FileListTool
         from app.agent_runtime.tools.file_read import FileReadTool
         from app.agent_runtime.tools.file_write import FileWriteTool
-        from app.agent_runtime.tools.file_list import FileListTool
+        from app.agent_runtime.tools.python_execute import PythonExecuteTool
 
         all_tools: List[SandboxTool] = [
             PythonExecuteTool(),
@@ -107,11 +111,7 @@ class ToolProxy:
 
     def get_available_tools(self) -> List[SandboxTool]:
         """Get list of tools that are both registered and allowed."""
-        return [
-            self._registry[name]
-            for name in self.allowed_tools
-            if name in self._registry
-        ]
+        return [self._registry[name] for name in self.allowed_tools if name in self._registry]
 
     def get_tool_descriptions(self) -> str:
         """Get formatted descriptions of available tools for the agent prompt."""
@@ -121,9 +121,7 @@ class ToolProxy:
 
         lines = []
         for tool in tools:
-            params = ", ".join(
-                f"{k}: {v}" for k, v in tool.parameters_schema.items()
-            )
+            params = ", ".join(f"{k}: {v}" for k, v in tool.parameters_schema.items())
             lines.append(f"- **{tool.name}**({params}): {tool.description}")
         return "\n".join(lines)
 
@@ -199,9 +197,7 @@ class ToolProxy:
             TOOL_CALL_DURATION.labels(tool=tool_name).observe(duration_ms / 1000)
 
             # 4. Record trajectory
-            self.recorder.record_tool_call(
-                tool_name, tool_input, output, success=success, duration_ms=duration_ms
-            )
+            self.recorder.record_tool_call(tool_name, tool_input, output, success=success, duration_ms=duration_ms)
 
             # Truncate output for agent context (keep full output in trajectory)
             max_len = 5000

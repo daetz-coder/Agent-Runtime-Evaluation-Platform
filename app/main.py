@@ -15,7 +15,8 @@ os.environ.setdefault("GRPC_HTTP2_MAX_PINGS_WITHOUT_DATA", "0")
 os.environ.setdefault("GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS", "5000")
 
 # Initialize structured logging BEFORE any other imports that use logging
-from app.core.logging import setup_logging, get_logger  # noqa: E402
+from app.core.logging import get_logger, setup_logging  # noqa: E402
+
 setup_logging()
 
 from contextlib import asynccontextmanager
@@ -25,16 +26,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
-from app.core.config import settings
-from app.db.database import init_db, close_db
-from app.core.cache import init_redis, close_redis
 from app.api.v1.endpoints import benchmark, evaluation, reports, system, tasks
+from app.api.workspace_endpoints import router as workspace_router
+from app.core.cache import close_redis, init_redis
+from app.core.config import settings
+from app.db.database import close_db, init_db
 from app.wiki_agent.bootstrap import startup as wiki_agent_startup
 from app.wiki_agent.routers import chat as wiki_chat
+from app.wiki_agent.routers import debug as wiki_debug
 from app.wiki_agent.routers import vector_admin as wiki_vector_api
 from app.wiki_agent.routers import wiki as wiki_router
-from app.wiki_agent.routers import debug as wiki_debug
-from app.api.workspace_endpoints import router as workspace_router
 
 logger = get_logger(__name__)
 
@@ -51,34 +52,43 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Wiki Agent initialized")
 
     from app.sandbox.executor import init_sandbox
+
     sandbox_ok = await init_sandbox()
     logger.info("Sandbox: %s", "ready" if sandbox_ok else "disabled")
 
     # Initialize Agent Runtime session pool
     from app.agent_runtime.sandbox.session_pool import init_session_pool
+
     session_ok = await init_session_pool()
     logger.info("Agent Runtime: %s", "ready" if session_ok else "disabled")
 
     # Initialize OpenTelemetry tracing
     from app.core.tracing import init_tracing
+
     tracing_ok = init_tracing()
     logger.info("Tracing: %s", "active" if tracing_ok else "disabled")
 
     # Set app info metric
     from app.core.metrics import APP_INFO
-    APP_INFO.info({
-        "version": "0.1.0",
-        "environment": settings.APP_ENV,
-    })
+
+    APP_INFO.info(
+        {
+            "version": "0.1.0",
+            "environment": settings.APP_ENV,
+        }
+    )
 
     yield
     logger.info("Shutting down...")
 
     from app.core.tracing import shutdown_tracing
+
     shutdown_tracing()
     from app.agent_runtime.sandbox.session_pool import close_session_pool
+
     await close_session_pool()
     from app.sandbox.executor import close_sandbox
+
     await close_sandbox()
     await close_redis()
     await close_db()
@@ -165,15 +175,19 @@ External agents can still submit trajectories via `POST /api/v1/tasks/{id}/traje
     register_routes(workspace_router, "/api/v1", ["workspaces"])
 
     from app.api.auth_middleware import AuthMiddleware
+
     app.add_middleware(AuthMiddleware)
 
     from app.api.rate_limit_middleware import RateLimitMiddleware
+
     app.add_middleware(RateLimitMiddleware)
 
     from app.api.correlation_id_middleware import CorrelationIdMiddleware
+
     app.add_middleware(CorrelationIdMiddleware)
 
     from app.api.metrics_middleware import PrometheusMiddleware
+
     app.add_middleware(PrometheusMiddleware)
 
     @app.get("/health")

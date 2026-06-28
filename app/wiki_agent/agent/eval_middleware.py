@@ -9,10 +9,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from sdk import create_proxy_llm, get_collector, instrument_langgraph
 from langchain_core.language_models import BaseChatModel
 
 from app.wiki_agent.session import store as session_store
+from sdk import create_proxy_llm, get_collector, instrument_langgraph
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +73,7 @@ def record_retrieval(
     """记录检索事件（hybrid_search 结果）。"""
     collector = get_collector()
     retrieved_docs = [
-        {"title": r.get("title", ""), "path": r.get("path", ""), "snippet": r.get("snippet", "")}
-        for r in results
+        {"title": r.get("title", ""), "path": r.get("path", ""), "snippet": r.get("snippet", "")} for r in results
     ]
     collector.record_retrieval(
         query=query,

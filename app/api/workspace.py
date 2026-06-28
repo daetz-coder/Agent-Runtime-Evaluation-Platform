@@ -10,8 +10,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
-from sqlalchemy import DateTime, ForeignKey, String, Text, JSON, Integer, Enum as SQLEnum
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -24,6 +25,7 @@ def _utcnow() -> datetime:
 
 
 # ── 枚举 ──
+
 
 class WorkspaceRole(str, enum.Enum):
     ADMIN = "admin"
@@ -49,6 +51,7 @@ class AuditAction(str, enum.Enum):
 
 
 # ── ORM 模型 ──
+
 
 class Workspace(Base):
     __tablename__ = "workspaces"
@@ -100,6 +103,7 @@ class AuditLog(Base):
 
 # ── Pydantic Schemas ──
 
+
 class WorkspaceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
@@ -136,8 +140,10 @@ class AuditLogResponse(BaseModel):
 
 # ── 服务函数 ──
 
+
 async def create_workspace(db, data: WorkspaceCreate) -> WorkspaceResponse:
     import secrets
+
     ws = Workspace(
         id=str(uuid.uuid4()),
         name=data.name,
@@ -145,14 +151,16 @@ async def create_workspace(db, data: WorkspaceCreate) -> WorkspaceResponse:
         api_key=f"ws_{secrets.token_hex(16)}",
     )
     db.add(ws)
-    db.add(AuditLog(
-        workspace_id=ws.id,
-        user_id="system",
-        action=AuditAction.WORKSPACE_CREATED,
-        resource_type="workspace",
-        resource_id=ws.id,
-        details={"name": ws.name},
-    ))
+    db.add(
+        AuditLog(
+            workspace_id=ws.id,
+            user_id="system",
+            action=AuditAction.WORKSPACE_CREATED,
+            resource_type="workspace",
+            resource_id=ws.id,
+            details={"name": ws.name},
+        )
+    )
     await db.flush()
     return WorkspaceResponse.model_validate(ws)
 
@@ -166,11 +174,13 @@ async def add_audit_log(
     resource_id: str,
     details: Optional[dict] = None,
 ) -> None:
-    db.add(AuditLog(
-        workspace_id=workspace_id,
-        user_id=user_id,
-        action=action,
-        resource_type=resource_type,
-        resource_id=resource_id,
-        details=details,
-    ))
+    db.add(
+        AuditLog(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=details,
+        )
+    )

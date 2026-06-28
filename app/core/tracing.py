@@ -63,18 +63,20 @@ def init_tracing() -> bool:
         return _is_active
 
     try:
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
             OTLPSpanExporter,
         )
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-        resource = Resource.create({
-            "service.name": _SERVICE_NAME,
-            "service.version": "0.1.0",
-            "deployment.environment": settings.APP_ENV,
-        })
+        resource = Resource.create(
+            {
+                "service.name": _SERVICE_NAME,
+                "service.version": "0.1.0",
+                "deployment.environment": settings.APP_ENV,
+            }
+        )
 
         provider = TracerProvider(resource=resource)
 
@@ -96,9 +98,7 @@ def init_tracing() -> bool:
         return True
 
     except Exception as e:
-        logger.warning(
-            "Tracing initialization failed — running without tracing: %s", e
-        )
+        logger.warning("Tracing initialization failed — running without tracing: %s", e)
         # Set a no-op provider so get_tracer never fails
         trace.set_tracer_provider(trace.NoOpTracerProvider())
         _tracer_provider = trace.get_tracer_provider()

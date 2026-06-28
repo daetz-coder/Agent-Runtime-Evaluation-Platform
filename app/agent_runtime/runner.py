@@ -25,7 +25,6 @@ from langchain_core.messages import HumanMessage
 from app.agent_runtime.graph import create_agent_graph
 from app.agent_runtime.llm_factory import create_llm
 from app.agent_runtime.sandbox.session_pool import (
-    SandboxSession,
     get_session_pool,
     is_session_pool_available,
 )
@@ -34,8 +33,8 @@ from app.agent_runtime.state import AgentState
 from app.agent_runtime.tools.base import ToolProxy
 from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
 from app.core.config import settings
+from app.core.metrics import AGENT_RUN_DURATION, AGENT_STEPS
 from app.core.tracing import get_tracer
-from app.core.metrics import AGENT_RUN_DURATION, AGENT_STEPS, SANDBOX_SESSIONS_ACTIVE
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer(__name__)
@@ -44,6 +43,7 @@ tracer = get_tracer(__name__)
 @dataclass
 class AgentRunResult:
     """Result of an agent sandbox run."""
+
     success: bool
     trajectory: List[Dict[str, Any]]
     final_answer: str
@@ -202,12 +202,8 @@ class AgentRunner:
 
                 # ── 5. Capture workspace state ──
                 with tracer.start_as_current_span("workspace_capture"):
-                    workspace_state = await self.workspace_manager.capture_workspace_state(
-                        session.container
-                    )
-                    workspace_contents = await self.workspace_manager.capture_file_contents(
-                        session.container
-                    )
+                    workspace_state = await self.workspace_manager.capture_workspace_state(session.container)
+                    workspace_contents = await self.workspace_manager.capture_file_contents(session.container)
 
                 # ── 6. Build result ──
                 duration_ms = (time.monotonic() - start_time) * 1000

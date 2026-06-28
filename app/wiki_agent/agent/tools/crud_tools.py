@@ -149,11 +149,13 @@ def _flatten_tree(node) -> list[dict]:
     """递归展平目录树为列表"""
     result = []
     if not node.is_dir:
-        result.append({
-            "path": node.path,
-            "name": node.name,
-            "is_dir": False,
-        })
+        result.append(
+            {
+                "path": node.path,
+                "name": node.name,
+                "is_dir": False,
+            }
+        )
     if node.children:
         for child in node.children:
             result.extend(_flatten_tree(child))

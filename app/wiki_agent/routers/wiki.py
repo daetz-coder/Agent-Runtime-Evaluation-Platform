@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from app.wiki_agent.agent.tools.sync_manager import sync_manager
-from app.wiki_agent.wiki import service, git_service
+from app.wiki_agent.wiki import git_service, service
 from app.wiki_agent.wiki.schemas import (
-    WikiPageCreate,
-    WikiPageUpdate,
+    WikiCommit,
     WikiImportRequest,
     WikiNode,
     WikiPage,
-    WikiCommit,
+    WikiPageCreate,
+    WikiPageUpdate,
     WikiSearchResult,
 )
 
@@ -156,12 +156,14 @@ async def auto_tag_page(data: AutoTagRequest):
 
     # 获取现有标签（遍历目录树收集所有标签）
     existing = set()
+
     def collect_tags(node):
-        if hasattr(node, 'tags') and node.tags:
+        if hasattr(node, "tags") and node.tags:
             existing.update(node.tags)
-        if hasattr(node, 'children') and node.children:
+        if hasattr(node, "children") and node.children:
             for child in node.children:
                 collect_tags(child)
+
     tree = service.get_tree()
     collect_tags(tree)
 
@@ -172,13 +174,14 @@ async def auto_tag_page(data: AutoTagRequest):
 
     # 更新页面标签
     import re
+
     content = page.content
     if content.startswith("---"):
         parts = content.split("---", 2)
         if len(parts) >= 3:
             new_frontmatter = re.sub(
                 r"^tags:.*$",
-                f"tags:\n" + "\n".join(f"- {t}" for t in tags),
+                "tags:\n" + "\n".join(f"- {t}" for t in tags),
                 parts[1],
                 flags=re.MULTILINE,
             )
@@ -199,16 +202,18 @@ def export_knowledge_base():
     """导出整个知识库为 Markdown 归档（ZIP 下载）。"""
     import io
     import zipfile
+
     from fastapi.responses import StreamingResponse
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+
         def add_pages(node, prefix=""):
-            if hasattr(node, 'path') and not getattr(node, 'is_dir', True):
+            if hasattr(node, "path") and not getattr(node, "is_dir", True):
                 page = service.get_page(node.path)
                 if page:
                     zf.writestr(node.path, page.content or "")
-            if hasattr(node, 'children') and node.children:
+            if hasattr(node, "children") and node.children:
                 for child in node.children:
                     add_pages(child, prefix)
 

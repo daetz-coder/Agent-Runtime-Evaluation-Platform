@@ -2,30 +2,31 @@
 Evaluation service for orchestrating agent evaluations.
 """
 
+import json
 import logging
 import uuid
-import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.metrics import EVALUATION_COUNT, EVALUATION_SCORE
 from app.core.tracing import get_tracer
-from app.core.metrics import EVALUATION_COUNT, EVALUATION_DURATION, EVALUATION_SCORE
-from app.db.models import AgentTask, AgentTrajectory, Evaluation, TaskStatus, EvaluationStatus
+from app.db.models import AgentTask, AgentTrajectory, Evaluation, EvaluationStatus, TaskStatus
+from app.graphs.evaluation_graph import EvaluationState, create_evaluation_graph
 from app.models.schemas import (
+    AgentRunInfo,
+    EvaluationListItem,
+    EvaluationResponse,
+    OverallEvaluation,
+    RetrievalScore,
+    SandboxEvalRequest,
+    SandboxEvalResponse,
     TaskCreate,
     TaskResponse,
-    TrajectoryStep,
-    EvaluationRequest,
-    EvaluationResponse,
-    EvaluationListItem, RetrievalScore,
-    OverallEvaluation, PlanningScore, TacticalScore, ToolUseScore, MemoryScore, ReplanScore,
-    SandboxEvalRequest, SandboxEvalResponse, AgentRunInfo,
 )
-from app.graphs.evaluation_graph import create_evaluation_graph, EvaluationState
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer(__name__)
@@ -53,7 +54,27 @@ class EvaluationService:
         task.status = previous_status
         await self.db.flush()
         from app.core.cache import cache_delete
+
         await cache_delete(f"task:{task_id}")
+
+    async def abort_pending_evaluation(
+        self,
+        eval_id: str,
+        task_id: str,
+        workspace_id: Optional[str] = None,
+    ) -> None:
+        """Mark a stuck IN_PROGRESS evaluation as failed (background/Celery cleanup)."""
+        task = await self._get_task_model(task_id, workspace_id=workspace_id)
+        if not task:
+            return
+
+        result = await self.db.execute(select(Evaluation).where(Evaluation.id == eval_id))
+        evaluation = result.scalar_one_or_none()
+        if not evaluation or evaluation.status != EvaluationStatus.IN_PROGRESS:
+            return
+
+        previous_status = TaskStatus.PENDING if task.status == TaskStatus.RUNNING else task.status
+        await self._fail_evaluation(evaluation, task, previous_status, task_id)
 
     @staticmethod
     def _task_to_response(task: AgentTask) -> TaskResponse:
@@ -89,6 +110,7 @@ class EvaluationService:
         await self.db.flush()
 
         from app.core.cache import cache_delete
+
         await cache_delete(self._dashboard_cache_key(workspace_id))
 
         return self._task_to_response(task)
@@ -96,6 +118,7 @@ class EvaluationService:
     async def get_task(self, task_id: str, workspace_id: Optional[str] = None) -> Optional[TaskResponse]:
         """Get task by ID."""
         from app.core.cache import cache_get, cache_set
+
         cache_key = f"task:{task_id}"
         cached = await cache_get(cache_key)
         if cached is not None:
@@ -136,6 +159,7 @@ class EvaluationService:
         await self.db.flush()
 
         from app.core.cache import cache_delete
+
         await cache_delete(f"task:{task_id}")
         await cache_delete(self._dashboard_cache_key(workspace_id))
         await cache_delete(self._dashboard_cache_key(task.workspace_id))
@@ -173,6 +197,7 @@ class EvaluationService:
 
         # Invalidate trajectory cache
         from app.core.cache import cache_delete
+
         await cache_delete(f"trajectory:{task_id}")
 
         return True
@@ -250,6 +275,7 @@ class EvaluationService:
 
         # Invalidate task cache (status changed)
         from app.core.cache import cache_delete
+
         await cache_delete(f"task:{task_id}")
 
         try:
@@ -270,20 +296,23 @@ class EvaluationService:
             }
 
             # Run evaluation graph (parallel if configured)
-            use_parallel = getattr(settings, 'EVAL_PARALLEL', True)  # 默认并行
+            use_parallel = getattr(settings, "EVAL_PARALLEL", True)  # 默认并行
             with tracer.start_as_current_span("evaluation") as eval_span:
                 eval_span.set_attribute("parallel", use_parallel)
                 if use_parallel:
                     from app.graphs.evaluation_graph import evaluate_parallel
                     from app.models.schemas import TrajectoryStep as TS
 
-                    steps = [TS(
-                        step_number=s["step_number"],
-                        action_type=s["action_type"],
-                        action_detail=s.get("action_detail", {}),
-                        observation=s.get("observation"),
-                        timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
-                    ) for s in trajectory]
+                    steps = [
+                        TS(
+                            step_number=s["step_number"],
+                            action_type=s["action_type"],
+                            action_detail=s.get("action_detail", {}),
+                            observation=s.get("observation"),
+                            timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                        )
+                        for s in trajectory
+                    ]
                     parallel_result = await evaluate_parallel(task.goal, steps, context or task.context)
                     overall_eval = self._build_overall_from_parallel(parallel_result)
                     overall = overall_eval.model_dump()
@@ -386,7 +415,11 @@ class EvaluationService:
 
             # 1. Create task
             with tracer.start_as_current_span("task_creation"):
-                task_data = TaskCreate(goal=request.goal, context=request.context)
+                from app.services.quota import SANDBOX_EVAL_MODE
+
+                sandbox_context = dict(request.context or {})
+                sandbox_context["eval_mode"] = SANDBOX_EVAL_MODE
+                task_data = TaskCreate(goal=request.goal, context=sandbox_context)
                 task_response = await self.create_task(task_data, workspace_id=workspace_id)
                 task_id = task_response.id
                 root_span.set_attribute("task_id", task_id)
@@ -453,9 +486,7 @@ class EvaluationService:
                             for s in trajectory_steps
                         ]
 
-                        parallel_result = await evaluate_parallel(
-                            request.goal, steps, request.context
-                        )
+                        parallel_result = await evaluate_parallel(request.goal, steps, request.context)
                         overall_eval = self._build_overall_from_parallel(parallel_result)
                         overall = overall_eval.model_dump()
                         eval_span.set_attribute("overall_score", overall.get("overall_score", 0))
@@ -465,11 +496,10 @@ class EvaluationService:
                         score = overall.get("overall_score", 0)
                         EVALUATION_SCORE.observe(score)
 
-                        evaluation_result = await self._persist_evaluation_results(
-                            evaluation, task_model, overall
-                        )
+                        evaluation_result = await self._persist_evaluation_results(evaluation, task_model, overall)
                 except Exception as e:
                     import logging
+
                     logging.getLogger(__name__).error("Evaluation failed: %s", e, exc_info=True)
                     evaluation.status = EvaluationStatus.FAILED
                     await self.db.flush()
@@ -514,9 +544,7 @@ class EvaluationService:
         from sqlalchemy import func as sql_func
 
         count_query = (
-            select(sql_func.count())
-            .select_from(Evaluation)
-            .join(AgentTask, Evaluation.task_id == AgentTask.id)
+            select(sql_func.count()).select_from(Evaluation).join(AgentTask, Evaluation.task_id == AgentTask.id)
         )
         if workspace_id:
             count_query = count_query.where(AgentTask.workspace_id == workspace_id)
@@ -629,6 +657,7 @@ class EvaluationService:
         await self.db.flush()
 
         from app.core.cache import cache_delete
+
         await cache_delete(f"task:{task_id}")
         await cache_delete(f"trajectory:{task_id}")
         await cache_delete(self._dashboard_cache_key(workspace_id))
@@ -667,15 +696,14 @@ class EvaluationService:
         """Get trajectory steps for a task."""
         # Check cache first
         from app.core.cache import cache_get, cache_set
+
         cache_key = f"trajectory:{task_id}"
         cached = await cache_get(cache_key)
         if cached is not None:
             return cached
 
         result = await self.db.execute(
-            select(AgentTrajectory)
-            .where(AgentTrajectory.task_id == task_id)
-            .order_by(AgentTrajectory.step_number)
+            select(AgentTrajectory).where(AgentTrajectory.task_id == task_id).order_by(AgentTrajectory.step_number)
         )
         steps = result.scalars().all()
 
@@ -704,9 +732,7 @@ class EvaluationService:
         if not task:
             return None
 
-        result = await self.db.execute(
-            select(Evaluation).where(Evaluation.id == evaluation_id)
-        )
+        result = await self.db.execute(select(Evaluation).where(Evaluation.id == evaluation_id))
         evaluation = result.scalar_one_or_none()
         if not evaluation:
             return None
@@ -750,7 +776,8 @@ class EvaluationService:
         await self.db.flush()
 
         # Invalidate report caches + task cache + dashboard
-        from app.core.cache import cache_delete_pattern, cache_delete
+        from app.core.cache import cache_delete, cache_delete_pattern
+
         await cache_delete_pattern("report:*")
         await cache_delete(f"task:{task.id}")
         await cache_delete(self._dashboard_cache_key(task.workspace_id))
@@ -801,10 +828,7 @@ class EvaluationService:
 
     def _build_summary(self, feedback: Dict[str, Any], overall_score: float) -> str:
         """Rebuild a useful summary from persisted dimension feedback."""
-        scores = {
-            name: (value or {}).get("overall", 0)
-            for name, value in feedback.items()
-        }
+        scores = {name: (value or {}).get("overall", 0) for name, value in feedback.items()}
         if not scores:
             return f"Overall score: {overall_score:.1f}/100."
         strongest = max(scores, key=scores.get)

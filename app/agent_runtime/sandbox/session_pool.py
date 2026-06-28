@@ -36,6 +36,7 @@ _SANDBOX_IMAGE = "agent-eval-sandbox:latest"
 @dataclass
 class SandboxSession:
     """Represents an active sandbox session with a container and metadata."""
+
     container_id: str
     container: Container
     created_at: float = 0.0
@@ -73,8 +74,7 @@ class SessionPool:
             self._client.images.get(_SANDBOX_IMAGE)
         except NotFound:
             logger.warning(
-                "Sandbox image '%s' not found. Build with: "
-                "docker build -t agent-eval-sandbox -f sandbox.Dockerfile .",
+                "Sandbox image '%s' not found. Build with: docker build -t agent-eval-sandbox -f sandbox.Dockerfile .",
                 _SANDBOX_IMAGE,
             )
             self._client = None
@@ -139,13 +139,9 @@ class SessionPool:
 
         acquire_timeout = timeout or settings.SANDBOX_ACQUIRE_TIMEOUT
         try:
-            container_id = await asyncio.wait_for(
-                self._pool.get(), timeout=acquire_timeout
-            )
+            container_id = await asyncio.wait_for(self._pool.get(), timeout=acquire_timeout)
         except asyncio.TimeoutError:
-            logger.warning(
-                "Session pool exhausted — no container within %.1fs", acquire_timeout
-            )
+            logger.warning("Session pool exhausted — no container within %.1fs", acquire_timeout)
             return None
 
         # Start the container and create a session

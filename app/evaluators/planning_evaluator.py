@@ -9,12 +9,11 @@ Evaluates the quality of agent planning:
 """
 
 from typing import Any, Dict, List, Optional
+
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
-from app.models.action_types import ActionType
-from app.models.schemas import TrajectoryStep, PlanningScore
-
+from app.models.schemas import PlanningScore, TrajectoryStep
 
 PLANNING_EVALUATION_PROMPT = """You are an expert at evaluating AI agent planning quality.
 
@@ -119,11 +118,14 @@ class PlanningEvaluator(BaseEvaluator):
 
         # Get LLM evaluation (with Redis caching)
         chain = prompt | self.llm
-        response = await self._invoke_llm_cached(chain, {
-            "goal": goal,
-            "plan": plan_text,
-            "context": context or "No additional context provided.",
-        })
+        response = await self._invoke_llm_cached(
+            chain,
+            {
+                "goal": goal,
+                "plan": plan_text,
+                "context": context or "No additional context provided.",
+            },
+        )
 
         # Parse response
         scores = self._parse_scores(response.content)

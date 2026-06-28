@@ -5,9 +5,9 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from app.wiki_agent.database import get_db
-from app.core.cache import cache_get, cache_set, cache_delete
+from app.core.cache import cache_delete, cache_get, cache_set
 from app.core.config import settings
+from app.wiki_agent.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +89,7 @@ async def list_sessions() -> list[dict]:
     db = await get_db()
     try:
         db.row_factory = None
-        cursor = await db.execute(
-            "SELECT id, name, created_at, updated_at FROM sessions ORDER BY updated_at DESC"
-        )
+        cursor = await db.execute("SELECT id, name, created_at, updated_at FROM sessions ORDER BY updated_at DESC")
         rows = await cursor.fetchall()
 
         sessions = []
@@ -102,13 +100,15 @@ async def list_sessions() -> list[dict]:
                 (row[0],),
             )
             count_row = await count_cursor.fetchone()
-            sessions.append({
-                "id": row[0],
-                "name": row[1],
-                "created_at": row[2],
-                "updated_at": row[3],
-                "message_count": count_row[0],
-            })
+            sessions.append(
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "created_at": row[2],
+                    "updated_at": row[3],
+                    "message_count": count_row[0],
+                }
+            )
 
         # Cache with short TTL (60s)
         await cache_set("wiki:sessions:list", sessions, ttl=60)
@@ -261,7 +261,8 @@ async def get_session_key_facts(session_id: str) -> list[str]:
             return []
 
         cursor = await db.execute(
-            "SELECT key_facts FROM sessions WHERE id = ?", (session_id,),
+            "SELECT key_facts FROM sessions WHERE id = ?",
+            (session_id,),
         )
         row = await cursor.fetchone()
         if row and row[0]:

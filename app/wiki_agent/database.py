@@ -1,7 +1,8 @@
 """数据库初始化和连接管理"""
 
-import aiosqlite
 from pathlib import Path
+
+import aiosqlite
 
 from app.wiki_agent.config import settings
 

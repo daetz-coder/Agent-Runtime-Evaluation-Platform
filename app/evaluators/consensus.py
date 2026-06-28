@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class ConsensusResult(BaseModel):
     """多模型共识评估结果。"""
+
     mean_score: float = Field(description="多模型均分")
     std_score: float = Field(description="标准差（越小=一致性越高=越可信）")
     model_count: int = Field(description="参与评估的模型数")
@@ -34,7 +35,7 @@ class ConsensusResult(BaseModel):
     dimension: str = Field(default="planning")
     consensus_type: str = Field(
         default="same_provider_multi_model",
-        description="共识类型: cross_provider(跨厂商) / same_provider_multi_model(同厂商多模型) / temperature_diversity(温度多样性)"
+        description="共识类型: cross_provider(跨厂商) / same_provider_multi_model(同厂商多模型) / temperature_diversity(温度多样性)",
     )
 
 
@@ -78,94 +79,109 @@ class ConsensusEvaluator:
         2. 同厂商多模型共识（deepseek-chat + deepseek-reasoner）— 仅需 DeepSeek API
         3. 温度多样性共识（同模型不同 temperature）— 兜底方案
         """
-        from langchain_openai import ChatOpenAI
         from langchain_anthropic import ChatAnthropic
+        from langchain_openai import ChatOpenAI
 
         providers = []
 
         # DeepSeek — 多个模型变体
         if settings.DEEPSEEK_API_KEY:
-            providers.append((
-                "deepseek-chat",
-                ChatOpenAI(
-                    model="deepseek-chat",
-                    openai_api_key=settings.DEEPSEEK_API_KEY,
-                    openai_api_base=settings.DEEPSEEK_BASE_URL,
-                    temperature=0,
-                ),
-            ))
+            providers.append(
+                (
+                    "deepseek-chat",
+                    ChatOpenAI(
+                        model="deepseek-chat",
+                        openai_api_key=settings.DEEPSEEK_API_KEY,
+                        openai_api_base=settings.DEEPSEEK_BASE_URL,
+                        temperature=0,
+                    ),
+                )
+            )
 
         # GLM (ZhipuAI)
         if settings.ZHIPUAI_API_KEY:
             try:
                 from langchain_community.chat_models import ChatZhipuAI
-                providers.append((
-                    "glm-4",
-                    ChatZhipuAI(
-                        model=settings.ZHIPUAI_MODEL,
-                        api_key=settings.ZHIPUAI_API_KEY,
-                        temperature=0,
-                    ),
-                ))
+
+                providers.append(
+                    (
+                        "glm-4",
+                        ChatZhipuAI(
+                            model=settings.ZHIPUAI_MODEL,
+                            api_key=settings.ZHIPUAI_API_KEY,
+                            temperature=0,
+                        ),
+                    )
+                )
             except ImportError:
                 logger.warning("langchain_community not installed — skipping GLM provider")
 
         # Qwen (DashScope) — OpenAI 兼容 API
         if settings.QWEN_API_KEY:
-            providers.append((
-                "qwen-plus",
-                ChatOpenAI(
-                    model=settings.QWEN_MODEL,
-                    openai_api_key=settings.QWEN_API_KEY,
-                    openai_api_base=settings.QWEN_BASE_URL,
-                    temperature=0,
-                ),
-            ))
+            providers.append(
+                (
+                    "qwen-plus",
+                    ChatOpenAI(
+                        model=settings.QWEN_MODEL,
+                        openai_api_key=settings.QWEN_API_KEY,
+                        openai_api_base=settings.QWEN_BASE_URL,
+                        temperature=0,
+                    ),
+                )
+            )
             # DeepSeek Reasoner（同 API key，不同模型）
-            providers.append((
-                "deepseek-reasoner",
-                ChatOpenAI(
-                    model="deepseek-reasoner",
-                    openai_api_key=settings.DEEPSEEK_API_KEY,
-                    openai_api_base=settings.DEEPSEEK_BASE_URL,
-                    temperature=0,
-                ),
-            ))
+            providers.append(
+                (
+                    "deepseek-reasoner",
+                    ChatOpenAI(
+                        model="deepseek-reasoner",
+                        openai_api_key=settings.DEEPSEEK_API_KEY,
+                        openai_api_base=settings.DEEPSEEK_BASE_URL,
+                        temperature=0,
+                    ),
+                )
+            )
 
         # OpenAI（跨厂商）
         if settings.OPENAI_API_KEY:
-            providers.append((
-                "openai",
-                ChatOpenAI(
-                    model=settings.DEFAULT_LLM_MODEL,
-                    openai_api_key=settings.OPENAI_API_KEY,
-                    temperature=0,
-                ),
-            ))
+            providers.append(
+                (
+                    "openai",
+                    ChatOpenAI(
+                        model=settings.DEFAULT_LLM_MODEL,
+                        openai_api_key=settings.OPENAI_API_KEY,
+                        temperature=0,
+                    ),
+                )
+            )
 
         # Anthropic（跨厂商）
         if settings.ANTHROPIC_API_KEY:
-            providers.append((
-                "anthropic",
-                ChatAnthropic(
-                    model=settings.DEFAULT_LLM_MODEL,
-                    anthropic_api_key=settings.ANTHROPIC_API_KEY,
-                    temperature=0,
-                ),
-            ))
+            providers.append(
+                (
+                    "anthropic",
+                    ChatAnthropic(
+                        model=settings.DEFAULT_LLM_MODEL,
+                        anthropic_api_key=settings.ANTHROPIC_API_KEY,
+                        temperature=0,
+                    ),
+                )
+            )
 
         # 兜底：如果只有 1 个提供者（极端情况），加 temperature 变体
         if len(providers) == 1:
             name, llm = providers[0]
-            providers.append((
-                f"{name}-t0.7",
-                ChatOpenAI(
-                    model=settings.DEEPSEEK_MODEL,
-                    openai_api_key=settings.DEEPSEEK_API_KEY,
-                    openai_api_base=settings.DEEPSEEK_BASE_URL,
-                    temperature=0.7,
-                ),
-            ))
+            providers.append(
+                (
+                    f"{name}-t0.7",
+                    ChatOpenAI(
+                        model=settings.DEEPSEEK_MODEL,
+                        openai_api_key=settings.DEEPSEEK_API_KEY,
+                        openai_api_base=settings.DEEPSEEK_BASE_URL,
+                        temperature=0.7,
+                    ),
+                )
+            )
 
         return providers
 
@@ -189,8 +205,11 @@ class ConsensusEvaluator:
             dimension: 评估维度（planning/tactical/tool_use/memory/replan）
         """
         from app.evaluators import (
-            PlanningEvaluator, TacticalEvaluator,
-            ToolUseEvaluator, MemoryEvaluator, ReplanEvaluator,
+            MemoryEvaluator,
+            PlanningEvaluator,
+            ReplanEvaluator,
+            TacticalEvaluator,
+            ToolUseEvaluator,
         )
 
         evaluator_class = {
@@ -226,15 +245,18 @@ class ConsensusEvaluator:
 
         if not valid_scores:
             return ConsensusResult(
-                mean_score=0, std_score=0, model_count=0,
-                individual_scores={}, dimension=dimension,
+                mean_score=0,
+                std_score=0,
+                model_count=0,
+                individual_scores={},
+                dimension=dimension,
                 consensus_type=_consensus_type(self._providers),
             )
 
         n = len(valid_scores)
         mean = sum(valid_scores) / n
         variance = sum((s - mean) ** 2 for s in valid_scores) / n
-        std = variance ** 0.5
+        std = variance**0.5
 
         return ConsensusResult(
             mean_score=round(mean, 1),
@@ -253,9 +275,6 @@ class ConsensusEvaluator:
     ) -> Dict[str, ConsensusResult]:
         """对所有 6 个维度进行共识评估。"""
         dimensions = ["planning", "tactical", "tool_use", "memory", "replan", "retrieval"]
-        tasks = [
-            self.evaluate(goal, trajectory, context, dim)
-            for dim in dimensions
-        ]
+        tasks = [self.evaluate(goal, trajectory, context, dim) for dim in dimensions]
         results = await asyncio.gather(*tasks)
         return dict(zip(dimensions, results))

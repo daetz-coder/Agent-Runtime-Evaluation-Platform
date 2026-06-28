@@ -7,7 +7,6 @@ to the existing 14 ActionType constants used by the evaluation pipeline.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -153,9 +152,7 @@ class TrajectoryRecorder:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self._steps.append(step)
-        logger.debug(
-            "Trajectory step %d: %s", self._step_counter, action_type
-        )
+        logger.debug("Trajectory step %d: %s", self._step_counter, action_type)
 
     @staticmethod
     def _truncate(data: Any, max_str_len: int = 500) -> Any:

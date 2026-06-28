@@ -6,7 +6,7 @@ Defines the state that flows through the agent's ReAct loop.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, Optional, Sequence, TypedDict
+from typing import Annotated, Any, Dict, Optional, Sequence, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages

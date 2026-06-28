@@ -3,7 +3,8 @@ Database configuration and session management.
 """
 
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
@@ -37,6 +38,7 @@ async_session_factory = async_sessionmaker(
 
 class Base(DeclarativeBase):
     """Base class for all database models."""
+
     pass
 
 
@@ -56,8 +58,8 @@ async def get_db() -> AsyncSession:
 async def init_db() -> None:
     """Initialize database by running Alembic migrations to head."""
     # Register all ORM models so metadata is populated
+    from app.api.workspace import AuditLog, Workspace, WorkspaceMember  # noqa: F401
     from app.db.models import AgentTask, AgentTrajectory, Evaluation  # noqa: F401
-    from app.api.workspace import Workspace, WorkspaceMember, AuditLog  # noqa: F401
 
     await _run_alembic_upgrade()
 
@@ -65,8 +67,9 @@ async def init_db() -> None:
 async def _run_alembic_upgrade() -> None:
     """Run alembic upgrade head programmatically."""
     from alembic.config import Config
-    from alembic import command
     from alembic.script import ScriptDirectory
+
+    from alembic import command
 
     alembic_cfg = Config("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
@@ -82,9 +85,7 @@ async def _run_alembic_upgrade() -> None:
         logger.info("Alembic migrations applied successfully (head: %s)", head)
     except Exception as e:
         # Fallback to create_all for development/testing when alembic fails
-        logger.warning(
-            "Alembic migration failed, falling back to create_all: %s", e
-        )
+        logger.warning("Alembic migration failed, falling back to create_all: %s", e)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 

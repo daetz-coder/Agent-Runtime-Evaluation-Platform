@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import httpx
 
@@ -64,29 +64,42 @@ class WebhookService:
                 if response.status_code < 300:
                     logger.info(
                         "Webhook delivered: event=%s, attempt=%d, status=%d",
-                        event, attempt, response.status_code,
+                        event,
+                        attempt,
+                        response.status_code,
                     )
                     return True
 
                 logger.warning(
                     "Webhook returned %d: event=%s, attempt=%d/%d",
-                    response.status_code, event, attempt, MAX_RETRIES,
+                    response.status_code,
+                    event,
+                    attempt,
+                    MAX_RETRIES,
                 )
 
             except httpx.TimeoutException:
                 logger.warning(
                     "Webhook timeout: event=%s, attempt=%d/%d",
-                    event, attempt, MAX_RETRIES,
+                    event,
+                    attempt,
+                    MAX_RETRIES,
                 )
             except httpx.HTTPError as e:
                 logger.warning(
                     "Webhook HTTP error: event=%s, attempt=%d/%d, error=%s",
-                    event, attempt, MAX_RETRIES, e,
+                    event,
+                    attempt,
+                    MAX_RETRIES,
+                    e,
                 )
             except Exception as e:
                 logger.error(
                     "Webhook unexpected error: event=%s, attempt=%d/%d, error=%s",
-                    event, attempt, MAX_RETRIES, e,
+                    event,
+                    attempt,
+                    MAX_RETRIES,
+                    e,
                 )
 
             # Exponential backoff before retry
@@ -96,7 +109,9 @@ class WebhookService:
 
         logger.error(
             "Webhook delivery failed after %d attempts: event=%s, url=%s",
-            MAX_RETRIES, event, webhook_url,
+            MAX_RETRIES,
+            event,
+            webhook_url,
         )
         return False
 
@@ -117,11 +132,47 @@ class WebhookService:
                 if response.status_code < 300:
                     return True
 
-            except Exception:
-                pass
+                logger.warning(
+                    "Webhook returned %d: event=%s, attempt=%d/%d",
+                    response.status_code,
+                    event,
+                    attempt,
+                    MAX_RETRIES,
+                )
+
+            except httpx.TimeoutException:
+                logger.warning(
+                    "Webhook timeout: event=%s, attempt=%d/%d",
+                    event,
+                    attempt,
+                    MAX_RETRIES,
+                )
+            except httpx.HTTPError as e:
+                logger.warning(
+                    "Webhook HTTP error: event=%s, attempt=%d/%d, error=%s",
+                    event,
+                    attempt,
+                    MAX_RETRIES,
+                    e,
+                )
+            except Exception as e:
+                logger.error(
+                    "Webhook unexpected error: event=%s, attempt=%d/%d, error=%s",
+                    event,
+                    attempt,
+                    MAX_RETRIES,
+                    e,
+                )
 
             if attempt < MAX_RETRIES:
                 import time
+
                 time.sleep(BASE_DELAY * (2 ** (attempt - 1)))
 
+        logger.error(
+            "Webhook delivery failed after %d attempts: event=%s, url=%s",
+            MAX_RETRIES,
+            event,
+            webhook_url,
+        )
         return False

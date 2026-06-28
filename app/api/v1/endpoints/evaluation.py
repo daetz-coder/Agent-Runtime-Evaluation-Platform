@@ -2,20 +2,29 @@
 Evaluation endpoints.
 """
 
-import logging
-import json
 import asyncio
+import json
+import logging
 from datetime import datetime, timezone
-from typing import Annotated, List, Optional, Dict, Any
-from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Annotated, Any, Dict, List, Optional
+
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.workspace import AuditAction, WorkspaceRole, add_audit_log
 from app.api.workspace_context import WorkspaceContext, get_workspace_context, require_role
-from app.db.database import get_db, async_session_factory
 from app.core.config import settings
-from app.models.schemas import EvaluationRequest, EvaluationResponse, EvaluationListItem, TrajectoryStep, StreamEvaluationRequest, SandboxEvalRequest, SandboxEvalResponse
+from app.db.database import async_session_factory, get_db
+from app.models.schemas import (
+    EvaluationListItem,
+    EvaluationRequest,
+    EvaluationResponse,
+    SandboxEvalRequest,
+    SandboxEvalResponse,
+    StreamEvaluationRequest,
+    TrajectoryStep,
+)
 from app.services.evaluation_service import EvaluationService
 
 logger = logging.getLogger(__name__)
@@ -35,37 +44,62 @@ async def list_evaluations(
     require_role(ctx, WorkspaceRole.VIEWER)
     service = EvaluationService(db)
     evaluations, total = await service.list_evaluations_with_count(
-        skip=skip, limit=limit, status=status, workspace_id=ctx.filter_workspace_id(),
+        skip=skip,
+        limit=limit,
+        status=status,
+        workspace_id=ctx.filter_workspace_id(),
     )
     # 通过 response header 返回总数
     from fastapi.responses import JSONResponse
+
     return JSONResponse(
         content=[e.model_dump(mode="json") for e in evaluations],
         headers={"X-Total-Count": str(total)},
     )
 
 
-async def _run_evaluation_background(task_id: str, eval_id: str):
+async def _run_evaluation_background(
+    task_id: str,
+    eval_id: str,
+    workspace_id: Optional[str] = None,
+):
     """Background task: run evaluation graph and persist results."""
     try:
         async with async_session_factory() as db:
             service = EvaluationService(db)
-            result = await service.run_evaluation(task_id=task_id, context=None)
+            result = await service.run_evaluation(
+                task_id=task_id,
+                context=None,
+                workspace_id=workspace_id,
+            )
             await db.commit()
-            logger.info(f"Evaluation {eval_id} completed for task {task_id}")
-            # Webhook 通知
+            if result is None:
+                logger.error("Evaluation %s returned no result for task %s", eval_id, task_id)
+                return
+            logger.info("Evaluation %s completed for task %s", eval_id, task_id)
             await _notify_webhook(task_id, eval_id, result)
     except Exception as e:
-        logger.error(f"Evaluation {eval_id} failed for task {task_id}: {e}")
+        logger.error("Evaluation %s failed for task %s: %s", eval_id, task_id, e)
+        try:
+            async with async_session_factory() as db:
+                service = EvaluationService(db)
+                await service.abort_pending_evaluation(eval_id, task_id, workspace_id=workspace_id)
+                await db.commit()
+        except Exception as cleanup_err:
+            logger.error("Failed to abort evaluation %s: %s", eval_id, cleanup_err)
 
 
 async def _notify_webhook(task_id: str, eval_id: str, result):
     """Send webhook notification via WebhookService with retry."""
     from app.services.webhook import WebhookService
-    await WebhookService.notify("evaluation.completed", {
-        "task_id": task_id,
-        "evaluation_id": eval_id,
-    })
+
+    await WebhookService.notify(
+        "evaluation.completed",
+        {
+            "task_id": task_id,
+            "evaluation_id": eval_id,
+        },
+    )
 
 
 @router.post("/", response_model=EvaluationResponse, status_code=202)
@@ -87,6 +121,14 @@ async def run_evaluation(
     """
     require_role(ctx, WorkspaceRole.EVALUATOR)
     ws_filter = ctx.filter_workspace_id()
+
+    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
+
+    try:
+        await enforce_workspace_quotas(db, ws_filter)
+    except QuotaExceeded as e:
+        raise HTTPException(status_code=429, detail=str(e))
+
     service = EvaluationService(db)
 
     task = await service.get_task(request.task_id, workspace_id=ws_filter)
@@ -94,7 +136,9 @@ async def run_evaluation(
         raise HTTPException(status_code=404, detail="Task not found")
 
     evaluation = await service.create_evaluation(
-        request.task_id, stream_mode=request.use_stream, workspace_id=ws_filter,
+        request.task_id,
+        stream_mode=request.use_stream,
+        workspace_id=ws_filter,
     )
 
     if not evaluation:
@@ -110,6 +154,7 @@ async def run_evaluation(
         # Prefer Celery task queue; fall back to BackgroundTasks
         try:
             from app.celery_app import run_evaluation_task
+
             run_evaluation_task.delay(
                 request.task_id,
                 evaluation.id,
@@ -120,6 +165,7 @@ async def run_evaluation(
                 _run_evaluation_background,
                 request.task_id,
                 evaluation.id,
+                ws_filter,
             )
 
     return evaluation
@@ -141,12 +187,14 @@ async def get_eval_settings():
 
 def _is_sandbox_ready() -> bool:
     """Check if both sandbox subsystems are available."""
-    from app.sandbox.executor import is_sandbox_available
     from app.agent_runtime.sandbox.session_pool import is_session_pool_available
+    from app.sandbox.executor import is_sandbox_available
+
     return is_sandbox_available() or is_session_pool_available()
 
 
 # ── Agent in Sandbox Endpoints ────────────────────────────────
+
 
 @router.post("/run", response_model=SandboxEvalResponse)
 async def run_sandbox_evaluation(
@@ -181,13 +229,15 @@ async def run_sandbox_evaluation(
         )
 
     # Check workspace quotas
-    from app.services.quota import QuotaService, QuotaExceeded
-    quota = QuotaService(db)
+    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
+
     try:
-        await quota.check_eval_limit(ws_filter)
-        await quota.check_sandbox_quota(ws_filter)
-        if request.max_steps:
-            await quota.check_max_steps(ws_filter, request.max_steps)
+        await enforce_workspace_quotas(
+            db,
+            ws_filter,
+            sandbox=True,
+            max_steps=request.max_steps,
+        )
     except QuotaExceeded as e:
         raise HTTPException(status_code=429, detail=str(e))
 
@@ -197,8 +247,12 @@ async def run_sandbox_evaluation(
     ws_id = ws_filter or ctx.workspace_id
     if ws_id:
         await add_audit_log(
-            db, ws_id, ctx.user_id, AuditAction.EVAL_CREATED,
-            "evaluation", result.evaluation_id,
+            db,
+            ws_id,
+            ctx.user_id,
+            AuditAction.EVAL_CREATED,
+            "evaluation",
+            result.evaluation_id,
             {"mode": "sandbox", "task_id": result.task_id},
         )
 
@@ -224,8 +278,8 @@ async def run_sandbox_evaluation_stream(
     - done
     """
     from sse_starlette.sse import EventSourceResponse
+
     from app.agent_runtime.runner import AgentRunner
-    from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
 
     require_role(ctx, WorkspaceRole.EVALUATOR)
     ws_filter = ctx.filter_workspace_id()
@@ -233,13 +287,29 @@ async def run_sandbox_evaluation_stream(
     if not settings.AGENT_RUNTIME_ENABLED:
         raise HTTPException(status_code=503, detail="Agent runtime is disabled")
 
+    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
+
+    try:
+        await enforce_workspace_quotas(
+            db,
+            ws_filter,
+            sandbox=True,
+            max_steps=request.max_steps,
+        )
+    except QuotaExceeded as e:
+        raise HTTPException(status_code=429, detail=str(e))
+
     async def event_generator():
         # Run agent and stream trajectory steps as they happen
         service = EvaluationService(db)
 
         # Create task first
         from app.models.schemas import TaskCreate
-        task_data = TaskCreate(goal=request.goal, context=request.context)
+        from app.services.quota import SANDBOX_EVAL_MODE
+
+        sandbox_context = dict(request.context or {})
+        sandbox_context["eval_mode"] = SANDBOX_EVAL_MODE
+        task_data = TaskCreate(goal=request.goal, context=sandbox_context)
         task_response = await service.create_task(task_data, workspace_id=ws_filter)
         task_id = task_response.id
 
@@ -262,12 +332,17 @@ async def run_sandbox_evaluation_stream(
         for step in agent_result.trajectory:
             yield {"event": "agent_step", "data": json.dumps(step, default=str)}
 
-        yield {"event": "agent_done", "data": json.dumps({
-            "success": agent_result.success,
-            "steps_taken": agent_result.steps_taken,
-            "duration_ms": agent_result.duration_ms,
-            "final_answer": agent_result.final_answer[:500],
-        })}
+        yield {
+            "event": "agent_done",
+            "data": json.dumps(
+                {
+                    "success": agent_result.success,
+                    "steps_taken": agent_result.steps_taken,
+                    "duration_ms": agent_result.duration_ms,
+                    "final_answer": agent_result.final_answer[:500],
+                }
+            ),
+        }
 
         # Save trajectory and run evaluation
         if agent_result.trajectory:
@@ -276,8 +351,12 @@ async def run_sandbox_evaluation_stream(
         # Run evaluators with streaming progress
         if agent_result.trajectory and agent_result.success:
             from app.evaluators import (
-                PlanningEvaluator, TacticalEvaluator, ToolUseEvaluator,
-                MemoryEvaluator, ReplanEvaluator, RetrievalEvaluator,
+                MemoryEvaluator,
+                PlanningEvaluator,
+                ReplanEvaluator,
+                RetrievalEvaluator,
+                TacticalEvaluator,
+                ToolUseEvaluator,
             )
             from app.models.schemas import TrajectoryStep as TS
 
@@ -306,35 +385,53 @@ async def run_sandbox_evaluation_stream(
             for idx, (dim_name, EvalClass) in enumerate(evaluators, 1):
                 try:
                     ev = EvalClass()
-                    r = await ev.evaluate(
-                        goal=request.goal, trajectory=steps, context=request.context
-                    )
+                    r = await ev.evaluate(goal=request.goal, trajectory=steps, context=request.context)
                     score = getattr(r, "overall", 0)
                     dim_results[dim_name] = r.model_dump() if hasattr(r, "model_dump") else {"overall": score}
-                    yield {"event": "eval_progress", "data": json.dumps({
-                        "dimension": dim_name, "score": score,
-                        "progress": idx, "total": total,
-                    })}
+                    yield {
+                        "event": "eval_progress",
+                        "data": json.dumps(
+                            {
+                                "dimension": dim_name,
+                                "score": score,
+                                "progress": idx,
+                                "total": total,
+                            }
+                        ),
+                    }
                 except Exception as e:
                     dim_results[dim_name] = {"overall": 0, "feedback": str(e)}
-                    yield {"event": "error", "data": json.dumps({
-                        "dimension": dim_name, "message": str(e),
-                    })}
+                    yield {
+                        "event": "error",
+                        "data": json.dumps(
+                            {
+                                "dimension": dim_name,
+                                "message": str(e),
+                            }
+                        ),
+                    }
 
             # Compute overall score
             weights = {
-                "planning": 0.20, "tactical": 0.20, "tool_use": 0.15,
-                "memory": 0.15, "replan": 0.15, "retrieval": 0.15,
+                "planning": 0.20,
+                "tactical": 0.20,
+                "tool_use": 0.15,
+                "memory": 0.15,
+                "replan": 0.15,
+                "retrieval": 0.15,
             }
-            score_values = {
-                d: (dim_results.get(d) or {}).get("overall", 0)
-                for d in weights
-            }
+            score_values = {d: (dim_results.get(d) or {}).get("overall", 0) for d in weights}
             overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
 
-            yield {"event": "result", "data": json.dumps({
-                "scores": score_values, "overall": overall,
-            })}
+            yield {
+                "event": "result",
+                "data": json.dumps(
+                    {
+                        "scores": score_values,
+                        "overall": overall,
+                    }
+                ),
+            }
 
         yield {"event": "done", "data": "{}"}
 
@@ -408,6 +505,9 @@ async def batch_evaluation(
     """
     require_role(ctx, WorkspaceRole.EVALUATOR)
     ws_filter = ctx.filter_workspace_id()
+
+    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
+
     service = EvaluationService(db)
     results = []
     for task_id in task_ids:
@@ -415,17 +515,30 @@ async def batch_evaluation(
         if not task:
             results.append({"task_id": task_id, "status": "not_found"})
             continue
+        try:
+            await enforce_workspace_quotas(db, ws_filter)
+        except QuotaExceeded as e:
+            results.append({"task_id": task_id, "status": "quota_exceeded", "detail": str(e)})
+            continue
         evaluation = await service.create_evaluation(task_id, workspace_id=ws_filter)
         try:
             from app.celery_app import run_evaluation_task
+
             run_evaluation_task.delay(task_id, evaluation.id, workspace_id=ws_filter)
         except Exception:
-            background_tasks.add_task(_run_evaluation_background, task_id, evaluation.id)
-        results.append({
-            "task_id": task_id,
-            "evaluation_id": evaluation.id,
-            "status": "accepted",
-        })
+            background_tasks.add_task(
+                _run_evaluation_background,
+                task_id,
+                evaluation.id,
+                ws_filter,
+            )
+        results.append(
+            {
+                "task_id": task_id,
+                "evaluation_id": evaluation.id,
+                "status": "accepted",
+            }
+        )
     return {"batch_size": len(task_ids), "results": results}
 
 
@@ -444,32 +557,48 @@ async def evaluation_stream(
     - error: {message}
     - done
     """
-    from app.evaluators import (
-        PlanningEvaluator, TacticalEvaluator, ToolUseEvaluator,
-        MemoryEvaluator, ReplanEvaluator,
-        RetrievalEvaluator,
-    )
-    from app.db.models import AgentTrajectory, AgentTask, TaskStatus, Evaluation, EvaluationStatus
-    from app.models.schemas import TrajectoryStep as TS
     from sse_starlette.sse import EventSourceResponse
+
+    from app.db.models import AgentTask, AgentTrajectory, Evaluation, EvaluationStatus, TaskStatus
+    from app.evaluators import (
+        MemoryEvaluator,
+        PlanningEvaluator,
+        ReplanEvaluator,
+        RetrievalEvaluator,
+        TacticalEvaluator,
+        ToolUseEvaluator,
+    )
+    from app.models.schemas import TrajectoryStep as TS
 
     require_role(ctx, WorkspaceRole.EVALUATOR)
     ws_filter = ctx.filter_workspace_id()
+
+    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
+
+    try:
+        await enforce_workspace_quotas(db, ws_filter)
+    except QuotaExceeded as e:
+        raise HTTPException(status_code=429, detail=str(e))
+
     service = EvaluationService(db)
     task = await service.get_task(request.task_id, workspace_id=ws_filter)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     traj_result = await db.execute(
-        select(AgentTrajectory).where(AgentTrajectory.task_id == request.task_id)
-        .order_by(AgentTrajectory.step_number)
+        select(AgentTrajectory).where(AgentTrajectory.task_id == request.task_id).order_by(AgentTrajectory.step_number)
     )
     traj_rows = traj_result.scalars().all()
-    steps = [TS(
-        step_number=t.step_number, action_type=t.action_type,
-        action_detail=t.action_detail or {}, observation=t.observation,
-        timestamp=t.timestamp,
-    ) for t in traj_rows]
+    steps = [
+        TS(
+            step_number=t.step_number,
+            action_type=t.action_type,
+            action_detail=t.action_detail or {},
+            observation=t.observation,
+            timestamp=t.timestamp,
+        )
+        for t in traj_rows
+    ]
 
     evaluators = [
         ("planning", PlanningEvaluator),
@@ -507,22 +636,48 @@ async def evaluation_stream(
             async with progress_lock:
                 progress_count += 1
                 current = progress_count
-            await queue.put({"event": "progress", "data": json.dumps({
-                "dimension": dim_name, "score": score,
-                "progress": current, "total": total,
-            })})
+            await queue.put(
+                {
+                    "event": "progress",
+                    "data": json.dumps(
+                        {
+                            "dimension": dim_name,
+                            "score": score,
+                            "progress": current,
+                            "total": total,
+                        }
+                    ),
+                }
+            )
         except Exception as e:
             dim_results[dim_name] = {"overall": 0, "feedback": str(e)}
             async with progress_lock:
                 progress_count += 1
                 current = progress_count
-            await queue.put({"event": "error", "data": json.dumps({
-                "dimension": dim_name, "message": str(e),
-            })})
-            await queue.put({"event": "progress", "data": json.dumps({
-                "dimension": dim_name, "score": 0,
-                "progress": current, "total": total,
-            })})
+            await queue.put(
+                {
+                    "event": "error",
+                    "data": json.dumps(
+                        {
+                            "dimension": dim_name,
+                            "message": str(e),
+                        }
+                    ),
+                }
+            )
+            await queue.put(
+                {
+                    "event": "progress",
+                    "data": json.dumps(
+                        {
+                            "dimension": dim_name,
+                            "score": 0,
+                            "progress": current,
+                            "total": total,
+                        }
+                    ),
+                }
+            )
 
     async def yield_completed_evaluation(eval_row: Evaluation):
         """Replay SSE events from a completed evaluation without re-running LLMs."""
@@ -533,13 +688,28 @@ async def evaluation_stream(
             score = fb.get("overall") if isinstance(fb, dict) else getattr(eval_row, f"{dim}_score", 0)
             score = float(score or 0)
             score_values[dim] = score
-            yield {"event": "progress", "data": json.dumps({
-                "dimension": dim, "score": score, "progress": index, "total": total,
-            })}
+            yield {
+                "event": "progress",
+                "data": json.dumps(
+                    {
+                        "dimension": dim,
+                        "score": score,
+                        "progress": index,
+                        "total": total,
+                    }
+                ),
+            }
         overall = float(eval_row.overall_score or 0)
-        yield {"event": "result", "data": json.dumps({
-            "scores": score_values, "overall": overall, "evaluation_id": evaluation_id,
-        })}
+        yield {
+            "event": "result",
+            "data": json.dumps(
+                {
+                    "scores": score_values,
+                    "overall": overall,
+                    "evaluation_id": evaluation_id,
+                }
+            ),
+        }
         yield {"event": "done", "data": "{}"}
 
     async def event_generator():
@@ -556,9 +726,7 @@ async def evaluation_stream(
         await mark_running()
 
         # Launch all evaluators concurrently (fire-and-forget via task)
-        _ = asyncio.ensure_future(asyncio.gather(*[
-            run_eval(dim, cls) for dim, cls in evaluators
-        ]))
+        _ = asyncio.ensure_future(asyncio.gather(*[run_eval(dim, cls) for dim, cls in evaluators]))
 
         completed = 0
         while completed < total:
@@ -572,13 +740,14 @@ async def evaluation_stream(
                 return
 
         weights = {
-            "planning": 0.20, "tactical": 0.20, "tool_use": 0.15,
-            "memory": 0.15, "replan": 0.15, "retrieval": 0.15,
+            "planning": 0.20,
+            "tactical": 0.20,
+            "tool_use": 0.15,
+            "memory": 0.15,
+            "replan": 0.15,
+            "retrieval": 0.15,
         }
-        score_values = {
-            d: (dim_results.get(d) or {}).get("overall", 0)
-            for d in weights
-        }
+        score_values = {d: (dim_results.get(d) or {}).get("overall", 0) for d in weights}
         overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
         parallel_result = {**dim_results, "overall": {"overall_score": overall}}
 
@@ -592,10 +761,16 @@ async def evaluation_stream(
                 logger.error("Failed to persist stream evaluation %s: %s", evaluation_id, e)
                 yield {"event": "error", "data": json.dumps({"message": f"Persist failed: {e}"})}
 
-        yield {"event": "result", "data": json.dumps({
-            "scores": score_values, "overall": overall,
-            "evaluation_id": evaluation_id,
-        })}
+        yield {
+            "event": "result",
+            "data": json.dumps(
+                {
+                    "scores": score_values,
+                    "overall": overall,
+                    "evaluation_id": evaluation_id,
+                }
+            ),
+        }
         yield {"event": "done", "data": "{}"}
 
     return EventSourceResponse(event_generator())
@@ -628,9 +803,9 @@ async def consensus_evaluation(
 
     # 获取轨迹步骤
     from app.db.models import AgentTrajectory
+
     result = await db.execute(
-        select(AgentTrajectory).where(AgentTrajectory.task_id == task_id)
-        .order_by(AgentTrajectory.step_number)
+        select(AgentTrajectory).where(AgentTrajectory.task_id == task_id).order_by(AgentTrajectory.step_number)
     )
     trajectory_rows = result.scalars().all()
 
@@ -652,9 +827,7 @@ async def consensus_evaluation(
         return {
             "task_id": task_id,
             "available_providers": evaluator.available_providers,
-            "dimensions": {
-                dim: r.model_dump() for dim, r in results.items()
-            },
+            "dimensions": {dim: r.model_dump() for dim, r in results.items()},
         }
     else:
         result = await evaluator.evaluate(task.goal, trajectory, task.context)

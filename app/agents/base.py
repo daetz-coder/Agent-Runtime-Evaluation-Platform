@@ -3,8 +3,8 @@ Base agent class for example agents.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool

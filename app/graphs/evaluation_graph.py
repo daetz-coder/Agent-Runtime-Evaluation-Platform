@@ -8,36 +8,38 @@ This module defines the evaluation workflow using LangGraph:
 4. Generate final report
 """
 
-from typing import Any, Dict, List, Optional, TypedDict
 import logging
-import traceback
-from langgraph.graph import StateGraph, END
+from typing import Any, Dict, List, Optional, TypedDict
+
 from langchain_core.language_models import BaseChatModel
+from langgraph.graph import END, StateGraph
 
 from app.models.schemas import (
-    TrajectoryStep,
+    MemoryScore,
     OverallEvaluation,
     PlanningScore,
-    TacticalScore,
-    ToolUseScore,
-    MemoryScore,
     ReplanScore,
     RetrievalScore,
+    TacticalScore,
+    ToolUseScore,
+    TrajectoryStep,
 )
+
 logger = logging.getLogger(__name__)
 
 from app.evaluators import (
-    PlanningEvaluator,
-    TacticalEvaluator,
-    ToolUseEvaluator,
     MemoryEvaluator,
+    PlanningEvaluator,
     ReplanEvaluator,
     RetrievalEvaluator,
+    TacticalEvaluator,
+    ToolUseEvaluator,
 )
 
 
 class EvaluationState(TypedDict):
     """State for the evaluation graph."""
+
     # Input
     task_id: str
     goal: str
@@ -63,13 +65,15 @@ def _convert_trajectory_steps(raw_steps: List[Dict[str, Any]]) -> List[Trajector
 
     steps = []
     for step in raw_steps:
-        steps.append(TrajectoryStep(
-            step_number=step.get("step_number", 0),
-            action_type=step.get("action_type", "unknown"),
-            action_detail=step.get("action_detail", {}),
-            observation=step.get("observation"),
-            timestamp=step.get("timestamp", datetime.now(timezone.utc)),
-        ))
+        steps.append(
+            TrajectoryStep(
+                step_number=step.get("step_number", 0),
+                action_type=step.get("action_type", "unknown"),
+                action_detail=step.get("action_detail", {}),
+                observation=step.get("observation"),
+                timestamp=step.get("timestamp", datetime.now(timezone.utc)),
+            )
+        )
     return steps
 
 
@@ -320,7 +324,9 @@ def _generate_recommendations(
 
     # Tactical recommendations
     if tactical.get("overall", 0) < 60:
-        recommendations.append("Improve tactical decisions: Ensure each action is relevant to the current state and goal.")
+        recommendations.append(
+            "Improve tactical decisions: Ensure each action is relevant to the current state and goal."
+        )
 
     # Tool use recommendations
     if tool_use.get("overall", 0) < 60:
@@ -427,16 +433,13 @@ async def evaluate_parallel(
     scores = {}
     for dim_name, result in results:
         if result is not None:
-            scores[dim_name] = result.model_dump() if hasattr(result, 'model_dump') else result
+            scores[dim_name] = result.model_dump() if hasattr(result, "model_dump") else result
         else:
             scores[dim_name] = {"overall": 0, "feedback": "Evaluation failed"}
 
     # 计算加权总分
     weights = {"planning": 0.20, "tactical": 0.20, "tool_use": 0.15, "memory": 0.15, "replan": 0.15, "retrieval": 0.15}
-    overall = sum(
-        weights.get(d, 0) * (s.get("overall", 0) if isinstance(s, dict) else 0)
-        for d, s in scores.items()
-    )
+    overall = sum(weights.get(d, 0) * (s.get("overall", 0) if isinstance(s, dict) else 0) for d, s in scores.items())
     scores["overall"] = {"overall_score": round(overall, 1)}
 
     return scores
