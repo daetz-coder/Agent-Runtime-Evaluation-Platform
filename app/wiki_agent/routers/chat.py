@@ -203,7 +203,7 @@ async def save_knowledge(req: SaveKnowledgeRequest):
 async def confirm_knowledge(req: ConfirmRequest):
     """确认或取消知识库操作（Human-in-the-Loop）"""
     try:
-        result = await resume_and_execute(req.thread_id, req.confirm)
+        result = await resume_and_execute(req.thread_id, req.confirm, session_id=req.session_id)
 
         if req.session_id:
             status = "confirmed" if req.confirm else "rejected"

@@ -96,6 +96,7 @@ class ProxyChatModel(BaseChatModel):
 
         # 强制非流式 — 流式走 _astream 路径
         kwargs.pop("stream", None)
+        kwargs["streaming"] = False
         result = await self._original_llm._agenerate(
             messages, stop=stop, run_manager=run_manager, **kwargs
         )
@@ -113,11 +114,51 @@ class ProxyChatModel(BaseChatModel):
         run_manager: Any = None,
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
-        """流式生成 - 透传到原始 LLM 的流式输出。"""
+        """流式生成 — 透传并在结束后记录完整回复。"""
+        start_time = time.time()
+        collected: list[str] = []
+
         async for chunk in self._original_llm._astream(
             messages, stop=stop, run_manager=run_manager, **kwargs
         ):
+            text = ""
+            if hasattr(chunk, "message") and chunk.message is not None:
+                text = str(getattr(chunk.message, "content", "") or "")
+            elif hasattr(chunk, "text"):
+                text = str(chunk.text or "")
+            if text:
+                collected.append(text)
             yield chunk
+
+        if collected:
+            duration_ms = (time.time() - start_time) * 1000
+            self._record_stream_call(messages, "".join(collected), duration_ms)
+
+    def _record_stream_call(
+        self,
+        messages: List[BaseMessage],
+        response_text: str,
+        duration_ms: float,
+    ) -> None:
+        """Record aggregated streaming LLM output for trajectory collection."""
+        try:
+            msg_list = []
+            for msg in messages:
+                if hasattr(msg, "content"):
+                    msg_list.append(
+                        {
+                            "role": getattr(msg, "type", "unknown"),
+                            "content": str(msg.content)[:200],
+                        }
+                    )
+            self._collector.record_llm_call(
+                model=self._llm_type,
+                messages=msg_list,
+                response=response_text[:500],
+                duration_ms=duration_ms,
+            )
+        except Exception as e:
+            logger.warning("Failed to record streaming LLM call: %s", e)
 
     def _record_call(
         self,

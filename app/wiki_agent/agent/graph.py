@@ -82,9 +82,33 @@ chat_llm = wrap_llm(
         api_key=_chat_llm_key,
         base_url=_chat_llm_base,
         temperature=0.7,
-        streaming=True,
+        # 模型级保持非流式，避免 ainvoke 误走 AsyncStream。
+        # 回复生成统一在 respond 节点显式调用 astream()。
+        streaming=False,
     )
 )
+
+
+def _chunk_text(chunk: object) -> str:
+    """Extract text from AIMessageChunk / ChatGenerationChunk."""
+    content = getattr(chunk, "content", None)
+    if content is None and hasattr(chunk, "message"):
+        content = getattr(chunk.message, "content", None)
+    if content is None and hasattr(chunk, "text"):
+        content = chunk.text
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+        return "".join(parts)
+    return str(content)
 
 
 class WikiState(TypedDict, total=False):
@@ -273,14 +297,14 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     messages = _build_llm_messages(state, chat_history)
     collected = ""
 
-    if queue is not None:
-        async for chunk in chat_llm.astream(messages):
-            if chunk.content:
-                collected += chunk.content
-                await _emit(queue, {"type": "content", "text": chunk.content})
-    else:
-        response = await chat_llm.ainvoke(messages)
-        collected = response.content or ""
+    # 始终走 astream — 有 event_queue 时逐 token 推 SSE，无 queue 时在本地聚合
+    async for chunk in chat_llm.astream(messages):
+        text = _chunk_text(chunk)
+        if not text:
+            continue
+        collected += text
+        if queue is not None:
+            await _emit(queue, {"type": "content", "text": text})
 
     return {**state, "ai_response": collected, "stage": "respond"}
 
@@ -528,17 +552,41 @@ async def run_chat_invoke(
     }
 
 
-async def resume_and_execute(thread_id: str, confirm: bool) -> dict:
+async def resume_and_execute(
+    thread_id: str,
+    confirm: bool,
+    *,
+    session_id: str | None = None,
+) -> dict:
     """从 checkpoint 恢复，执行或取消知识库操作"""
     graph = await get_wiki_graph()
 
-    eval_task_id = await start_session(
-        f"{'Confirm' if confirm else 'Cancel'} pending wiki knowledge-base action",
-        None,
-        "resume",
-        thread_id=thread_id,
-        confirm=confirm,
-    )
+    # 确认/取消时复用当前会话的评估任务，避免每次操作再创建一条重复 task
+    eval_task_id: str | None = None
+    if session_id:
+        eval_task_id = await session_store.get_active_eval_task_id(session_id)
+
+    if not eval_task_id:
+        eval_task_id = await start_session(
+            f"{'Confirm' if confirm else 'Cancel'} pending wiki knowledge-base action",
+            session_id,
+            "resume",
+            thread_id=thread_id,
+            confirm=confirm,
+        )
+    else:
+        from sdk import get_collector
+        from sdk.collector import ActionType
+
+        collector = get_collector()
+        collector.attach(eval_task_id)
+        collector.record(
+            ActionType.THINK,
+            {
+                "thought": f"{'Confirm' if confirm else 'Cancel'} pending wiki knowledge-base action",
+                "thread_id": thread_id,
+            },
+        )
 
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
