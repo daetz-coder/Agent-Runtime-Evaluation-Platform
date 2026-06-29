@@ -139,6 +139,7 @@ class _CollectorSession:
     steps: List[Dict[str, Any]] = field(default_factory=list)
     seen_events: _BoundedSet = field(default_factory=lambda: _BoundedSet(max_size=5000))
     eval_triggered: bool = False
+    goal_context: Optional[Dict[str, Any]] = None
 
 
 _collector_session: ContextVar[Optional[_CollectorSession]] = ContextVar("_collector_session", default=None)
@@ -296,6 +297,7 @@ class TrajectoryCollector:
 
         session.task_id = await create_task_record(session.task_id, goal, context)
         session.remote_task_created = True
+        session.goal_context = context
 
         self.record(
             ActionType.PLAN,
@@ -350,6 +352,7 @@ class TrajectoryCollector:
                 session.task_id,
                 steps_to_send,
                 auto_run=auto_run and not session.eval_triggered,
+                context=session.goal_context,
             )
             if auto_run:
                 session.eval_triggered = True

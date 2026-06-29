@@ -17,21 +17,30 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _resolve_workspace_id(context: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Extract workspace id from collector context when provided."""
+    if not context:
+        return None
+    return context.get("_workspace_id") or context.get("workspace_id")
+
+
 async def create_task_record(
     task_id: str,
     goal: str,
     context: Optional[Dict[str, Any]] = None,
+    workspace_id: Optional[str] = None,
 ) -> str:
     """Create task row without HTTP."""
     from app.db.database import async_session_factory
     from app.models.schemas import TaskCreate
     from app.services.evaluation_service import EvaluationService
 
+    ws_id = workspace_id or _resolve_workspace_id(context)
     async with async_session_factory() as db:
         service = EvaluationService(db)
         task = await service.create_task(
             TaskCreate(id=task_id, goal=goal, context=context),
-            workspace_id=None,
+            workspace_id=ws_id,
         )
         await db.commit()
         return task.id
@@ -42,29 +51,36 @@ async def persist_collector_session(
     steps: List[Dict[str, Any]],
     *,
     auto_run: bool = False,
+    workspace_id: Optional[str] = None,
+    context: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Flush buffered trajectory, mark task completed, optionally queue evaluation."""
     from app.db.database import async_session_factory
     from app.models.schemas import TaskUpdate
     from app.services.evaluation_service import EvaluationService
 
+    ws_id = workspace_id or _resolve_workspace_id(context)
     eval_id: Optional[str] = None
 
     async with async_session_factory() as db:
         service = EvaluationService(db)
         if steps:
-            await service.add_trajectory(task_id, steps, workspace_id=None)
-        await service.update_task(task_id, TaskUpdate(status="completed"), workspace_id=None)
+            await service.add_trajectory(task_id, steps, workspace_id=ws_id)
+        await service.update_task(task_id, TaskUpdate(status="completed"), workspace_id=ws_id)
         if auto_run:
-            evaluation = await service.create_evaluation(task_id, workspace_id=None)
+            evaluation, _created = await service.create_evaluation(task_id, workspace_id=ws_id)
             eval_id = evaluation.id if evaluation else None
         await db.commit()
 
     if auto_run and eval_id:
-        asyncio.create_task(_run_evaluation_background(task_id, eval_id))
+        asyncio.create_task(_run_evaluation_background(task_id, eval_id, ws_id))
 
 
-async def _run_evaluation_background(task_id: str, eval_id: str) -> None:
+async def _run_evaluation_background(
+    task_id: str,
+    eval_id: str,
+    workspace_id: Optional[str] = None,
+) -> None:
     """Run evaluation graph without blocking the chat response."""
     from app.db.database import async_session_factory
     from app.services.evaluation_service import EvaluationService
@@ -72,17 +88,21 @@ async def _run_evaluation_background(task_id: str, eval_id: str) -> None:
     try:
         async with async_session_factory() as db:
             service = EvaluationService(db)
-            result = await service.run_evaluation(task_id=task_id, workspace_id=None)
+            result = await service.run_evaluation(
+                task_id=task_id,
+                workspace_id=workspace_id,
+                evaluation_id=eval_id,
+            )
             await db.commit()
             if result is None:
-                await service.abort_pending_evaluation(eval_id, task_id, workspace_id=None)
+                await service.abort_pending_evaluation(eval_id, task_id, workspace_id=workspace_id)
                 await db.commit()
     except Exception as exc:
         logger.error("In-process evaluation failed for task %s: %s", task_id, exc)
         try:
             async with async_session_factory() as db:
                 service = EvaluationService(db)
-                await service.abort_pending_evaluation(eval_id, task_id, workspace_id=None)
+                await service.abort_pending_evaluation(eval_id, task_id, workspace_id=workspace_id)
                 await db.commit()
         except Exception as cleanup_exc:
             logger.error("Failed to abort evaluation %s: %s", eval_id, cleanup_exc)
