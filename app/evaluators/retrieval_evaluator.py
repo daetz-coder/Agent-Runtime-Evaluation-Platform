@@ -23,49 +23,49 @@ from app.models.schemas import TrajectoryStep
 
 logger = logging.getLogger(__name__)
 
-RETRIEVAL_EVAL_PROMPT = """You are an expert at evaluating RAG (Retrieval-Augmented Generation) quality.
+RETRIEVAL_EVAL_PROMPT = """你是一位 RAG（检索增强生成）质量评估专家。
 
-## Question / Goal
+## 问题 / 目标
 {goal}
 
-## Retrieved Documents (from knowledge base search)
+## 检索到的文档（来自知识库搜索）
 {retrieved_docs}
 
-## Agent's Final Answer
+## Agent 的最终回答
 {final_answer}
 
-## Evaluation Criteria
+## 评估标准
 
-Evaluate on the following dimensions (0-100 scale):
+请从以下维度评分（0-100 分）：
 
-1. **Relevance** (0-100): How relevant are the retrieved documents to the question?
-   - 100: All retrieved docs directly address the question
-   - 70-90: Most docs are relevant, some tangentially related
-   - 40-70: Mixed relevance, several unrelated docs
-   - 0-40: Most docs are irrelevant
+1. **相关性** (Relevance, 0-100): 检索到的文档与问题的相关程度。
+   - 100：所有检索文档直接针对问题
+   - 70-90：大部分文档相关，少部分边缘相关
+   - 40-70：相关性参差不齐，部分文档不相关
+   - 0-40：大部分文档不相关
 
-2. **Evidence Accuracy** (0-100): Does the answer accurately cite/reference the retrieved content?
-   - 100: All claims grounded in retrieved docs, no hallucination
-   - 70-90: Most claims grounded, minor embellishments
-   - 40-70: Some claims not supported by retrieved content
-   - 0-40: Significant hallucination or contradiction with retrieved docs
+2. **证据准确性** (Evidence Accuracy, 0-100): 回答是否准确引用/参考了检索内容？
+   - 100：所有陈述基于检索文档，无幻觉
+   - 70-90：大部分有依据，少量添油加醋
+   - 40-70：部分陈述缺少检索内容支撑
+   - 0-40：严重幻觉或与检索文档矛盾
 
-3. **Coverage** (0-100): Do the retrieved documents contain sufficient information to answer the question?
-   - 100: Retrieved docs contain all needed information
-   - 70-90: Most info present, minor gaps
-   - 40-70: Partial coverage, significant missing info
-   - 0-40: Retrieved docs are insufficient
+3. **覆盖度** (Coverage, 0-100): 检索到的文档是否包含回答问题的充分信息？
+   - 100：检索文档包含所有所需信息
+   - 70-90：大部分信息存在，少量缺口
+   - 40-70：部分覆盖，明显信息不足
+   - 0-40：检索文档完全不够
 
-## Output Format
-Return a JSON object:
+## 输出格式
+返回 JSON 对象，feedback 字段请用中文：
 {{
-    "relevance": <score>,
-    "evidence_accuracy": <score>,
-    "coverage": <score>,
-    "overall": <weighted average of the three>,
-    "feedback": "<detailed feedback>",
+    "relevance": <分数>,
+    "evidence_accuracy": <分数>,
+    "coverage": <分数>,
+    "overall": <三个维度的加权平均>,
+    "feedback": "<详细评估反馈（中文）>",
     "hallucination_detected": <true/false>,
-    "missing_info": ["list of information gaps"]
+    "missing_info": ["信息缺口列表"]
 }}
 """
 

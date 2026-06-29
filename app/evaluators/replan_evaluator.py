@@ -14,55 +14,55 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import ReplanScore, TrajectoryStep
 
-REPLAN_EVALUATION_PROMPT = """You are an expert at evaluating AI agent replanning decisions.
+REPLAN_EVALUATION_PROMPT = """你是一位 AI Agent 重规划决策评估专家。
 
-## Goal
+## 用户目标
 {goal}
 
-## Trajectory (including replans)
+## 轨迹（包含重规划）
 {trajectory}
 
-## Replan Events
+## 重规划事件
 {replan_events}
 
-## Context
+## 上下文
 {context}
 
-## Evaluation Criteria
+## 评估标准
 
-Evaluate the agent's replanning on:
+请从以下维度评估 Agent 的重规划能力（0-100 分）：
 
-1. **Trigger Appropriateness** (0-100):
-   - Was replanning triggered at the right time?
-   - Good triggers: Repeated failures, new information, blocked paths
-   - Bad triggers: Too early, too late, unnecessary replans
-   - Example: After 5 consecutive failures, replan is appropriate (score: 100)
-   - Example: After 1 failure, replan is premature (score: 30)
-   - Example: Never replanning despite repeated failures (score: 0)
+1. **触发适当性** (Trigger Appropriateness, 0-100):
+   - 重规划是否在合适的时间触发？
+   - 好的触发时机：连续失败、出现新信息、路径受阻
+   - 差的触发时机：触发太早、太晚、不必要的重规划
+   - 例如：连续 5 次失败后重规划是适当的（100 分）
+   - 例如：1 次失败后就重规划为时过早（30 分）
+   - 例如：尽管连续失败但从未重规划（0 分）
 
-2. **Adaptation Quality** (0-100):
-   - How well was the plan adapted?
-   - Did the new plan address the issues that caused replanning?
-   - Example: After failing to find auth code, trying a different search strategy is good adaptation.
+2. **适应质量** (Adaptation Quality, 0-100):
+   - 计划调整得如何？
+   - 新计划是否解决了导致重规划的问题？
+   - 例如：找不到认证代码后尝试不同的搜索策略是好的适应。
 
-3. **Learning from Failure** (0-100):
-   - Did the agent learn from previous failures?
-   - Does the new plan avoid previous mistakes?
-   - Example: After wrong file path, checking file existence first shows learning.
+3. **失败中学习** (Learning from Failure, 0-100):
+   - Agent 是否从之前的失败中学习？
+   - 新计划是否避免了之前的错误？
+   - 例如：文件路径错误后，先检查文件是否存在表明有学习。
 
-## Output Format
-Return a JSON object:
+## 输出格式
+返回 JSON 对象，feedback 字段请用中文：
 {{
-    "trigger_appropriateness": <score>,
-    "adaptation_quality": <score>,
-    "learning_from_failure": <score>,
-    "overall": <weighted average>,
-    "feedback": "<detailed feedback>",
+    "trigger_appropriateness": <分数>,
+    "adaptation_quality": <分数>,
+    "learning_from_failure": <分数>,
+    "overall": <加权平均>,
+    "feedback": "<详细评估反馈（中文）>",
     "missed_replan_opportunities": [
-        {{"step": <step_number>, "reason": "<why replan should have happened>"}}
+        {{"step": <步骤号>, "reason": "<应触发重规划的原因>"}}
     ],
     "unnecessary_replans": [
-        {{"step": <step_number>, "reason": "<why replan was unnecessary>"}}
+        {{"step": <步骤号>, "reason": "<重规划不必要的原因>"}}
     ]
 }}
 """

@@ -14,54 +14,53 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import ToolUseScore, TrajectoryStep
 
-TOOL_USE_EVALUATION_PROMPT = """You are an expert at evaluating AI agent tool usage.
+TOOL_USE_EVALUATION_PROMPT = """你是一位 AI Agent 工具使用评估专家。
 
-## Goal
+## 用户目标
 {goal}
 
-## Tool Calls
+## 工具调用记录
 {tool_calls}
 
-## Context
+## 上下文
 {context}
 
-## Execution Results
-The tool results below are real execution results from a sandboxed environment.
-They reflect what actually happened when the agent ran each tool.
+## 执行结果
+以下工具结果来自沙箱环境的真实执行，反映 Agent 运行每个工具时的实际输出。
 
 {execution_results}
 
-## Evaluation Criteria
+## 评估标准
 
-Evaluate the agent's tool usage on:
+请从以下维度评估 Agent 的工具使用（0-100 分）：
 
-1. **Selection Quality** (0-100):
-   - Was the right tool chosen for the task?
-   - Example: Using `python_execute` to analyze data is good; using `bash_execute` for complex math is wasteful.
-   - Consider: Are there better tools available that weren't used?
+1. **选择质量** (Selection Quality, 0-100):
+   - 是否为任务选择了正确的工具？
+   - 例如：用 `python_execute` 分析数据是好的；用 `bash_execute` 做复杂数学计算是浪费的。
+   - 考虑：是否有更好的工具可用但未被使用？
 
-2. **Parameter Accuracy** (0-100):
-   - Were the tool parameters correct and complete?
-   - Example: Correct file paths, appropriate code syntax
-   - Consider: Were there errors due to wrong parameters?
-   - If tool execution failed, check if the agent diagnosed and corrected the issue.
+2. **参数准确性** (Parameter Accuracy, 0-100):
+   - 工具参数是否正确和完整？
+   - 例如：正确的文件路径、合适的代码语法
+   - 考虑：是否因参数错误导致执行失败？
+   - 如果工具执行失败，检查 Agent 是否诊断并纠正了问题。
 
-3. **Result Utilization** (0-100):
-   - Were tool results used effectively?
-   - Did the agent act on the information received?
-   - Example: After reading a file, did the agent analyze it properly?
-   - Did the agent iterate on failures or give up prematurely?
+3. **结果利用** (Result Utilization, 0-100):
+   - 工具结果是否被有效利用？
+   - Agent 是否根据收到的信息采取了行动？
+   - 例如：读取文件后是否正确分析了内容？
+   - Agent 是否在失败后迭代改进，还是过早放弃？
 
-## Output Format
-Return a JSON object:
+## 输出格式
+返回 JSON 对象，feedback 字段请用中文：
 {{
-    "selection_quality": <score>,
-    "parameter_accuracy": <score>,
-    "result_utilization": <score>,
-    "overall": <weighted average>,
-    "feedback": "<detailed feedback>",
+    "selection_quality": <分数>,
+    "parameter_accuracy": <分数>,
+    "result_utilization": <分数>,
+    "overall": <加权平均>,
+    "feedback": "<详细评估反馈（中文）>",
     "inefficient_calls": [
-        {{"tool": "<name>", "issue": "<description>", "suggestion": "<improvement>"}}
+        {{"tool": "<工具名>", "issue": "<问题描述>", "suggestion": "<改进建议>"}}
     ]
 }}
 """

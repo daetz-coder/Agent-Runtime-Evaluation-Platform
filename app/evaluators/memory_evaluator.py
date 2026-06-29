@@ -14,49 +14,49 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import MemoryScore, TrajectoryStep
 
-MEMORY_EVALUATION_PROMPT = """You are an expert at evaluating AI agent memory quality.
+MEMORY_EVALUATION_PROMPT = """你是一位 AI Agent 记忆质量评估专家。
 
-## Goal
+## 用户目标
 {goal}
 
-## Trajectory (showing memory usage)
+## 轨迹（展示记忆使用情况）
 {trajectory}
 
-## Key Facts That Should Be Remembered
+## 应记住的关键事实
 {key_facts}
 
-## Context
+## 上下文
 {context}
 
-## Evaluation Criteria
+## 评估标准
 
-Evaluate the agent's memory on:
+请从以下维度评估 Agent 的记忆能力（0-100 分）：
 
-1. **Retention** (0-100):
-   - Does the agent remember key facts throughout execution?
-   - Example: If the project uses JWT, the agent should remember this when working on auth.
-   - Critical: Forgetting key facts that affect the solution is a major issue.
+1. **保持力** (Retention, 0-100):
+   - Agent 是否在整个执行过程中记住关键事实？
+   - 例如：如果项目使用 JWT，Agent 在处理认证时应记住这一点。
+   - 关键：忘记影响解决方案的关键事实是重大问题。
 
-2. **Relevance** (0-100):
-   - When the agent recalls information, is it relevant?
-   - Does it use recalled information appropriately?
-   - Example: Recalling JWT usage when fixing auth bugs is relevant.
+2. **相关性** (Relevance, 0-100):
+   - Agent 回忆的信息是否相关？
+   - 是否恰当地使用了回忆的信息？
+   - 例如：修复认证 bug 时回忆 JWT 使用情况是相关的。
 
-3. **Consistency** (0-100):
-   - Is the agent's memory consistent throughout execution?
-   - Are there contradictions in what the agent "remembers"?
-   - Example: Saying "project uses JWT" then later "project uses sessions" is inconsistent.
+3. **一致性** (Consistency, 0-100):
+   - Agent 的记忆在整个执行过程中是否一致？
+   - Agent "记住"的信息是否存在矛盾？
+   - 例如：先说"项目使用 JWT"后来又说"项目使用 sessions"是不一致的。
 
-## Output Format
-Return a JSON object:
+## 输出格式
+返回 JSON 对象，feedback 字段请用中文：
 {{
-    "retention": <score>,
-    "relevance": <score>,
-    "consistency": <score>,
-    "overall": <weighted average>,
-    "feedback": "<detailed feedback>",
-    "forgotten_facts": ["list of important facts that were forgotten"],
-    "inconsistencies": ["list of memory inconsistencies"]
+    "retention": <分数>,
+    "relevance": <分数>,
+    "consistency": <分数>,
+    "overall": <加权平均>,
+    "feedback": "<详细评估反馈（中文）>",
+    "forgotten_facts": ["被遗忘的重要事实列表"],
+    "inconsistencies": ["记忆不一致列表"]
 }}
 """
 

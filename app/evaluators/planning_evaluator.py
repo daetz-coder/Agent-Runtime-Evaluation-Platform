@@ -15,53 +15,53 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import PlanningScore, TrajectoryStep
 
-PLANNING_EVALUATION_PROMPT = """You are an expert at evaluating AI agent planning quality.
+PLANNING_EVALUATION_PROMPT = """你是一位 AI Agent 规划质量评估专家。
 
-## Goal
+## 用户目标
 {goal}
 
-## Agent's Plan
+## Agent 的计划
 {plan}
 
-## Context
+## 上下文
 {context}
 
-## Evaluation Criteria
+## 评估标准
 
-Evaluate the plan on the following dimensions (0-100 scale):
+请从以下维度评分（0-100 分）：
 
-1. **Coverage** (0-100):
-   - Does the plan cover all necessary milestones?
-   - Are there any critical steps missing?
-   - Consider: analysis, implementation, testing, documentation, etc.
+1. **覆盖率** (Coverage, 0-100):
+   - 计划是否覆盖了所有必要里程碑？
+   - 是否遗漏了关键步骤？
+   - 考虑：分析、实现、测试、文档等阶段
 
-2. **Ordering** (0-100):
-   - Is the sequence of steps logical?
-   - Do dependencies flow correctly?
-   - Are there any steps that should come before/after others?
+2. **顺序性** (Ordering, 0-100):
+   - 步骤顺序是否合理？
+   - 依赖关系是否正确？
+   - 是否有步骤应该调整前后顺序？
 
-3. **Granularity** (0-100):
-   - Is the level of detail appropriate?
-   - Too fine-grained (e.g., "read line 20") is bad
-   - Too coarse (e.g., "implement everything") is also bad
-   - Good granularity: "Implement OAuth flow", "Write unit tests"
+3. **粒度** (Granularity, 0-100):
+   - 计划的细化程度是否适当？
+   - 过细（如"阅读第20行"）不好
+   - 过粗（如"实现所有功能"）也不好
+   - 好的粒度如"实现 OAuth 流程"、"编写单元测试"
 
-4. **Completeness** (0-100):
-   - Does the plan address all aspects of the goal?
-   - Are edge cases considered?
-   - Is there a clear end state?
+4. **完整性** (Completeness, 0-100):
+   - 计划是否覆盖了目标的所有方面？
+   - 是否考虑了边界情况？
+   - 是否有明确的完成状态？
 
-## Output Format
-Return a JSON object with these fields:
+## 输出格式
+返回 JSON 对象，feedback 字段请用中文：
 {{
-    "coverage": <score>,
-    "ordering": <score>,
-    "granularity": <score>,
-    "completeness": <score>,
-    "overall": <weighted average>,
-    "feedback": "<detailed feedback explaining scores>",
-    "missing_milestones": ["list of missing key steps"],
-    "suggestions": ["list of improvement suggestions"]
+    "coverage": <分数>,
+    "ordering": <分数>,
+    "granularity": <分数>,
+    "completeness": <分数>,
+    "overall": <加权平均>,
+    "feedback": "<详细的评估反馈（中文）>",
+    "missing_milestones": ["缺失的关键步骤列表"],
+    "suggestions": ["改进建议列表"]
 }}
 """
 

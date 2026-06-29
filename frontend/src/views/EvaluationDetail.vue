@@ -125,7 +125,7 @@
               />
               <div v-else class="metric-na-line"></div>
               <span class="metric-value">
-                {{ isDimensionApplicable(dim.key) ? getMetricScore(dim.key, key) : 'N/A' }}
+                {{ isDimensionApplicable(dim.key) ? getMetricScore(dim.key, key) : '—' }}
               </span>
             </div>
           </div>
@@ -318,7 +318,7 @@
         <div v-if="judgeRawData" class="judge-raw-content">
           <el-descriptions :column="2" border size="small">
             <el-descriptions-item label="维度">{{ selectedJudgeDim }}</el-descriptions-item>
-            <el-descriptions-item label="Judge 模型">{{ judgeRawData[selectedJudgeDim]?.judge_model || 'N/A' }}</el-descriptions-item>
+            <el-descriptions-item label="Judge 模型">{{ judgeRawData[selectedJudgeDim]?.judge_model || '—' }}</el-descriptions-item>
             <el-descriptions-item label="综合得分" :span="2">
               <el-tag :type="getScoreTagType(judgeRawData[selectedJudgeDim]?.score)">
                 {{ judgeRawData[selectedJudgeDim]?.score ?? 'N/A' }}
@@ -876,7 +876,7 @@ const initRadarChart = () => {
     tooltip: {
       trigger: 'item',
       formatter: () => dimensions.map((d) => {
-        const label = isDimensionApplicable(d.key) ? `${getDimensionScore(d.key)}` : 'N/A'
+        const label = isDimensionApplicable(d.key) ? `${getDimensionScore(d.key)}` : '—'
         return `${d.name}: ${label}`
       }).join('<br/>'),
     },

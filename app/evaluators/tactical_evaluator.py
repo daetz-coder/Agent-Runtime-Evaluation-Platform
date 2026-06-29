@@ -14,49 +14,49 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import TacticalScore, TrajectoryStep
 
-TACTICAL_EVALUATION_PROMPT = """You are an expert at evaluating AI agent tactical decisions.
+TACTICAL_EVALUATION_PROMPT = """你是一位 AI Agent 战术决策评估专家。
 
-## Goal
+## 用户目标
 {goal}
 
-## Current State
+## 当前状态
 {current_state}
 
-## Agent's Actions
+## Agent 的行动
 {actions}
 
-## Context
+## 上下文
 {context}
 
-## Evaluation Criteria
+## 评估标准
 
-Evaluate the agent's tactical decisions (next actions) on:
+请从以下维度评估 Agent 的战术决策（下一步行动，0-100 分）：
 
-1. **Relevance** (0-100):
-   - Is the action relevant to the current state and goal?
-   - Does it move toward the objective?
-   - Example: If analyzing auth code, reading auth.py is relevant; running tests is not.
+1. **相关性** (Relevance, 0-100):
+   - 行动是否与当前状态和目标相关？
+   - 是否朝着目标推进？
+   - 例如：分析认证代码时读取 auth.py 是相关的，运行测试则无关。
 
-2. **Efficiency** (0-100):
-   - Is the action efficient for the current situation?
-   - Are there unnecessary detours?
-   - Example: Creating a PR before root cause analysis is inefficient.
+2. **效率** (Efficiency, 0-100):
+   - 行动在当前情况下是否高效？
+   - 是否有不必要的绕路？
+   - 例如：在根因分析之前就创建 PR 是低效的。
 
-3. **Correctness** (0-100):
-   - Is the action correct given the context?
-   - Would an expert do the same thing?
-   - Example: Reading code before fixing is correct; fixing before reading is wrong.
+3. **正确性** (Correctness, 0-100):
+   - 行动是否在给定上下文中正确？
+   - 专家会做同样的事吗？
+   - 例如：修复前先阅读代码是正确的，修复前不阅读是错误的。
 
-## Output Format
-Return a JSON object:
+## 输出格式
+返回 JSON 对象，feedback 字段请用中文：
 {{
-    "relevance": <score>,
-    "efficiency": <score>,
-    "correctness": <score>,
-    "overall": <weighted average>,
-    "feedback": "<detailed feedback>",
+    "relevance": <分数>,
+    "efficiency": <分数>,
+    "correctness": <分数>,
+    "overall": <加权平均>,
+    "feedback": "<详细评估反馈（中文）>",
     "problematic_actions": [
-        {{"step": <step_number>, "issue": "<description>", "suggestion": "<improvement>"}}
+        {{"step": <步骤号>, "issue": "<问题描述>", "suggestion": "<改进建议>"}}
     ]
 }}
 """
