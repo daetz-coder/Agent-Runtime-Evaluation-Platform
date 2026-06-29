@@ -311,11 +311,13 @@ class BaseEvaluator(ABC):
 
         from app.core.cache import cache_hgetall, cache_hset, hash_prompt
 
-        # Build a deterministic cache key from evaluator name + prompt content
+        # Build a deterministic cache key from evaluator name + model + prompt content
+        # NOTE: model_name is critical — without it, multi-model consensus would share a single cache entry
         evaluator_name = type(self).__name__
+        model_name = getattr(self.llm, "model_name", "unknown")
         prompt_text = json.dumps(inputs, sort_keys=True, default=str)
         prompt_hash = hash_prompt(prompt_text)
-        cache_key = f"llm:{evaluator_name}:{prompt_hash}"
+        cache_key = f"llm:{evaluator_name}:{model_name}:{prompt_hash}"
 
         import time
 
@@ -346,7 +348,6 @@ class BaseEvaluator(ABC):
         latency_ms = (time.monotonic() - start_time) * 1000
 
         # Store raw judge data for transparency
-        model_name = getattr(self.llm, "model_name", "unknown")
         self._last_judge_raw = {
             "prompt": prompt_text[:10000],  # cap to avoid huge payloads
             "response": response.content[:10000],
@@ -362,7 +363,7 @@ class BaseEvaluator(ABC):
             cache_key,
             mapping={
                 "response": response.content,
-                "model": getattr(self.llm, "model_name", "unknown"),
+                "model": model_name,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             },
             ttl=settings.CACHE_LLM_TTL,
