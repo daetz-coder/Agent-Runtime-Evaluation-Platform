@@ -55,6 +55,30 @@ class TestIncrementalEvalDetection:
         assert "planning" in result
         assert "tactical" in result
 
+    def test_tool_call_change_detects_tool_use_with_tool_name(self):
+        """SDK-style tool_name field should trigger tool_use re-evaluation."""
+        diff = TrajectoryDiffResponse(
+            base_evaluation_id="base-1",
+            head_evaluation_id="head-1",
+            base_task_goal="Goal",
+            head_task_goal="Goal",
+            total_changes=1,
+            steps_added=0,
+            steps_removed=0,
+            steps_modified=1,
+            steps=[
+                StepDiff(
+                    step_number=2,
+                    change_type="changed",
+                    before={"action_type": "tool_call", "action_detail": {"tool_name": "python_execute"}},
+                    after={"action_type": "tool_call", "action_detail": {"tool_name": "bash_execute"}},
+                    field_changes=["action_detail.tool_name"],
+                )
+            ],
+        )
+        result = self.service._detect_changed_dimensions(diff)
+        assert "tool_use" in result
+
     def test_tool_call_change_detects_tool_use(self):
         """Tool call changes should trigger tool_use re-evaluation."""
         diff = TrajectoryDiffResponse(

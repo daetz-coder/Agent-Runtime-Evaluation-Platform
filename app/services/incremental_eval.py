@@ -80,6 +80,11 @@ class IncrementalEvalService:
             if not head_task:
                 raise ValueError(f"Head task {head_task_id} not found")
 
+            if workspace_id:
+                base_ws = base_eval.task.workspace_id if base_eval.task else None
+                if base_ws != workspace_id or head_task.workspace_id != workspace_id:
+                    raise ValueError("Evaluation or task not found in this workspace")
+
             head_traj = await self._get_trajectory(db, head_task_id)
             base_traj = await self._get_trajectory(db, base_eval.task_id)
 
@@ -112,7 +117,6 @@ class IncrementalEvalService:
             from datetime import datetime, timezone
 
             from app.agent_runtime.prompts import PROMPT_VERSION
-            from app.core.config import settings as _cfg
 
             new_eval = Evaluation(
                 id=eval_id,
@@ -120,8 +124,8 @@ class IncrementalEvalService:
                 status=EvaluationStatus.IN_PROGRESS,
                 created_at=datetime.now(timezone.utc),
                 prompt_version=PROMPT_VERSION,
-                model_name=_cfg.DEFAULT_LLM_MODEL,
-                model_provider=_cfg.DEFAULT_LLM_PROVIDER,
+                model_name=settings.DEFAULT_LLM_MODEL,
+                model_provider=settings.DEFAULT_LLM_PROVIDER,
             )
             db.add(new_eval)
             await db.flush()
@@ -162,9 +166,7 @@ class IncrementalEvalService:
                 feedback = getattr(new_eval, f"{dim}_feedback", None)
                 all_scores[dim] = {"overall": score, **feedback} if feedback else {"overall": score}
 
-            from app.core.config import settings as _cfg
-
-            weights = _cfg.EVAL_DIMENSION_WEIGHTS
+            weights = settings.EVAL_DIMENSION_WEIGHTS
             overall = sum(
                 weights.get(d, 0) * (all_scores[d].get("overall", 0) if isinstance(all_scores[d], dict) else 0)
                 for d in all_dims
@@ -177,6 +179,7 @@ class IncrementalEvalService:
             head_task.completed_at = datetime.now(timezone.utc)
 
             await db.flush()
+            await db.commit()
 
             return eval_id, reused_dims, re_eval_dims, diff, new_eval.status.value, new_eval.overall_score
 
@@ -208,7 +211,11 @@ class IncrementalEvalService:
             if action_type == "tool_call":
                 tool_name = ""
                 if isinstance(action_detail, dict):
-                    tool_name = action_detail.get("tool", "") or action_detail.get("name", "")
+                    tool_name = (
+                        action_detail.get("tool", "")
+                        or action_detail.get("tool_name", "")
+                        or action_detail.get("name", "")
+                    )
                 if tool_name:
                     changed_dims.update(CHANGE_DIMENSION_MAP["tool_use"])
 
