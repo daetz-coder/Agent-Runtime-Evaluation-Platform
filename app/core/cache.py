@@ -155,11 +155,8 @@ async def cache_hset(key: str, mapping: Dict[str, Any], ttl: int = 0) -> bool:
         return False
     try:
         full_key = _key(key)
-        args: List[str] = [full_key]
         for k, v in mapping.items():
-            args.append(k)
-            args.append(str(v))
-        await r.execute_command("HSET", *args)
+            await r.hset(full_key, k, str(v))
         if ttl > 0:
             await r.expire(full_key, ttl)
         return True
