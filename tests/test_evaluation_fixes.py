@@ -50,7 +50,7 @@ async def test_create_task_cross_workspace_conflict():
         await db.commit()
         assert task.id == "shared-task-id"
 
-        with pytest.raises(ValueError, match="another workspace"):
+        with pytest.raises(ValueError, match="different workspace scope"):
             await service.create_task(
                 TaskCreate(id="shared-task-id", goal="Shared again", context={}),
                 workspace_id="ws-b-test",

@@ -66,3 +66,45 @@ def test_build_recommendations_includes_retrieval() -> None:
     }
     recs = service._build_recommendations(feedback)
     assert any("RAG" in r or "retrieval" in r.lower() for r in recs)
+
+
+def test_build_overall_reweights_non_applicable_dimensions() -> None:
+    """Non-applicable dimensions should be excluded from the weighted denominator."""
+    service = EvaluationService(db=None)  # type: ignore[arg-type]
+    parallel_result = {
+        "planning": {
+            "overall": 80,
+            "feedback": "ok",
+            "coverage": 80,
+            "ordering": 80,
+            "granularity": 80,
+            "completeness": 80,
+        },
+        "tactical": {"overall": 80, "feedback": "ok", "relevance": 80, "efficiency": 80, "correctness": 80},
+        "tool_use": {
+            "applicable": False,
+            "not_applicable_reason": "No tool calls were present in the trajectory.",
+            "overall": 0,
+            "feedback": "Not applicable",
+            "selection_quality": 0,
+            "parameter_accuracy": 0,
+            "result_utilization": 0,
+        },
+        "memory": {"overall": 80, "feedback": "ok", "retention": 80, "relevance": 80, "consistency": 80},
+        "replan": {
+            "applicable": False,
+            "not_applicable_reason": "No replanning was needed.",
+            "overall": 0,
+            "feedback": "Not applicable",
+            "trigger_appropriateness": 0,
+            "adaptation_quality": 0,
+            "learning_from_failure": 0,
+        },
+        "retrieval": {"overall": 80, "feedback": "ok", "relevance": 80, "evidence_accuracy": 80, "coverage": 80},
+    }
+
+    overall = service._build_overall_from_parallel(parallel_result)
+
+    assert overall.overall_score == 80
+    assert overall.tool_use.applicable is False
+    assert overall.replan.applicable is False

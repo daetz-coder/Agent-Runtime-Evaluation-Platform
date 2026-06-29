@@ -172,14 +172,12 @@ async def test_memory_evaluator(sample_trajectory):
 async def test_replan_evaluator_no_replans(sample_trajectory):
     """Test replan evaluator when no replans occurred."""
     evaluator = ReplanEvaluator()
-    evaluator.llm = MockLLM(
-        response_json='{"trigger_appropriateness": 100, "adaptation_quality": 100, "learning_from_failure": 100, "overall": 100, "feedback": "No replanning needed."}',
-    )
 
     result = await evaluator.evaluate(
         goal="Fix authentication bug",
         trajectory=sample_trajectory,
     )
 
-    # No replans means perfect score for this dimension
-    assert result.overall == 100
+    # No replans and no missed replan opportunities means this dimension is not applicable.
+    assert result.applicable is False
+    assert result.overall == 0

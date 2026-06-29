@@ -108,7 +108,7 @@
             <div class="dimension-title">
               <h4>{{ dim.name }}</h4>
               <span class="dimension-score" :style="{ color: dim.color }">
-                {{ getDimensionScore(dim.key) }}
+                {{ getDimensionScoreLabel(dim.key) }}
               </span>
             </div>
           </div>
@@ -117,12 +117,16 @@
             <div v-for="(metric, key) in dim.metrics" :key="key" class="metric-item">
               <span class="metric-name">{{ metric }}</span>
               <el-progress
+                v-if="isDimensionApplicable(dim.key)"
                 :percentage="getMetricScore(dim.key, key)"
                 :color="getScoreColor(getMetricScore(dim.key, key))"
                 :stroke-width="8"
                 :show-text="false"
               />
-              <span class="metric-value">{{ getMetricScore(dim.key, key) }}</span>
+              <div v-else class="metric-na-line"></div>
+              <span class="metric-value">
+                {{ isDimensionApplicable(dim.key) ? getMetricScore(dim.key, key) : 'N/A' }}
+              </span>
             </div>
           </div>
 
@@ -557,7 +561,7 @@ const streamError = ref('')
 const streamProgress = ref({
   completed: 0,
   total: 6,
-  scores: {} as Record<string, number>,
+  scores: {} as Record<string, number | null>,
   overall: null as number | null,
 })
 
@@ -577,6 +581,7 @@ const streamProgressPercent = computed(() =>
 const streamStepDescription = (key: string) => {
   const score = streamProgress.value.scores[key]
   if (score != null) return `${score.toFixed(1)} 分`
+  if (Object.prototype.hasOwnProperty.call(streamProgress.value.scores, key)) return '不适用'
   const idx = streamDimensions.findIndex((d) => d.key === key)
   if (idx < streamProgress.value.completed) return '完成'
   if (idx === streamProgress.value.completed && streaming.value) return '评估中…'
@@ -717,12 +722,24 @@ const getDimensionScore = (dimKey: string) => {
   return Math.round(evaluation.value?.evaluation?.[dimKey]?.overall || 0)
 }
 
+const isDimensionApplicable = (dimKey: string) => {
+  return evaluation.value?.evaluation?.[dimKey]?.applicable !== false
+}
+
+const getDimensionScoreLabel = (dimKey: string) => {
+  return isDimensionApplicable(dimKey) ? getDimensionScore(dimKey) : '不适用'
+}
+
 const getMetricScore = (dimKey: string, metricKey: string) => {
   return Math.round(evaluation.value?.evaluation?.[dimKey]?.[metricKey] || 0)
 }
 
 const getDimensionFeedback = (dimKey: string) => {
-  return evaluation.value?.evaluation?.[dimKey]?.feedback || ''
+  const data = evaluation.value?.evaluation?.[dimKey]
+  if (data?.applicable === false) {
+    return data.not_applicable_reason || data.feedback || '该维度不适用于本次轨迹，已从综合评分中剔除。'
+  }
+  return data?.feedback || ''
 }
 
 const getStepType = (type: string) => {
@@ -830,6 +847,10 @@ const initRadarChart = () => {
   const option: echarts.EChartsOption = {
     tooltip: {
       trigger: 'item',
+      formatter: () => dimensions.map((d) => {
+        const label = isDimensionApplicable(d.key) ? `${getDimensionScore(d.key)}` : 'N/A'
+        return `${d.name}: ${label}`
+      }).join('<br/>'),
     },
     radar: {
       indicator: dimensions.map(d => ({
@@ -1233,8 +1254,21 @@ watch(selectedJudgeDim, () => {
           flex: 1;
         }
 
+        .metric-na-line {
+          flex: 1;
+          height: 8px;
+          border-radius: 999px;
+          background: repeating-linear-gradient(
+            90deg,
+            #e4e7ed 0,
+            #e4e7ed 8px,
+            transparent 8px,
+            transparent 14px
+          );
+        }
+
         .metric-value {
-          width: 30px;
+          width: 36px;
           text-align: right;
           font-size: 12px;
           font-weight: 600;

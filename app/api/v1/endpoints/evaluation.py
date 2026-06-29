@@ -463,9 +463,12 @@ async def run_sandbox_evaluation_stream(
                                 "data": json.dumps({"dimension": dim_name, "message": str(e)}),
                             }
 
+                    from app.evaluators.scoring import score_values as collect_score_values
+                    from app.evaluators.scoring import weighted_overall
+
                     weights = settings.EVAL_DIMENSION_WEIGHTS
-                    score_values = {d: (dim_results.get(d) or {}).get("overall", 0) for d in weights}
-                    overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
+                    score_values = collect_score_values(dim_results, weights)
+                    overall = round(weighted_overall(dim_results, weights), 1)
                     parallel_result = {**dim_results, "overall": {"overall_score": overall}}
 
                     await service.finalize_from_parallel(evaluation_id, task_id, parallel_result)
@@ -835,12 +838,13 @@ async def evaluation_stream(
 
     async def yield_completed_evaluation(eval_row: Evaluation):
         """Replay SSE events from a completed evaluation without re-running LLMs."""
+        from app.evaluators.scoring import dimension_score
+
         dims = ("planning", "tactical", "tool_use", "memory", "replan", "retrieval")
         score_values: dict = {}
         for index, dim in enumerate(dims, start=1):
             fb = getattr(eval_row, f"{dim}_feedback") or {}
-            score = fb.get("overall") if isinstance(fb, dict) else getattr(eval_row, f"{dim}_score", 0)
-            score = float(score or 0)
+            score = dimension_score(fb) if isinstance(fb, dict) else getattr(eval_row, f"{dim}_score", None)
             score_values[dim] = score
             yield {
                 "event": "progress",
@@ -915,9 +919,12 @@ async def evaluation_stream(
 
             await asyncio.gather(*eval_tasks, return_exceptions=True)
 
+            from app.evaluators.scoring import score_values as collect_score_values
+            from app.evaluators.scoring import weighted_overall
+
             weights = settings.EVAL_DIMENSION_WEIGHTS
-            score_values = {d: (dim_results.get(d) or {}).get("overall", 0) for d in weights}
-            overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
+            score_values = collect_score_values(dim_results, weights)
+            overall = round(weighted_overall(dim_results, weights), 1)
             parallel_result = {**dim_results, "overall": {"overall_score": overall}}
 
             if evaluation_id:

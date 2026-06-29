@@ -111,11 +111,13 @@ class ReplanEvaluator(BaseEvaluator):
         # If no replans and no missed opportunities, return default score
         if not replan_events and not missed_opportunities:
             return ReplanScore(
-                trigger_appropriateness=100,
-                adaptation_quality=100,
-                learning_from_failure=100,
-                overall=100,
-                feedback="No replanning needed. Agent completed task without requiring replan.",
+                applicable=False,
+                not_applicable_reason="No replanning was needed and no missed replan opportunities were detected.",
+                trigger_appropriateness=0,
+                adaptation_quality=0,
+                learning_from_failure=0,
+                overall=0,
+                feedback="Not applicable: agent completed the task without requiring replanning.",
             )
 
         # Create prompt

@@ -2,13 +2,13 @@ import { streamAuthHeaders } from '@/api'
 
 export interface EvaluationStreamProgress {
   dimension: string
-  score: number
+  score: number | null
   progress: number
   total: number
 }
 
 export interface EvaluationStreamResult {
-  scores: Record<string, number>
+  scores: Record<string, number | null>
   overall: number
   evaluation_id?: string
 }

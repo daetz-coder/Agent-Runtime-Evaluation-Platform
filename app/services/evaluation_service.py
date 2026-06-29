@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.metrics import EVALUATION_COUNT, EVALUATION_SCORE
 from app.core.tracing import get_tracer
 from app.db.models import AgentTask, AgentTrajectory, Evaluation, EvaluationStatus, TaskStatus
+from app.evaluators.scoring import dimension_score, score_values, weighted_overall
 from app.graphs.evaluation_graph import EvaluationState, create_evaluation_graph
 from app.models.schemas import (
     AgentRunInfo,
@@ -990,10 +991,7 @@ class EvaluationService:
     @staticmethod
     def _dim_score(overall: Dict[str, Any], dimension: str) -> Optional[float]:
         """Extract dimension overall score from normalized evaluation dict."""
-        dim_data = overall.get(dimension)
-        if isinstance(dim_data, dict):
-            return dim_data.get("overall")
-        return None
+        return dimension_score(overall.get(dimension))
 
     def _build_overall_from_parallel(self, parallel_result: Dict[str, Any]) -> OverallEvaluation:
         """Normalize evaluate_parallel() output into OverallEvaluation."""
@@ -1008,6 +1006,8 @@ class EvaluationService:
             for dim in ("planning", "tactical", "tool_use", "memory", "replan", "retrieval")
         }
         retrieval_raw = feedback.get("retrieval") or {}
+        if not isinstance(nested, dict) and "overall_score" not in parallel_result:
+            overall_score = round(weighted_overall(feedback, settings.EVAL_DIMENSION_WEIGHTS), 1)
 
         return OverallEvaluation(
             planning=feedback["planning"],
@@ -1023,15 +1023,16 @@ class EvaluationService:
 
     def _build_summary(self, feedback: Dict[str, Any], overall_score: float) -> str:
         """Rebuild a useful summary from persisted dimension feedback."""
-        scores = {name: float((value or {}).get("overall") or 0) for name, value in feedback.items()}
-        if not scores:
+        scores = score_values(feedback, settings.EVAL_DIMENSION_WEIGHTS)
+        applicable_scores = {name: score for name, score in scores.items() if score is not None}
+        if not applicable_scores:
             return f"Overall score: {overall_score:.1f}/100."
-        strongest = max(scores, key=scores.get)
-        weakest = min(scores, key=scores.get)
+        strongest = max(applicable_scores, key=applicable_scores.get)
+        weakest = min(applicable_scores, key=applicable_scores.get)
         return (
             f"Overall score: {overall_score:.1f}/100. "
-            f"Strongest dimension: {strongest} ({scores[strongest]:.1f}). "
-            f"Weakest dimension: {weakest} ({scores[weakest]:.1f})."
+            f"Strongest dimension: {strongest} ({applicable_scores[strongest]:.1f}). "
+            f"Weakest dimension: {weakest} ({applicable_scores[weakest]:.1f})."
         )
 
     def _build_recommendations(self, feedback: Dict[str, Any]) -> List[str]:
@@ -1046,6 +1047,7 @@ class EvaluationService:
             "retrieval": "Improve RAG retrieval relevance and evidence grounding.",
         }
         for name, message in labels.items():
-            if (feedback.get(name) or {}).get("overall", 0) < 60:
+            dim_feedback = feedback.get(name) or {}
+            if dim_feedback.get("applicable", True) is not False and dim_feedback.get("overall", 0) < 60:
                 recommendations.append(message)
         return recommendations or ["Continue maintaining high performance across all evaluation dimensions."]

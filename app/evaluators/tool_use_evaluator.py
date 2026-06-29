@@ -99,11 +99,13 @@ class ToolUseEvaluator(BaseEvaluator):
 
         if not tool_calls:
             return ToolUseScore(
+                applicable=False,
+                not_applicable_reason="No tool calls were present in the trajectory.",
                 selection_quality=0,
                 parameter_accuracy=0,
                 result_utilization=0,
                 overall=0,
-                feedback="No tool calls found in trajectory. Agent did not use any tools.",
+                feedback="Not applicable: no tool calls found in trajectory.",
             )
 
         # Format tool calls for evaluation (including tool results)

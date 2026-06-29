@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from app.core.config import settings
 from app.db.database import async_session_factory
 from app.db.models import AgentTask, AgentTrajectory, Evaluation, EvaluationStatus, TaskStatus
+from app.evaluators.scoring import dimension_score, weighted_overall
 from app.graphs.evaluation_graph import evaluate_partial
 from app.models.schemas import TrajectoryDiffResponse, TrajectoryStep
 from app.services.diff_service import DiffService
@@ -147,7 +148,7 @@ class IncrementalEvalService:
                 for dim in re_eval_dims:
                     dim_data = full_result.get(dim)
                     if dim_data:
-                        setattr(new_eval, f"{dim}_score", dim_data.get("overall"))
+                        setattr(new_eval, f"{dim}_score", dimension_score(dim_data))
                         setattr(new_eval, f"{dim}_feedback", dim_data)
             else:
                 full_result = {}
@@ -167,10 +168,7 @@ class IncrementalEvalService:
                 all_scores[dim] = {"overall": score, **feedback} if feedback else {"overall": score}
 
             weights = settings.EVAL_DIMENSION_WEIGHTS
-            overall = sum(
-                weights.get(d, 0) * (all_scores[d].get("overall", 0) if isinstance(all_scores[d], dict) else 0)
-                for d in all_dims
-            )
+            overall = weighted_overall(all_scores, weights)
             new_eval.overall_score = round(overall, 1)
             new_eval.status = EvaluationStatus.COMPLETED
             new_eval.completed_at = datetime.now(timezone.utc)

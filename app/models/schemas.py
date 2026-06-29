@@ -175,6 +175,8 @@ class TacticalScore(BaseModel):
 class ToolUseScore(BaseModel):
     """Tool use evaluation score."""
 
+    applicable: bool = Field(True, description="Whether tool use is applicable to this trajectory")
+    not_applicable_reason: Optional[str] = Field(None, description="Reason this dimension is excluded")
     selection_quality: float = Field(..., ge=0, le=100, description="Quality of tool selection")
     parameter_accuracy: float = Field(..., ge=0, le=100, description="Accuracy of tool parameters")
     result_utilization: float = Field(..., ge=0, le=100, description="How well results are used")
@@ -199,6 +201,8 @@ class MemoryScore(BaseModel):
 class ReplanScore(BaseModel):
     """Replan evaluation score."""
 
+    applicable: bool = Field(True, description="Whether replanning is applicable to this trajectory")
+    not_applicable_reason: Optional[str] = Field(None, description="Reason this dimension is excluded")
     trigger_appropriateness: float = Field(..., ge=0, le=100, description="Was replan triggered appropriately?")
     adaptation_quality: float = Field(..., ge=0, le=100, description="Quality of plan adaptation")
     learning_from_failure: float = Field(..., ge=0, le=100, description="Did agent learn from failures?")

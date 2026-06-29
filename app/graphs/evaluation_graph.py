@@ -35,6 +35,7 @@ from app.evaluators import (
     TacticalEvaluator,
     ToolUseEvaluator,
 )
+from app.evaluators.scoring import score_values, weighted_overall
 
 
 class EvaluationState(TypedDict):
@@ -82,6 +83,10 @@ def _with_defaults(score: Dict[str, Any], defaults: Dict[str, float]) -> Dict[st
     result: Dict[str, Any] = {key: float(score.get(key, value)) for key, value in defaults.items()}
     result["overall"] = float(score.get("overall", 0))
     result["feedback"] = str(score.get("feedback", "Not evaluated"))
+    if "applicable" in score:
+        result["applicable"] = bool(score.get("applicable"))
+    if score.get("not_applicable_reason"):
+        result["not_applicable_reason"] = str(score.get("not_applicable_reason"))
     return result
 
 
@@ -218,17 +223,16 @@ async def aggregate_results(state: EvaluationState) -> EvaluationState:
     replan = state.get("replan_score", {})
     retrieval = state.get("retrieval_score", {})
 
-    # Calculate overall score
-    scores = {
-        "planning": planning.get("overall", 0),
-        "tactical": tactical.get("overall", 0),
-        "tool_use": tool_use.get("overall", 0),
-        "memory": memory.get("overall", 0),
-        "replan": replan.get("overall", 0),
-        "retrieval": retrieval.get("overall", 0),
+    dimension_results = {
+        "planning": planning,
+        "tactical": tactical,
+        "tool_use": tool_use,
+        "memory": memory,
+        "replan": replan,
+        "retrieval": retrieval,
     }
-
-    overall_score = sum(scores[k] * weights[k] for k in weights)
+    scores = score_values(dimension_results, weights)
+    overall_score = weighted_overall(dimension_results, weights)
 
     # Generate summary
     summary = _generate_summary(scores)
@@ -279,7 +283,11 @@ async def aggregate_results(state: EvaluationState) -> EvaluationState:
 
 def _generate_summary(scores: Dict[str, float]) -> str:
     """Generate a summary based on scores."""
-    avg_score = sum(scores.values()) / len(scores)
+    applicable_scores = {name: score for name, score in scores.items() if score is not None}
+    if not applicable_scores:
+        return "No applicable evaluation dimensions were available."
+
+    avg_score = sum(applicable_scores.values()) / len(applicable_scores)
 
     if avg_score >= 80:
         quality = "excellent"
@@ -291,13 +299,13 @@ def _generate_summary(scores: Dict[str, float]) -> str:
         quality = "poor"
 
     # Find weakest dimension
-    weakest = min(scores, key=scores.get)
-    strongest = max(scores, key=scores.get)
+    weakest = min(applicable_scores, key=applicable_scores.get)
+    strongest = max(applicable_scores, key=applicable_scores.get)
 
     return (
         f"Agent performance is {quality} (overall: {avg_score:.1f}/100). "
-        f"Strongest dimension: {strongest} ({scores[strongest]:.1f}). "
-        f"Weakest dimension: {weakest} ({scores[weakest]:.1f})."
+        f"Strongest dimension: {strongest} ({applicable_scores[strongest]:.1f}). "
+        f"Weakest dimension: {weakest} ({applicable_scores[weakest]:.1f})."
     )
 
 
@@ -323,7 +331,7 @@ def _generate_recommendations(
         )
 
     # Tool use recommendations
-    if tool_use.get("overall", 0) < 60:
+    if tool_use.get("applicable", True) is not False and tool_use.get("overall", 0) < 60:
         recommendations.append("Improve tool usage: Select tools more carefully and verify parameters before calling.")
 
     # Memory recommendations
@@ -331,7 +339,7 @@ def _generate_recommendations(
         recommendations.append("Improve memory: Maintain key facts throughout execution and avoid contradictions.")
 
     # Replan recommendations
-    if replan.get("overall", 0) < 60:
+    if replan.get("applicable", True) is not False and replan.get("overall", 0) < 60:
         recommendations.append("Improve replanning: Trigger replan earlier when facing repeated failures.")
 
     # Retrieval recommendations
@@ -444,7 +452,7 @@ async def evaluate_parallel(
     from app.core.config import settings as _cfg
 
     weights = _cfg.EVAL_DIMENSION_WEIGHTS
-    overall = sum(weights.get(d, 0) * (s.get("overall", 0) if isinstance(s, dict) else 0) for d, s in scores.items())
+    overall = weighted_overall(scores, weights)
     scores["overall"] = {"overall_score": round(overall, 1)}
 
     return scores
