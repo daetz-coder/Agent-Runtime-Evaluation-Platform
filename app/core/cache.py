@@ -97,6 +97,19 @@ async def cache_set(key: str, value: Any, ttl: int = 300) -> bool:
         return False
 
 
+async def cache_set_nx(key: str, value: Any, ttl: int = 300) -> bool:
+    """SET if not exists — returns True when the key was created."""
+    r = _client()
+    if r is None:
+        return False
+    try:
+        created = await r.set(_key(key), json.dumps(value, default=str), nx=True, ex=ttl)
+        return bool(created)
+    except Exception:
+        logger.debug("cache_set_nx(%s) failed", key, exc_info=True)
+        return False
+
+
 async def cache_delete(key: str) -> bool:
     """DEL a single key."""
     r = _client()

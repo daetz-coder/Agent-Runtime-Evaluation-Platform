@@ -87,11 +87,13 @@ async def test_create_evaluation_idempotent(client):
 
     async with async_session_factory() as db:
         service = EvaluationService(db)
-        first = await service.create_evaluation(task_id)
+        first, created_first = await service.create_evaluation(task_id)
         await db.commit()
-        second = await service.create_evaluation(task_id)
+        second, created_second = await service.create_evaluation(task_id)
     assert first is not None and second is not None
     assert first.id == second.id
+    assert created_first is True
+    assert created_second is False
 
 
 @pytest.mark.asyncio

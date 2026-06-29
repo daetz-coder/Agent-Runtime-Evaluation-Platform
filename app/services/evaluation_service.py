@@ -2,11 +2,12 @@
 Evaluation service for orchestrating agent evaluations.
 """
 
+import asyncio
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,8 +36,49 @@ tracer = get_tracer(__name__)
 class EvaluationService:
     """Service for managing agent evaluations."""
 
+    _local_stream_claims: set[str] = set()
+    _stream_claim_lock = asyncio.Lock()
+
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @staticmethod
+    def _eval_dashboard_cache_key(workspace_id: Optional[str]) -> str:
+        return f"eval_dashboard:{workspace_id or 'all'}"
+
+    async def _invalidate_eval_caches(self, task_id: str, workspace_id: Optional[str] = None) -> None:
+        """Invalidate report/task/dashboard caches after eval lifecycle changes."""
+        from app.core.cache import cache_delete, cache_delete_pattern
+
+        await cache_delete_pattern("report:*")
+        await cache_delete(f"task:{task_id}")
+        await cache_delete(f"trajectory:{task_id}")
+        await cache_delete(self._dashboard_cache_key(workspace_id))
+        await cache_delete(self._eval_dashboard_cache_key(workspace_id))
+
+    @classmethod
+    async def try_claim_stream(cls, evaluation_id: str, ttl: int = 600) -> bool:
+        """Claim an evaluation stream to prevent duplicate concurrent LLM runs."""
+        from app.core.cache import _client, cache_set_nx
+
+        key = f"stream:claim:{evaluation_id}"
+        if _client() is not None:
+            return await cache_set_nx(key, True, ttl)
+        async with cls._stream_claim_lock:
+            if evaluation_id in cls._local_stream_claims:
+                return False
+            cls._local_stream_claims.add(evaluation_id)
+            return True
+
+    @classmethod
+    async def release_stream_claim(cls, evaluation_id: str) -> None:
+        """Release a stream claim after SSE completes."""
+        from app.core.cache import _client, cache_delete
+
+        await cache_delete(f"stream:claim:{evaluation_id}")
+        if _client() is None:
+            async with cls._stream_claim_lock:
+                cls._local_stream_claims.discard(evaluation_id)
 
     @staticmethod
     def _dashboard_cache_key(workspace_id: Optional[str]) -> str:
@@ -53,9 +95,7 @@ class EvaluationService:
         evaluation.status = EvaluationStatus.FAILED
         task.status = previous_status
         await self.db.flush()
-        from app.core.cache import cache_delete
-
-        await cache_delete(f"task:{task_id}")
+        await self._invalidate_eval_caches(task_id, task.workspace_id)
 
     async def abort_pending_evaluation(
         self,
@@ -235,11 +275,15 @@ class EvaluationService:
         task_id: str,
         stream_mode: bool = False,
         workspace_id: Optional[str] = None,
-    ) -> Optional[EvaluationResponse]:
-        """Create an evaluation record (IN_PROGRESS) without running the graph."""
+    ) -> Tuple[Optional[EvaluationResponse], bool]:
+        """Create an evaluation record (IN_PROGRESS) without running the graph.
+
+        Returns:
+            Tuple of (response, created_new) — created_new is False when reusing IN_PROGRESS.
+        """
         task = await self._get_task_model(task_id, workspace_id=workspace_id)
         if not task:
-            return None
+            return None, False
 
         result = await self.db.execute(
             select(Evaluation)
@@ -252,14 +296,17 @@ class EvaluationService:
         )
         existing = result.scalar_one_or_none()
         if existing:
-            return EvaluationResponse(
-                id=existing.id,
-                task_id=existing.task_id,
-                status=existing.status.value,
-                stream_mode=existing.stream_mode,
-                created_at=existing.created_at,
-                completed_at=existing.completed_at,
-                evaluation=None,
+            return (
+                EvaluationResponse(
+                    id=existing.id,
+                    task_id=existing.task_id,
+                    status=existing.status.value,
+                    stream_mode=existing.stream_mode,
+                    created_at=existing.created_at,
+                    completed_at=existing.completed_at,
+                    evaluation=None,
+                ),
+                False,
             )
 
         eval_id = str(uuid.uuid4())
@@ -273,14 +320,17 @@ class EvaluationService:
         self.db.add(evaluation)
         await self.db.flush()
 
-        return EvaluationResponse(
-            id=evaluation.id,
-            task_id=evaluation.task_id,
-            status=evaluation.status.value,
-            stream_mode=evaluation.stream_mode,
-            created_at=evaluation.created_at,
-            completed_at=None,
-            evaluation=None,
+        return (
+            EvaluationResponse(
+                id=evaluation.id,
+                task_id=evaluation.task_id,
+                status=evaluation.status.value,
+                stream_mode=evaluation.stream_mode,
+                created_at=evaluation.created_at,
+                completed_at=None,
+                evaluation=None,
+            ),
+            True,
         )
 
     async def run_evaluation(
@@ -613,35 +663,37 @@ class EvaluationService:
         limit: int = 100,
         status: Optional[str] = None,
         workspace_id: Optional[str] = None,
+        min_score: Optional[float] = None,
+        max_score: Optional[float] = None,
     ) -> tuple[List[EvaluationListItem], int]:
         """List evaluations with total count for pagination."""
         from sqlalchemy import func as sql_func
 
-        count_query = (
+        def _apply_filters(query):
+            if workspace_id:
+                query = query.where(AgentTask.workspace_id == workspace_id)
+            if status:
+                try:
+                    query = query.where(Evaluation.status == EvaluationStatus(status))
+                except ValueError:
+                    pass
+            if min_score is not None:
+                query = query.where(Evaluation.overall_score >= min_score)
+            if max_score is not None:
+                query = query.where(Evaluation.overall_score <= max_score)
+            return query
+
+        count_query = _apply_filters(
             select(sql_func.count()).select_from(Evaluation).join(AgentTask, Evaluation.task_id == AgentTask.id)
         )
-        if workspace_id:
-            count_query = count_query.where(AgentTask.workspace_id == workspace_id)
-        if status:
-            try:
-                count_query = count_query.where(Evaluation.status == EvaluationStatus(status))
-            except ValueError:
-                pass
         total_result = await self.db.execute(count_query)
         total = total_result.scalar_one()
 
-        query = (
+        query = _apply_filters(
             select(Evaluation, AgentTask.goal)
             .join(AgentTask, Evaluation.task_id == AgentTask.id)
             .order_by(Evaluation.created_at.desc())
         )
-        if workspace_id:
-            query = query.where(AgentTask.workspace_id == workspace_id)
-        if status:
-            try:
-                query = query.where(Evaluation.status == EvaluationStatus(status))
-            except ValueError:
-                pass
         query = query.offset(skip).limit(limit)
 
         result = await self.db.execute(query)
@@ -671,6 +723,39 @@ class EvaluationService:
         ]
         return items, total
 
+    async def get_evaluations_dashboard(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+        """Aggregate evaluation counters for list page stats."""
+        from sqlalchemy import func as sql_func
+
+        count_base = select(sql_func.count()).select_from(Evaluation).join(
+            AgentTask, Evaluation.task_id == AgentTask.id
+        )
+        if workspace_id:
+            count_base = count_base.where(AgentTask.workspace_id == workspace_id)
+        total = (await self.db.execute(count_base)).scalar_one()
+
+        status_counts: Dict[str, int] = {s.value: 0 for s in EvaluationStatus}
+        status_query = (
+            select(Evaluation.status, sql_func.count(Evaluation.id))
+            .join(AgentTask, Evaluation.task_id == AgentTask.id)
+            .group_by(Evaluation.status)
+        )
+        if workspace_id:
+            status_query = status_query.where(AgentTask.workspace_id == workspace_id)
+        for status, count in (await self.db.execute(status_query)).all():
+            status_counts[status.value if hasattr(status, "value") else str(status)] = count
+
+        avg_query = (
+            select(sql_func.avg(Evaluation.overall_score))
+            .join(AgentTask, Evaluation.task_id == AgentTask.id)
+            .where(Evaluation.overall_score.isnot(None))
+        )
+        if workspace_id:
+            avg_query = avg_query.where(AgentTask.workspace_id == workspace_id)
+        average_score = round(float((await self.db.execute(avg_query)).scalar_one() or 0), 1)
+
+        return {"total": total, "status_counts": status_counts, "average_score": average_score}
+
     async def list_evaluations(
         self,
         skip: int = 0,
@@ -697,20 +782,28 @@ class EvaluationService:
         skip: int = 0,
         limit: int = 100,
         workspace_id: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> tuple[List[TaskResponse], int]:
         """List tasks with total count for pagination."""
         from sqlalchemy import func as sql_func
 
-        count_query = select(sql_func.count()).select_from(AgentTask)
-        list_query = select(AgentTask).order_by(AgentTask.created_at.desc())
-        if workspace_id:
-            count_query = count_query.where(AgentTask.workspace_id == workspace_id)
-            list_query = list_query.where(AgentTask.workspace_id == workspace_id)
+        def _apply_filters(query):
+            if workspace_id:
+                query = query.where(AgentTask.workspace_id == workspace_id)
+            if status:
+                try:
+                    query = query.where(AgentTask.status == TaskStatus(status))
+                except ValueError:
+                    pass
+            if search:
+                query = query.where(AgentTask.goal.ilike(f"%{search}%"))
+            return query
 
-        total_result = await self.db.execute(count_query)
-        total = total_result.scalar_one()
+        count_query = _apply_filters(select(sql_func.count()).select_from(AgentTask))
+        total = (await self.db.execute(count_query)).scalar_one()
 
-        result = await self.db.execute(list_query.offset(skip).limit(limit))
+        list_query = _apply_filters(select(AgentTask).order_by(AgentTask.created_at.desc()))
         tasks = result.scalars().all()
 
         items = [self._task_to_response(task) for task in tasks]
@@ -753,8 +846,12 @@ class EvaluationService:
         evaluation = result.scalar_one_or_none()
         if not evaluation:
             return False
+        task_id = evaluation.task_id
+        task = await self._get_task_model(task_id)
         await self.db.delete(evaluation)
         await self.db.flush()
+        if task:
+            await self._invalidate_eval_caches(task_id, task.workspace_id)
         return True
 
     async def _get_task_model(
@@ -811,7 +908,9 @@ class EvaluationService:
 
         result = await self.db.execute(select(Evaluation).where(Evaluation.id == evaluation_id))
         evaluation = result.scalar_one_or_none()
-        if not evaluation:
+        if not evaluation or evaluation.task_id != task_id:
+            return None
+        if evaluation.status != EvaluationStatus.IN_PROGRESS:
             return None
 
         task.status = TaskStatus.RUNNING
@@ -863,12 +962,7 @@ class EvaluationService:
 
         await self.db.flush()
 
-        # Invalidate report caches + task cache + dashboard
-        from app.core.cache import cache_delete, cache_delete_pattern
-
-        await cache_delete_pattern("report:*")
-        await cache_delete(f"task:{task.id}")
-        await cache_delete(self._dashboard_cache_key(task.workspace_id))
+        await self._invalidate_eval_caches(task.id, task.workspace_id)
 
         return EvaluationResponse(
             id=evaluation.id,
