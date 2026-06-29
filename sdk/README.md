@@ -1,4 +1,8 @@
-# Agent Eval SDK
+# SDK — 轨迹采集与自动评估
+
+> **入口**: [README.md](../README.md) · **集成指南**: [docs/adapters.md](../docs/adapters.md) · **API**: [docs/api.md](../docs/api.md)
+
+---
 
 零侵入 Agent 运行时轨迹收集 + 自动评估接入。
 

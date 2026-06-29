@@ -1,5 +1,7 @@
 # Architecture Documentation
 
+> **入口**: [README.md](../README.md) · **快速开始**: [getting_started.md](getting_started.md) · **设计**: [design.md](design.md) · **API**: [api.md](api.md)
+
 ## Overview
 
 The Agent Runtime Evaluation Platform evaluates the runtime quality of AI agents across 6 key dimensions. The platform uses LangGraph for workflow orchestration and FastAPI for the API layer.

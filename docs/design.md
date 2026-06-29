@@ -1,5 +1,7 @@
 # Agent Runtime Evaluation — 设计说明
 
+> **入口**: [README.md](../README.md) · **架构**: [architecture.md](architecture.md) · **开发者指南**: [developer_guide.md](developer_guide.md)
+
 ## 1. 为什么做 Runtime Evaluation
 
 传统 Prompt Evaluation 只评最终输出，无法发现 Agent 在运行过程中的决策问题。本平台评估 **每一步行为质量**：

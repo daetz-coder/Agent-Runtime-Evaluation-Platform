@@ -1,6 +1,6 @@
-# Agent Runtime Evaluation Platform
+# 项目约定与开发规范
 
-AI Agent 运行时质量评估平台 — 六维评估（Planning/Tactical/Tool Use/Memory/Replan/Retrieval），LangGraph 编排 + 并行执行 + 多模型共识。
+> **入口**: [README.md](../README.md) · **开发者指南**: [developer_guide.md](developer_guide.md) · **架构**: [architecture.md](architecture.md)
 
 ## Project
 

@@ -205,7 +205,7 @@ collector.finish()
 | **基准** | `/api/v1/benchmark/` | 性能基准测试 |
 
 ---
-> **Version:** 0.1.0 | **Swagger UI:** `/docs` | **ReDoc:** `/redoc`
+> **Version:** 0.1.0 | **Swagger UI:** `/docs` | **ReDoc:** `/redoc` | **文档:** [docs/](https://github.com/daetz-coder/Agent-Runtime-Evaluation-Platform/tree/main/docs)
         """,
         version="0.1.0",
         docs_url="/docs",

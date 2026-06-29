@@ -1,5 +1,9 @@
 # 端口配置说明
 
+> **入口**: [README.md](../README.md) · **快速开始**: [getting_started.md](getting_started.md)
+
+---
+
 ## 整合后（推荐）
 
 整合后只需启动 **2 个进程**（或运行根目录 `start.bat` 一键启动）：

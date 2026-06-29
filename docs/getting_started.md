@@ -1,5 +1,9 @@
 # 快速开始指南
 
+> **入口文档**: [README.md](../README.md) · **架构**: [architecture.md](architecture.md) · **API**: [api.md](api.md)
+
+---
+
 ## 环境要求
 
 - Python 3.11+

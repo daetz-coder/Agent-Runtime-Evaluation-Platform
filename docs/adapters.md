@@ -1,6 +1,10 @@
-# Agent Evaluation Platform - 适配器使用指南
+# 适配器使用指南 — SDK 集成
 
-## 🎯 核心理念
+> **入口**: [README.md](../README.md) · **API**: [api.md](api.md) · **SDK**: [sdk/README.md](../sdk/README.md)
+
+---
+
+## 核心理念
 
 **可插拔、零侵入、一行集成**
 

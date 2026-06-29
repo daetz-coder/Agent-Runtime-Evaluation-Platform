@@ -1,4 +1,8 @@
-# Agent Evaluation Platform - Frontend
+# Frontend — Agent Evaluation Platform
+
+> **入口**: [README.md](../README.md) · **API**: [docs/api.md](../docs/api.md) · **端口**: [docs/ports.md](../docs/ports.md)
+
+---
 
 基于 Vue 3 + Element Plus + ECharts 的 Agent 评估平台前端。
 

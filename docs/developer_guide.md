@@ -1,5 +1,7 @@
 # Developer Quick Start Guide
 
+> **入口**: [README.md](../README.md) · **架构**: [architecture.md](architecture.md) · **API**: [api.md](api.md)
+
 Agent 工程师快速上手指南 — 聚焦本地开发、调试和迭代。
 
 ---

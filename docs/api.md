@@ -1,5 +1,7 @@
 # API Documentation
 
+> **入口**: [README.md](../README.md) · **架构**: [architecture.md](architecture.md) · **指南**: [developer_guide.md](developer_guide.md)
+
 ## Base URL
 
 ```
