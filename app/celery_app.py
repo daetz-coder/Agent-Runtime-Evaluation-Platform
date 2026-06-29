@@ -125,7 +125,9 @@ def run_evaluation_task(
 
     try:
         loop = asyncio.new_event_loop()
-        result = loop.run_until_complete(_run_evaluation_async(task_id, workspace_id))
+        result = loop.run_until_complete(
+            _run_evaluation_async(task_id, eval_id, workspace_id)
+        )
         loop.close()
 
         logger.info("Evaluation completed: task_id=%s, eval_id=%s", task_id, eval_id)
@@ -211,14 +213,22 @@ def run_sandbox_evaluation_task(
 # ── Async Helpers ─────────────────────────────────────────────
 
 
-async def _run_evaluation_async(task_id: str, workspace_id: Optional[str] = None):
+async def _run_evaluation_async(
+    task_id: str,
+    eval_id: str,
+    workspace_id: Optional[str] = None,
+):
     """Async wrapper for evaluation service."""
     from app.db.database import async_session_factory
     from app.services.evaluation_service import EvaluationService
 
     async with async_session_factory() as db:
         service = EvaluationService(db)
-        result = await service.run_evaluation(task_id=task_id, workspace_id=workspace_id)
+        result = await service.run_evaluation(
+            task_id=task_id,
+            workspace_id=workspace_id,
+            evaluation_id=eval_id,
+        )
         await db.commit()
         return result
 

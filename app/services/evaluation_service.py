@@ -99,6 +99,8 @@ class EvaluationService:
 
         existing = await self._get_task_model(task_id)
         if existing:
+            if workspace_id and existing.workspace_id and existing.workspace_id != workspace_id:
+                raise ValueError(f"Task {task_id} already exists in another workspace")
             return self._task_to_response(existing)
 
         task = AgentTask(
@@ -203,6 +205,11 @@ class EvaluationService:
                     timestamp_raw = datetime.fromisoformat(timestamp_raw.replace("Z", "+00:00"))
                 except (ValueError, TypeError):
                     timestamp_raw = datetime.now(timezone.utc)
+            if isinstance(timestamp_raw, datetime):
+                if timestamp_raw.tzinfo is None:
+                    timestamp_raw = timestamp_raw.replace(tzinfo=timezone.utc)
+                else:
+                    timestamp_raw = timestamp_raw.astimezone(timezone.utc)
 
             trajectory = AgentTrajectory(
                 task_id=task_id,
@@ -281,6 +288,7 @@ class EvaluationService:
         task_id: str,
         context: Optional[Dict[str, Any]] = None,
         workspace_id: Optional[str] = None,
+        evaluation_id: Optional[str] = None,
     ) -> Optional[EvaluationResponse]:
         """Run evaluation for a task."""
         task = await self._get_task_model(task_id, workspace_id=workspace_id)
@@ -290,29 +298,42 @@ class EvaluationService:
         # Get trajectory
         trajectory = await self._get_trajectory(task_id)
 
-        # Find existing IN_PROGRESS evaluation or create a new one
-        result = await self.db.execute(
-            select(Evaluation).where(
-                Evaluation.task_id == task_id,
-                Evaluation.status == EvaluationStatus.IN_PROGRESS,
+        # Use the requested evaluation record, or the latest IN_PROGRESS one
+        if evaluation_id:
+            result = await self.db.execute(select(Evaluation).where(Evaluation.id == evaluation_id))
+            evaluation = result.scalar_one_or_none()
+            if not evaluation or evaluation.task_id != task_id:
+                return None
+            if evaluation.status == EvaluationStatus.COMPLETED:
+                return await self.get_evaluation(evaluation_id, workspace_id=workspace_id)
+            if evaluation.status != EvaluationStatus.IN_PROGRESS:
+                return None
+        else:
+            result = await self.db.execute(
+                select(Evaluation)
+                .where(
+                    Evaluation.task_id == task_id,
+                    Evaluation.status == EvaluationStatus.IN_PROGRESS,
+                )
+                .order_by(Evaluation.created_at.desc())
+                .limit(1)
             )
-        )
-        evaluation = result.scalar_one_or_none()
-        if not evaluation:
-            eval_id = str(uuid.uuid4())
-            from app.agent_runtime.prompts import PROMPT_VERSION
+            evaluation = result.scalar_one_or_none()
+            if not evaluation:
+                eval_id = str(uuid.uuid4())
+                from app.agent_runtime.prompts import PROMPT_VERSION
 
-            evaluation = Evaluation(
-                id=eval_id,
-                task_id=task_id,
-                status=EvaluationStatus.IN_PROGRESS,
-                created_at=datetime.now(timezone.utc),
-                prompt_version=PROMPT_VERSION,
-                model_name=settings.DEFAULT_LLM_MODEL,
-                model_provider=settings.DEFAULT_LLM_PROVIDER,
-            )
-            self.db.add(evaluation)
-            await self.db.flush()
+                evaluation = Evaluation(
+                    id=eval_id,
+                    task_id=task_id,
+                    status=EvaluationStatus.IN_PROGRESS,
+                    created_at=datetime.now(timezone.utc),
+                    prompt_version=PROMPT_VERSION,
+                    model_name=settings.DEFAULT_LLM_MODEL,
+                    model_provider=settings.DEFAULT_LLM_PROVIDER,
+                )
+                self.db.add(evaluation)
+                await self.db.flush()
 
         # Task transitions to RUNNING when evaluation actually starts
         previous_status = task.status
@@ -363,6 +384,7 @@ class EvaluationService:
                     parallel_result = await evaluate_parallel(task.goal, steps, context or task.context)
                     overall_eval = self._build_overall_from_parallel(parallel_result)
                     overall = overall_eval.model_dump()
+                    self._merge_judge_raw_into_overall(overall, parallel_result)
                     result = {"overall_evaluation": overall, "error": None}
                 else:
                     graph = create_evaluation_graph()
@@ -475,11 +497,12 @@ class EvaluationService:
                 root_span.set_attribute("task_id", task_id)
 
             # Mark task as running
-            task_model = await self._get_task_model(task_id)
-            if task_model:
-                task_model.status = TaskStatus.RUNNING
-                task_model.started_at = datetime.now(timezone.utc)
-                await self.db.flush()
+            task_model = await self._get_task_model(task_id, workspace_id=workspace_id)
+            if not task_model:
+                raise ValueError(f"Task {task_id} not found")
+            task_model.status = TaskStatus.RUNNING
+            task_model.started_at = datetime.now(timezone.utc)
+            await self.db.flush()
 
             # 2. Run agent in sandbox
             runner = AgentRunner()
@@ -539,6 +562,7 @@ class EvaluationService:
                         parallel_result = await evaluate_parallel(request.goal, steps, request.context)
                         overall_eval = self._build_overall_from_parallel(parallel_result)
                         overall = overall_eval.model_dump()
+                        self._merge_judge_raw_into_overall(overall, parallel_result)
                         eval_span.set_attribute("overall_score", overall.get("overall_score", 0))
 
                         # Record Prometheus metrics
@@ -546,7 +570,7 @@ class EvaluationService:
                         score = overall.get("overall_score", 0)
                         EVALUATION_SCORE.observe(score)
 
-                        evaluation_result = await self._persist_evaluation_results(evaluation, task_model, overall)
+                        await self._persist_evaluation_results(evaluation, task_model, overall)
                 except Exception as e:
                     import logging
 
@@ -796,6 +820,7 @@ class EvaluationService:
 
         overall_eval = self._build_overall_from_parallel(parallel_result)
         overall = overall_eval.model_dump()
+        self._merge_judge_raw_into_overall(overall, parallel_result)
         return await self._persist_evaluation_results(evaluation, task, overall)
 
     async def _persist_evaluation_results(
@@ -857,6 +882,16 @@ class EvaluationService:
             model_name=evaluation.model_name,
             model_provider=evaluation.model_provider,
         )
+
+    @staticmethod
+    def _merge_judge_raw_into_overall(overall: Dict[str, Any], parallel_result: Dict[str, Any]) -> None:
+        """Preserve judge transparency data stripped by Pydantic model_dump()."""
+        for dim in ("planning", "tactical", "tool_use", "memory", "replan", "retrieval"):
+            judge_raw = (parallel_result.get(dim) or {}).get("_judge_raw")
+            if judge_raw:
+                if dim not in overall or not isinstance(overall.get(dim), dict):
+                    overall[dim] = {}
+                overall[dim]["_judge_raw"] = judge_raw
 
     @staticmethod
     def _dim_score(overall: Dict[str, Any], dimension: str) -> Optional[float]:

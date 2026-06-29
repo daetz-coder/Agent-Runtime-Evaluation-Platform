@@ -206,15 +206,9 @@ async def evaluate_retrieval(state: EvaluationState) -> EvaluationState:
 
 async def aggregate_results(state: EvaluationState) -> EvaluationState:
     """Aggregate all evaluation results."""
-    # Weight configuration for overall score
-    WEIGHTS = {
-        "planning": 0.20,
-        "tactical": 0.20,
-        "tool_use": 0.15,
-        "memory": 0.15,
-        "replan": 0.15,
-        "retrieval": 0.15,
-    }
+    from app.core.config import settings as _cfg
+
+    weights = _cfg.EVAL_DIMENSION_WEIGHTS
 
     # Extract scores
     planning = state.get("planning_score", {})
@@ -234,7 +228,7 @@ async def aggregate_results(state: EvaluationState) -> EvaluationState:
         "retrieval": retrieval.get("overall", 0),
     }
 
-    overall_score = sum(scores[k] * WEIGHTS[k] for k in WEIGHTS)
+    overall_score = sum(scores[k] * weights[k] for k in weights)
 
     # Generate summary
     summary = _generate_summary(scores)
