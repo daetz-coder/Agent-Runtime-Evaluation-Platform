@@ -1,23 +1,23 @@
 # Agent Runtime Evaluation Platform
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.14-blue?logo=python" alt="Python">
-  <img src="https://img.shields.io/badge/FastAPI-0.115+-059F00?logo=fastapi" alt="FastAPI">
-  <img src="https://img.shields.io/badge/Vue_3-v3.5+-4FC08D?logo=vuedotfiles" alt="Vue 3">
-  <img src="https://img.shields.io/badge/LangGraph-v0.3+-3399FF?logo=langchain" alt="LangGraph">
-  <img src="https://img.shields.io/badge/SQLAlchemy-async-FF6B6B?logo=sqlalchemy" alt="SQLAlchemy Async">
-  <img src="https://img.shields.io/badge/TypeScript-v5.7-3178C6?logo=typescript" alt="TypeScript">
-  <img src="https://img.shields.io/badge/Docker-2496ED?logo=docker" alt="Docker">
-  <img src="https://img.shields.io/badge/Redis-DC382D?logo=redis" alt="Redis">
-  <br>
-  <img src="https://img.shields.io/badge/LangChain-v0.3-3399FF?logo=langchain" alt="LangChain">
-  <img src="https://img.shields.io/badge/Milvus-00A98F?logo=milvus" alt="Milvus">
-  <img src="https://img.shields.io/badge/Element_Plus-409EFF?logo=elementor" alt="Element Plus">
-  <img src="https://img.shields.io/badge/ECharts-AA344D?logo=echarts" alt="ECharts">
-  <img src="https://img.shields.io/badge/Vite-646CFF?logo=vite" alt="Vite">
-  <img src="https://img.shields.io/badge/Pydantic-E92063?logo=pydantic" alt="Pydantic">
-  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
-</p>
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
+![Vue 3](https://img.shields.io/badge/Vue_3-v3.5-4FC08D?logo=vuedotjs&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-v0.3-1C3C5C?logo=langchain&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-v5.7-3178C6?logo=typescript&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-7.2-DC382D?logo=redis&logoColor=white)
+![LangChain](https://img.shields.io/badge/LangChain-v0.3-1C3C5C?logo=chainlink&logoColor=white)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-FF6B6B?logo=sqlalchemy&logoColor=white)
+![Milvus](https://img.shields.io/badge/Milvus-2.4-00A98F)
+![Element Plus](https://img.shields.io/badge/Element_Plus-409EFF?logo=elementor&logoColor=white)
+![ECharts](https://img.shields.io/badge/ECharts-5.5-AA344D)
+![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow)
+
+</div>
 
 AI Agent 运行时全维度质量评估平台。对 Agent 的规划、战术决策、工具使用、记忆保持、重规划、RAG 检索质量六个维度进行量化评估。基于 LangGraph 编排、LLM-as-Judge 评分、FastAPI + Vue 3 全栈交付。
 
