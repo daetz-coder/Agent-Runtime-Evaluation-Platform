@@ -804,7 +804,7 @@ class EvaluationService:
         total = (await self.db.execute(count_query)).scalar_one()
 
         list_query = _apply_filters(select(AgentTask).order_by(AgentTask.created_at.desc()))
-        tasks = result.scalars().all()
+        tasks = (await self.db.execute(list_query.offset(skip).limit(limit))).scalars().all()
 
         items = [self._task_to_response(task) for task in tasks]
         return items, total

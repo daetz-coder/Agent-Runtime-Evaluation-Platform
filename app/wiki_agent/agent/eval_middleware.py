@@ -56,7 +56,6 @@ def _get_plan_llm() -> BaseChatModel:
             api_key=api_key,
             base_url=base_url,
             temperature=0.3,
-            streaming=False,
         )
     )
     return _plan_llm

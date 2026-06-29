@@ -95,8 +95,9 @@ class ProxyChatModel(BaseChatModel):
         start_time = time.time()
 
         # 强制非流式 — 流式走 _astream 路径
+        kwargs.pop("streaming", None)
         kwargs.pop("stream", None)
-        kwargs["streaming"] = False
+        kwargs["stream"] = False
         result = await self._original_llm._agenerate(
             messages, stop=stop, run_manager=run_manager, **kwargs
         )

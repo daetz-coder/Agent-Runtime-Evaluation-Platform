@@ -71,7 +71,8 @@ def test_resolve_rerank_model_id_uses_local_when_weights_present(tmp_path: Path)
     (local / "model.safetensors").write_bytes(b"fake")
 
     with patch.object(reranker.settings, "RERANK_MODEL_PATH", str(local)):
-        assert reranker.resolve_rerank_model_id() == str(local)
+        with patch.object(reranker, "_weight_is_valid", return_value=True):
+            assert reranker.resolve_rerank_model_id() == str(local)
 
 
 def test_get_reranker_status_reports_missing_weights(tmp_path: Path) -> None:
