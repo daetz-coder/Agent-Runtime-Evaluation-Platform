@@ -4,7 +4,7 @@
     <div class="page-header">
       <div class="header-left">
         <h2>任务管理</h2>
-        <span class="task-count">共 {{ tasks.length }} 个任务</span>
+        <span class="task-count">共 {{ totalTasks }} 个任务</span>
       </div>
       <el-button type="primary" @click="showCreateDialog = true">
         <el-icon><Plus /></el-icon>
@@ -24,7 +24,7 @@
           />
         </el-col>
         <el-col :span="6">
-          <el-select v-model="statusFilter" placeholder="状态筛选" clearable>
+          <el-select v-model="statusFilter" placeholder="状态筛选" clearable @change="fetchTasks">
             <el-option label="全部" value="" />
             <el-option label="待处理" value="pending" />
             <el-option label="运行中" value="running" />
@@ -32,17 +32,8 @@
             <el-option label="失败" value="failed" />
           </el-select>
         </el-col>
-        <el-col :span="6">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-          />
-        </el-col>
         <el-col :span="4">
-          <el-button @click="fetchTasks">刷新</el-button>
+          <el-button type="primary" @click="fetchTasks">筛选</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -50,7 +41,7 @@
     <!-- Task List -->
     <el-card class="task-list-card" shadow="never">
       <el-table
-        :data="filteredTasks"
+        :data="tasks"
         style="width: 100%"
         @row-click="handleRowClick"
         v-loading="loading"
@@ -231,7 +222,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Delete, Search } from '@element-plus/icons-vue'
 import { taskApi, evaluationApi } from '@/api'
@@ -248,7 +239,6 @@ const submitting = ref(false)
 const tasks = ref<any[]>([])
 const searchQuery = ref('')
 const statusFilter = ref('')
-const dateRange = ref<[Date, Date] | null>(null)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const totalTasks = ref(0)
@@ -281,22 +271,6 @@ const trajectorySteps = ref<{
   observation: string
 }[]>([])
 
-// Computed
-const filteredTasks = computed(() => {
-  let result = tasks.value
-
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    result = result.filter(t => t.goal.toLowerCase().includes(query))
-  }
-
-  if (statusFilter.value) {
-    result = result.filter(t => t.status === statusFilter.value)
-  }
-
-  return result
-})
-
 // Methods
 const getStatusType = (status: string) => {
   const map: Record<string, string> = {
@@ -320,7 +294,6 @@ const getStatusText = (status: string) => {
 
 const formatDateTime = (date: string) => {
   if (!date) return '-'
-  // 后端存储 UTC 时间，SQLite 不保留时区信息，需追加 Z 让 dayjs 按 UTC 解析后转本地时间
   const d = date.endsWith('Z') || date.includes('+') ? date : date + 'Z'
   return dayjs(d).format('YYYY-MM-DD HH:mm:ss')
 }
@@ -331,6 +304,8 @@ const fetchTasks = async () => {
     const { items, total } = await taskApi.list({
       skip: (currentPage.value - 1) * pageSize.value,
       limit: pageSize.value,
+      status: statusFilter.value || undefined,
+      search: searchQuery.value.trim() || undefined,
     })
     tasks.value = items
     totalTasks.value = total

@@ -1,3 +1,5 @@
+import { streamAuthHeaders } from '@/api'
+
 export interface EvaluationStreamProgress {
   dimension: string
   score: number
@@ -27,7 +29,7 @@ export async function connectEvaluationStream(
 ): Promise<void> {
   const res = await fetch('/api/v1/evaluations/stream', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: streamAuthHeaders(),
     body: JSON.stringify({ task_id: taskId, evaluation_id: evaluationId }),
     signal,
   })
@@ -55,7 +57,7 @@ export async function connectBenchmarkStream(
 ): Promise<void> {
   const res = await fetch('/api/v1/benchmark/monotonicity/run', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: streamAuthHeaders(),
     signal,
   })
 

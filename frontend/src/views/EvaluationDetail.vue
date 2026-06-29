@@ -350,20 +350,35 @@
       </el-card>
 
       <!-- Multi-model Consensus -->
-      <el-card class="consensus-card" shadow="hover" v-if="consensusData">
+      <el-card class="consensus-card" shadow="hover">
         <template #header>
           <div class="card-header">
             <span>多模型共识评估</span>
-            <el-tag :type="consensusData.result.consensus_type === 'cross_provider' ? 'success' : 'warning'" size="small">
-              {{ consensusData.result.consensus_type === 'cross_provider' ? '跨厂商' : '同厂商' }}
-            </el-tag>
-            <el-tag v-if="consensusData.result.std_score !== undefined" 
-              :type="consensusData.result.std_score < 10 ? 'success' : 'warning'" size="small" style="margin-left:4px">
-              std={{ consensusData.result.std_score.toFixed(1) }}
-            </el-tag>
+            <el-button
+              v-if="!consensusData && evaluation?.status === 'completed'"
+              type="primary"
+              link
+              :loading="consensusLoading"
+              @click="loadConsensus"
+            >
+              加载共识评估
+            </el-button>
+            <template v-if="consensusData">
+              <el-tag :type="consensusData.result.consensus_type === 'cross_provider' ? 'success' : 'warning'" size="small">
+                {{ consensusData.result.consensus_type === 'cross_provider' ? '跨厂商' : '同厂商' }}
+              </el-tag>
+              <el-tag
+                v-if="consensusData.result.std_score !== undefined"
+                :type="consensusData.result.std_score < 10 ? 'success' : 'warning'"
+                size="small"
+                style="margin-left:4px"
+              >
+                std={{ consensusData.result.std_score.toFixed(1) }}
+              </el-tag>
+            </template>
           </div>
         </template>
-        <el-row :gutter="16">
+        <el-row v-if="consensusData" :gutter="16">
           <el-col :span="12">
             <div ref="consensusChart" class="consensus-chart"></div>
           </el-col>
@@ -388,6 +403,7 @@
             </div>
           </el-col>
         </el-row>
+        <el-empty v-else description='点击上方「加载共识评估」获取多模型对比（将消耗额外 API 配额）' />
       </el-card>
 
       <!-- Retrieval Quality / Hallucination Inspector -->
@@ -513,6 +529,7 @@ let consensusInstance: echarts.ECharts | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let streamAbort: AbortController | null = null
 const consensusData = ref<any>(null)
+const consensusLoading = ref(false)
 const consensusChart = ref<HTMLElement>()
 
 // Replay Debugger
@@ -901,17 +918,6 @@ const fetchData = async () => {
 
     setTimeout(initRadarChart, 100)
 
-    // Fetch consensus data for completed evaluations
-    if (data.status === 'completed' && data.task_id) {
-      try {
-        const consensus = await evaluationApi.getConsensus(data.task_id)
-        consensusData.value = consensus
-        setTimeout(initConsensusChart, 200)
-      } catch {
-        consensusData.value = null
-      }
-    }
-
     // Stream mode: drive evaluation via SSE instead of polling
     if (data.status === 'in_progress' && (data.stream_mode || route.query.stream === '1')) {
       if (streamStartedForId.value !== evalId) {
@@ -968,10 +974,25 @@ const startEvaluationStream = async (taskId: string, evalId: string) => {
   } catch (error: any) {
     if (error?.name !== 'AbortError') {
       streamError.value = error?.message || '流式评估连接失败'
+      streaming.value = false
       startPolling(evalId)
     }
   } finally {
     streaming.value = false
+  }
+}
+
+const loadConsensus = async () => {
+  const taskId = evaluation.value?.task_id
+  if (!taskId || consensusLoading.value) return
+  consensusLoading.value = true
+  try {
+    consensusData.value = await evaluationApi.getConsensus(taskId)
+    setTimeout(initConsensusChart, 200)
+  } catch {
+    consensusData.value = null
+  } finally {
+    consensusLoading.value = false
   }
 }
 
