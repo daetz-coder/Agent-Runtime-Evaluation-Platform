@@ -112,12 +112,12 @@ class ReplanEvaluator(BaseEvaluator):
         if not replan_events and not missed_opportunities:
             return ReplanScore(
                 applicable=False,
-                not_applicable_reason="No replanning was needed and no missed replan opportunities were detected.",
+                not_applicable_reason="Agent 顺利完成未触发重规划，该维度已从综合评分中剔除。",
                 trigger_appropriateness=0,
                 adaptation_quality=0,
                 learning_from_failure=0,
                 overall=0,
-                feedback="Not applicable: agent completed the task without requiring replanning.",
+                feedback="不适用：Agent 顺利完成，无需重规划。",
             )
 
         # Create prompt

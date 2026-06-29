@@ -99,12 +99,12 @@ class ToolUseEvaluator(BaseEvaluator):
         if not tool_calls:
             return ToolUseScore(
                 applicable=False,
-                not_applicable_reason="No tool calls were present in the trajectory.",
+                not_applicable_reason="轨迹中未包含工具调用，该维度已从综合评分中剔除。",
                 selection_quality=0,
                 parameter_accuracy=0,
                 result_utilization=0,
                 overall=0,
-                feedback="Not applicable: no tool calls found in trajectory.",
+                feedback="不适用：轨迹中没有工具调用记录。",
             )
 
         # Format tool calls for evaluation (including tool results)
