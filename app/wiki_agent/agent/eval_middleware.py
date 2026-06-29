@@ -6,6 +6,7 @@ wiki-agent 的业务代码（graph.py）不直接 import SDK，
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -13,6 +14,7 @@ from langchain_core.language_models import BaseChatModel
 
 from app.wiki_agent.session import store as session_store
 from sdk import create_proxy_llm, get_collector, instrument_langgraph
+from sdk.collector import ActionType
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,51 @@ def wrap_llm(llm: BaseChatModel) -> BaseChatModel:
 # ── 会话生命周期 ────────────────────────────────────────────
 
 
+async def _generate_plan(goal: str) -> dict:
+    """Use LLM to generate a structured plan from the user's goal.
+
+    Returns a dict with 'plan' (text summary) and 'steps' (list of milestones).
+    Fallback: returns {'goal': goal} on failure.
+    """
+    prompt = f"""你是一个项目管理专家。将以下用户目标分解为一个结构化的执行计划。
+
+## 用户目标
+{goal}
+
+## 要求
+返回一个 JSON 对象，包含：
+1. "plan": 一句话总结整体方案
+2. "steps": 关键步骤列表，每步包含 "step" (序号), "name" (步骤名), "description" (简要描述)
+3. "estimated_complexity": "简单" / "中等" / "复杂"
+
+## 输出格式
+只返回 JSON，不要其他文字：
+{{
+    "plan": "整体方案一句话总结",
+    "steps": [
+        {{"step": 1, "name": "步骤名称", "description": "步骤描述"}},
+        {{"step": 2, "name": "步骤名称", "description": "步骤描述"}}
+    ],
+    "estimated_complexity": "中等"
+}}"""
+
+    try:
+        from langchain_core.prompts import ChatPromptTemplate
+
+        p = ChatPromptTemplate.from_template("{prompt}")
+        chain = p | chat_llm
+        response = await chain.ainvoke({"prompt": prompt})
+
+        start = response.content.find("{")
+        end = response.content.rfind("}") + 1
+        if start != -1 and end > start:
+            return json.loads(response.content[start:end])
+    except Exception:
+        pass
+
+    return {"goal": goal}
+
+
 async def start_session(
     goal: str,
     session_id: str | None = None,
@@ -49,10 +96,34 @@ async def start_session(
         **extra_context,
     }
 
+    # Generate structured plan from goal before recording
+    plan_data = await _generate_plan(goal)
+
+    # Record plan with structured steps at top level so evaluator can find them
+    plan_record = {"goal": goal, "context": context}
+    if plan_data.get("plan"):
+        plan_record["plan"] = plan_data["plan"]
+    if plan_data.get("steps"):
+        plan_record["steps"] = plan_data["steps"]
+    if plan_data.get("estimated_complexity"):
+        plan_record["estimated_complexity"] = plan_data["estimated_complexity"]
+
     if collector.use_inprocess():
         task_id = await collector.start_async(goal, context)
     else:
         task_id = collector.start(goal, context)
+
+    # Record structured plan (LLM-generated decomposition of the goal)
+    if plan_data.get("steps") and len(plan_data["steps"]) > 0:
+        collector.record(
+            ActionType.PLAN,
+            {
+                "goal": goal,
+                "plan": plan_data.get("plan", goal),
+                "steps": plan_data["steps"],
+                "estimated_complexity": plan_data.get("estimated_complexity", ""),
+            },
+        )
 
     if session_id and task_id:
         await session_store.set_active_eval_task_id(session_id, task_id)

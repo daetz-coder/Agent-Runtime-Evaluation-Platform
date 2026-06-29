@@ -161,6 +161,8 @@ class PlanningEvaluator(BaseEvaluator):
                     # No structured steps — format the plan goal/content directly
                     goal_text = plan.get("goal", "") or plan.get("plan", "") or plan.get("content", "")
                     if goal_text:
+                        if plan.get("plan") and plan.get("plan") != goal_text:
+                            lines.append(f"Plan: {plan['plan']}")
                         lines.append(f"Goal: {goal_text}")
                         context = plan.get("context")
                         if context and isinstance(context, dict):
