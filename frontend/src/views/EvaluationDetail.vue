@@ -346,7 +346,7 @@
           </el-collapse>
         </div>
 
-        <el-empty v-else-if="!judgeRawLoading" description="点击 "查看原始 Judge 输出" 按钮加载数据" />
+        <el-empty v-else-if="!judgeRawLoading" description='点击 "查看原始 Judge 输出" 按钮加载数据' />
       </el-card>
 
       <!-- Multi-model Consensus -->
