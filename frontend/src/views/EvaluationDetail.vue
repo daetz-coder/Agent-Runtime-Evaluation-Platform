@@ -83,12 +83,12 @@
           </div>
 
           <div class="score-summary">
-            <h3>{{ evaluation.evaluation?.summary || '评估完成' }}</h3>
+            <h3>{{ localizeEvaluationText(evaluation.evaluation?.summary) || '评估完成' }}</h3>
             <div class="recommendations">
               <h4>改进建议：</h4>
               <ul>
                 <li v-for="(rec, index) in evaluation.evaluation?.recommendations" :key="index">
-                  {{ rec }}
+                  {{ localizeEvaluationText(rec) }}
                 </li>
               </ul>
             </div>
@@ -679,7 +679,7 @@ const currentDimensionData = computed(() => {
 })
 
 const currentFeedback = computed(() => {
-  return currentDimensionData.value.feedback || '暂无反馈'
+  return localizeEvaluationText(currentDimensionData.value.feedback) || '暂无反馈'
 })
 
 const currentIssues = computed(() => {
@@ -688,8 +688,36 @@ const currentIssues = computed(() => {
 })
 
 const currentSuggestions = computed(() => {
-  return currentDimensionData.value.suggestions || []
+  return (currentDimensionData.value.suggestions || []).map((item: string) => localizeEvaluationText(item))
 })
+
+const textTranslations: Record<string, string> = {
+  'Improve RAG retrieval relevance and evidence grounding.': '改进检索质量：提升 RAG 检索相关性、证据准确性和引用依据。',
+  'Improve planning before execution.': '改进规划：执行前补充关键步骤、依赖关系和验收标准。',
+  'Improve next-action selection and tactical decisions.': '改进战术决策：确保每一步行动都服务于当前目标和上下文。',
+  'Improve tool selection, parameters, and result use.': '改进工具使用：加强工具选择、参数校验和结果利用。',
+  'Improve retention and consistency across context.': '改进记忆保持：记录并复用关键事实，避免上下文不一致。',
+  'Improve replanning when failures or new facts appear.': '改进重规划：在失败、新事实或路径受阻时及时调整计划。',
+  'Continue maintaining high performance across all evaluation dimensions.': '继续保持当前表现，并持续监控各维度是否出现波动。',
+}
+
+const dimensionNameTranslations: Record<string, string> = {
+  planning: '规划质量',
+  tactical: '战术决策',
+  tool_use: '工具使用',
+  memory: '记忆保持',
+  replan: '重规划',
+  retrieval: '检索质量',
+}
+
+const localizeEvaluationText = (text?: string) => {
+  if (!text) return ''
+  if (textTranslations[text]) return textTranslations[text]
+  return text
+    .replace(/^Overall score:\s*([0-9.]+)\/100\.\s*/i, '综合得分：$1/100。')
+    .replace(/Strongest dimension:\s*(planning|tactical|tool_use|memory|replan|retrieval)\s*\(([0-9.]+)\)\./i, (_, dim, score) => `最强维度：${dimensionNameTranslations[dim] || dim}（${score}）。`)
+    .replace(/Weakest dimension:\s*(planning|tactical|tool_use|memory|replan|retrieval)\s*\(([0-9.]+)\)\./i, (_, dim, score) => `待改进维度：${dimensionNameTranslations[dim] || dim}（${score}）。`)
+}
 
 // Methods
 const getStatusType = (status: string) => {

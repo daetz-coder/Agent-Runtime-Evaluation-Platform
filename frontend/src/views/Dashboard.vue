@@ -236,8 +236,21 @@ const statsCards = computed(() => [
 ])
 
 const topIssues = computed(() => {
-  return summaryData.value?.top_issues || []
+  return (summaryData.value?.top_issues || []).map((item: string) => localizeReportText(item))
 })
+
+const reportTextTranslations: Record<string, string> = {
+  'Planning quality needs improvement: Plans lack coverage or proper granularity': '规划质量需要改进：计划覆盖度、步骤粒度或完整性不足。',
+  'Tactical decisions are suboptimal: Actions not always relevant or efficient': '战术决策存在不足：部分行动与当前目标的相关性或效率不够。',
+  'Tool usage is inefficient: Poor tool selection or parameter accuracy': '工具使用效率偏低：工具选择、参数准确性或结果利用不足。',
+  'Memory retention is weak: Key facts are being forgotten': '记忆保持较弱：关键事实记录或跨步骤复用不足。',
+  'Retrieval quality needs improvement: Evidence accuracy or coverage is low': '检索质量需要改进：证据准确性、相关性或覆盖度偏低。',
+  'Replanning is inadequate: Not triggering replan when needed': '重规划能力需要改进：遇到失败或新信息时调整不够及时。',
+  'No significant issues identified': '未发现显著问题',
+  'No evaluations completed yet': '暂无已完成评估',
+}
+
+const localizeReportText = (text: string) => reportTextTranslations[text] || text
 
 // Methods
 const formatTime = (time: string) => {

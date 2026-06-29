@@ -283,7 +283,7 @@ const displayInsights = computed(() => {
     const meta = insightIconMap[dimKey] || insightIconMap.planning
     return {
       title: `洞察 ${index + 1}`,
-      description,
+      description: localizeReportText(description),
       icon: meta.icon,
       color: meta.color,
       bgColor: `${meta.color}1a`,
@@ -293,8 +293,28 @@ const displayInsights = computed(() => {
 
 const displayRecommendations = computed(() => {
   const recs: string[] = (summaryData.value?.recommendations || []).filter(Boolean)
-  return recs.map((description) => ({ description }))
+  return recs.map((description) => ({ description: localizeReportText(description) }))
 })
+
+const reportTextTranslations: Record<string, string> = {
+  'Planning quality needs improvement: Plans lack coverage or proper granularity': '规划质量需要改进：计划覆盖度、步骤粒度或完整性不足。',
+  'Tactical decisions are suboptimal: Actions not always relevant or efficient': '战术决策存在不足：部分行动与当前目标的相关性或效率不够。',
+  'Tool usage is inefficient: Poor tool selection or parameter accuracy': '工具使用效率偏低：工具选择、参数准确性或结果利用不足。',
+  'Memory retention is weak: Key facts are being forgotten': '记忆保持较弱：关键事实记录或跨步骤复用不足。',
+  'Retrieval quality needs improvement: Evidence accuracy or coverage is low': '检索质量需要改进：证据准确性、相关性或覆盖度偏低。',
+  'Replanning is inadequate: Not triggering replan when needed': '重规划能力需要改进：遇到失败或新信息时调整不够及时。',
+  'No significant issues identified': '未发现显著问题',
+  'Excellent performance! Focus on maintaining consistency.': '整体表现优秀，建议重点保持稳定性和一致性。',
+  'Good performance with room for improvement in weaker dimensions.': '整体表现良好，可优先优化相对薄弱的评估维度。',
+  'Performance needs significant improvement. Focus on fundamental agent design.': '整体表现需要明显改进，建议从 Agent 基础流程设计入手。',
+  'Implement structured planning: Break goals into clear milestones with dependencies.': '建立结构化规划：将目标拆成清晰里程碑，并标注依赖关系。',
+  'Improve action selection: Validate each action against current state before execution.': '改进行动选择：执行前校验每个动作是否匹配当前状态和目标。',
+  'Enhance tool selection: Create tool selection guidelines and validate parameters.': '增强工具选择：制定工具选择规则，并在调用前校验参数。',
+  'Strengthen memory management: Implement explicit fact tracking and retrieval.': '加强记忆管理：显式追踪关键事实，并在后续步骤中检索复用。',
+  'Add replanning triggers: Monitor failure patterns and trigger replan proactively.': '增加重规划触发机制：监控失败模式，并主动调整执行计划。',
+}
+
+const localizeReportText = (text: string) => reportTextTranslations[text] || text
 
 const distributionColors = ['#f56c6c', '#e6a23c', '#409eff', '#67c23a', '#67c23a']
 

@@ -27,6 +27,15 @@ from app.models.schemas import (
 
 logger = logging.getLogger(__name__)
 
+DIMENSION_LABELS = {
+    "planning": "规划质量",
+    "tactical": "战术决策",
+    "tool_use": "工具使用",
+    "memory": "记忆保持",
+    "replan": "重规划",
+    "retrieval": "检索质量",
+}
+
 from app.evaluators import (
     MemoryEvaluator,
     PlanningEvaluator,
@@ -285,27 +294,27 @@ def _generate_summary(scores: Dict[str, float]) -> str:
     """Generate a summary based on scores."""
     applicable_scores = {name: score for name, score in scores.items() if score is not None}
     if not applicable_scores:
-        return "No applicable evaluation dimensions were available."
+        return "没有可用于计算综合评分的评估维度。"
 
     avg_score = sum(applicable_scores.values()) / len(applicable_scores)
 
     if avg_score >= 80:
-        quality = "excellent"
+        quality = "优秀"
     elif avg_score >= 60:
-        quality = "good"
+        quality = "良好"
     elif avg_score >= 40:
-        quality = "moderate"
+        quality = "一般"
     else:
-        quality = "poor"
+        quality = "较弱"
 
     # Find weakest dimension
     weakest = min(applicable_scores, key=applicable_scores.get)
     strongest = max(applicable_scores, key=applicable_scores.get)
 
     return (
-        f"Agent performance is {quality} (overall: {avg_score:.1f}/100). "
-        f"Strongest dimension: {strongest} ({applicable_scores[strongest]:.1f}). "
-        f"Weakest dimension: {weakest} ({applicable_scores[weakest]:.1f})."
+        f"Agent 综合表现{quality}（综合得分：{avg_score:.1f}/100）。"
+        f"最强维度：{DIMENSION_LABELS.get(strongest, strongest)}（{applicable_scores[strongest]:.1f}）。"
+        f"待改进维度：{DIMENSION_LABELS.get(weakest, weakest)}（{applicable_scores[weakest]:.1f}）。"
     )
 
 
@@ -322,32 +331,32 @@ def _generate_recommendations(
 
     # Planning recommendations
     if planning.get("overall", 0) < 60:
-        recommendations.append("Improve planning: Create more detailed plans with clear milestones before execution.")
+        recommendations.append("改进规划：执行前拆解更清晰的里程碑、依赖关系和验收标准。")
 
     # Tactical recommendations
     if tactical.get("overall", 0) < 60:
         recommendations.append(
-            "Improve tactical decisions: Ensure each action is relevant to the current state and goal."
+            "改进战术决策：每一步行动前校验其与当前状态和任务目标的相关性。"
         )
 
     # Tool use recommendations
     if tool_use.get("applicable", True) is not False and tool_use.get("overall", 0) < 60:
-        recommendations.append("Improve tool usage: Select tools more carefully and verify parameters before calling.")
+        recommendations.append("改进工具使用：调用前明确工具选择依据，并校验参数、路径和输入格式。")
 
     # Memory recommendations
     if memory.get("overall", 0) < 60:
-        recommendations.append("Improve memory: Maintain key facts throughout execution and avoid contradictions.")
+        recommendations.append("改进记忆管理：显式记录关键事实，并在后续步骤中保持一致引用。")
 
     # Replan recommendations
     if replan.get("applicable", True) is not False and replan.get("overall", 0) < 60:
-        recommendations.append("Improve replanning: Trigger replan earlier when facing repeated failures.")
+        recommendations.append("改进重规划：遇到连续失败、路径受阻或新信息出现时及时调整计划。")
 
     # Retrieval recommendations
     if retrieval.get("overall", 0) < 60:
-        recommendations.append("Improve retrieval: Ground answers in retrieved evidence and reduce hallucinations.")
+        recommendations.append("改进检索质量：提高证据相关性与引用准确性，确保最终回答基于检索内容。")
 
     if not recommendations:
-        recommendations.append("Continue maintaining high performance across all evaluation dimensions.")
+        recommendations.append("继续保持当前表现，并持续监控各维度是否出现波动。")
 
     return recommendations
 

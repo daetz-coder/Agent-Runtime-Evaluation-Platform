@@ -33,6 +33,15 @@ from app.models.schemas import (
 logger = logging.getLogger(__name__)
 tracer = get_tracer(__name__)
 
+DIMENSION_LABELS = {
+    "planning": "规划质量",
+    "tactical": "战术决策",
+    "tool_use": "工具使用",
+    "memory": "记忆保持",
+    "replan": "重规划",
+    "retrieval": "检索质量",
+}
+
 
 class EvaluationService:
     """Service for managing agent evaluations."""
@@ -1026,28 +1035,28 @@ class EvaluationService:
         scores = score_values(feedback, settings.EVAL_DIMENSION_WEIGHTS)
         applicable_scores = {name: score for name, score in scores.items() if score is not None}
         if not applicable_scores:
-            return f"Overall score: {overall_score:.1f}/100."
+            return f"综合得分：{overall_score:.1f}/100。"
         strongest = max(applicable_scores, key=applicable_scores.get)
         weakest = min(applicable_scores, key=applicable_scores.get)
         return (
-            f"Overall score: {overall_score:.1f}/100. "
-            f"Strongest dimension: {strongest} ({applicable_scores[strongest]:.1f}). "
-            f"Weakest dimension: {weakest} ({applicable_scores[weakest]:.1f})."
+            f"综合得分：{overall_score:.1f}/100。"
+            f"最强维度：{DIMENSION_LABELS.get(strongest, strongest)}（{applicable_scores[strongest]:.1f}）。"
+            f"待改进维度：{DIMENSION_LABELS.get(weakest, weakest)}（{applicable_scores[weakest]:.1f}）。"
         )
 
     def _build_recommendations(self, feedback: Dict[str, Any]) -> List[str]:
         """Rebuild recommendations from persisted dimension scores."""
         recommendations: List[str] = []
         labels = {
-            "planning": "Improve planning before execution.",
-            "tactical": "Improve next-action selection and tactical decisions.",
-            "tool_use": "Improve tool selection, parameters, and result use.",
-            "memory": "Improve retention and consistency across context.",
-            "replan": "Improve replanning when failures or new facts appear.",
-            "retrieval": "Improve RAG retrieval relevance and evidence grounding.",
+            "planning": "改进规划：执行前补充关键步骤、依赖关系和验收标准。",
+            "tactical": "改进战术决策：确保每一步行动都服务于当前目标和上下文。",
+            "tool_use": "改进工具使用：加强工具选择、参数校验和结果利用。",
+            "memory": "改进记忆保持：记录并复用关键事实，避免上下文不一致。",
+            "replan": "改进重规划：在失败、新事实或路径受阻时及时调整计划。",
+            "retrieval": "改进检索质量：提升证据相关性、覆盖度和引用准确性。",
         }
         for name, message in labels.items():
             dim_feedback = feedback.get(name) or {}
             if dim_feedback.get("applicable", True) is not False and dim_feedback.get("overall", 0) < 60:
                 recommendations.append(message)
-        return recommendations or ["Continue maintaining high performance across all evaluation dimensions."]
+        return recommendations or ["继续保持当前表现，并持续监控各维度是否出现波动。"]

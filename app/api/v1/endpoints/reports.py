@@ -96,8 +96,8 @@ async def get_evaluation_summary(
                 "retrieval": [],
                 "overall": [],
             },
-            top_issues=["No evaluations completed yet"],
-            recommendations=["Complete some evaluations to get recommendations"],
+            top_issues=["暂无已完成评估"],
+            recommendations=["完成评估后将自动生成改进建议。"],
         )
 
     scores_query = select(
@@ -263,20 +263,20 @@ def _identify_top_issues(avg_scores: Dict[str, float]) -> List[str]:
             continue
         if score < threshold:
             if dimension == "planning":
-                issues.append("Planning quality needs improvement: Plans lack coverage or proper granularity")
+                issues.append("规划质量需要改进：计划覆盖度、步骤粒度或完整性不足。")
             elif dimension == "tactical":
-                issues.append("Tactical decisions are suboptimal: Actions not always relevant or efficient")
+                issues.append("战术决策存在不足：部分行动与当前目标的相关性或效率不够。")
             elif dimension == "tool_use":
-                issues.append("Tool usage is inefficient: Poor tool selection or parameter accuracy")
+                issues.append("工具使用效率偏低：工具选择、参数准确性或结果利用不足。")
             elif dimension == "memory":
-                issues.append("Memory retention is weak: Key facts are being forgotten")
+                issues.append("记忆保持较弱：关键事实记录或跨步骤复用不足。")
             elif dimension == "retrieval":
-                issues.append("Retrieval quality needs improvement: Evidence accuracy or coverage is low")
+                issues.append("检索质量需要改进：证据准确性、相关性或覆盖度偏低。")
             elif dimension == "replan":
-                issues.append("Replanning is inadequate: Not triggering replan when needed")
+                issues.append("重规划能力需要改进：遇到失败或新信息时调整不够及时。")
 
     if not issues:
-        issues.append("No significant issues identified")
+        issues.append("未发现显著问题")
 
     return issues
 
@@ -292,27 +292,27 @@ def _generate_global_recommendations(
     overall = avg_scores.get("overall", 0)
 
     if overall >= 80:
-        recommendations.append("Excellent performance! Focus on maintaining consistency.")
+        recommendations.append("整体表现优秀，建议重点保持稳定性和一致性。")
     elif overall >= 60:
-        recommendations.append("Good performance with room for improvement in weaker dimensions.")
+        recommendations.append("整体表现良好，可优先优化相对薄弱的评估维度。")
     else:
-        recommendations.append("Performance needs significant improvement. Focus on fundamental agent design.")
+        recommendations.append("整体表现需要明显改进，建议从 Agent 基础流程设计入手。")
 
     # Specific recommendations based on scores
     if avg_scores.get("planning", 0) < 60:
-        recommendations.append("Implement structured planning: Break goals into clear milestones with dependencies.")
+        recommendations.append("建立结构化规划：将目标拆成清晰里程碑，并标注依赖关系。")
 
     if avg_scores.get("tactical", 0) < 60:
-        recommendations.append("Improve action selection: Validate each action against current state before execution.")
+        recommendations.append("改进行动选择：执行前校验每个动作是否匹配当前状态和目标。")
 
     if avg_scores.get("tool_use", 0) < 60:
-        recommendations.append("Enhance tool selection: Create tool selection guidelines and validate parameters.")
+        recommendations.append("增强工具选择：制定工具选择规则，并在调用前校验参数。")
 
     if avg_scores.get("memory", 0) < 60:
-        recommendations.append("Strengthen memory management: Implement explicit fact tracking and retrieval.")
+        recommendations.append("加强记忆管理：显式追踪关键事实，并在后续步骤中检索复用。")
 
     if avg_scores.get("replan", 0) < 60:
-        recommendations.append("Add replanning triggers: Monitor failure patterns and trigger replan proactively.")
+        recommendations.append("增加重规划触发机制：监控失败模式，并主动调整执行计划。")
 
     return recommendations
 
