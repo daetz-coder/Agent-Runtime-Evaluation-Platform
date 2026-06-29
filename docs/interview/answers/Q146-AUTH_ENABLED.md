@@ -14,7 +14,7 @@
 
 ## 参考答案
 
-Q146 与 AUTH_ENABLED 相关。API Key header；health 跳过 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+Q146 与 AUTH_ENABLED 相关。API Key header；health 跳过 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

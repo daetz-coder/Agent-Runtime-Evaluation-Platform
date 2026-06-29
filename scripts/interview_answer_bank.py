@@ -56,7 +56,7 @@ ANSWER_BANK: dict[int, dict] = {
     ),
     5: _a(
         "LangSmith/Phoenix/Braintrust 侧重 trace 采集、可视化与通用 eval dataset；本平台聚焦 Agent 运行时六维 rubric、单调性 synthetic benchmark、与 Wiki Agent 端到端 RAG 评估闭环。提供 sdk/collector.py 三种 adapter（langgraph/callback/llm_proxy）和 EVAL_BATCH_SIZE 批量上报。差异在于：我们内置 REFERENCE_SCORES 校准、ReplanEvaluator 的 _detect_missed_replans 启发式、hybrid_search RRF k=60 等可落地代码而非仅 SaaS UI。",
-        ["app/adapters/", "sdk/adapters/", "app/benchmarks/monotonicity_data.py"],
+        ["sdk/adapters/", "sdk/adapters/", "app/benchmarks/monotonicity_data.py"],
         ["观测平台重 trace UI；本平台重 rubric + benchmark", "内置 Wiki Demo 与 EvaluationTrace", "开源可自托管，配置 EVAL_PARALLEL 等", "六维 overall 有明确权重公式"],
         [
             ("能否对接 LangSmith？", "可 export trajectory 到本平台 schema，或写 adapter 转换 ActionType。"),
@@ -136,8 +136,8 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     14: _a(
-        "边界：Agent 侧负责执行与 collector.start/record/finish；平台侧负责存储 AgentTask/AgentTrajectory 与六维 Judge。数据流：start 创建 task_id→record_step 批量（EVAL_BATCH_SIZE）→finish 可选 auto_run 触发评估。context 如 key_facts 随 task 存储供 MemoryEvaluator。adapters 在 app/adapters 与 sdk/adapters 镜像，langgraph/callback/llm_proxy 三类。",
-        ["app/db/models.py", "sdk/collector.py", "app/adapters/__init__.py"],
+        "边界：Agent 侧负责执行与 collector.start/record/finish；平台侧负责存储 AgentTask/AgentTrajectory 与六维 Judge。数据流：start 创建 task_id→record_step 批量（EVAL_BATCH_SIZE）→finish 可选 auto_run 触发评估。context 如 key_facts 随 task 存储供 MemoryEvaluator。adapters 统一在 sdk/adapters/（langgraph / callback / llm_proxy 三类）。",
+        ["app/db/models.py", "sdk/collector.py", "sdk/adapters/__init__.py"],
         ["Agent：执行 + 上报", "平台：持久化 + LLM Judge", "task_id 关联 trajectory 与 evaluation", "adapter 层转换框架事件→ActionType"],
         [
             ("谁拥有 schema？", "平台定义 ActionType，SDK 同步常量。"),
@@ -191,7 +191,7 @@ ANSWER_BANK: dict[int, dict] = {
     ),
     20: _a(
         "第三方框架适配策略：1) 手动 sdk/collector record_*；2) 写新 adapter 映射到 ActionType；3) 离线转换 batch 导入 POST tasks/steps。Semantic Kernel 等可包装 step 回调→统一 JSON schema。关键是 tool_call/tool_result 配对与 retrieval 的 retrieved_docs 字段对齐 app/models/schemas.py TrajectoryStep。",
-        ["sdk/collector.py", "app/adapters/callback.py", "app/models/schemas.py"],
+        ["sdk/collector.py", "sdk/adapters/callback.py", "app/models/schemas.py"],
         ["adapter 模式扩展框架", "手动 collector 最低成本 PoC", "schema 对齐比框架更重要", "可批量 ETL 历史 log"],
         [
             ("需要改平台吗？", "通常只加 adapter，不改 Evaluator。"),
@@ -235,17 +235,17 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     25: _a(
-        "围绕 两套 collector：服务端 collector 供平台内部；SDK 零依赖 httpx 供外部 Agent；逻辑应对齐 ActionType 与 batch flush 面试回答应先说业务场景，再落到 app/collectors/trajectory.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
-        ["app/collectors/trajectory.py", "sdk/collector.py", "app/graphs/evaluation_graph.py"],
-        ["两套 collector：服务端 collector 供平台内部", "代码入口：app/collectors/trajectory.py", "app/collectors/trajectory.py 供平台内部", "sdk/collector.py 供外部零依赖", "两者 ActionType 与 batch 语义应一致"],
+        "围绕 Collector 架构：sdk/collector.py 为唯一实现；Wiki 内嵌时用 app/collectors/inprocess_transport.py 直写 DB 避免 HTTP 自锁 面试回答应先说业务场景，再落到 sdk/collector.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
+        ["sdk/collector.py", "app/collectors/inprocess_transport.py", "app/graphs/evaluation_graph.py"],
+        ["Collector 单一实现：sdk/collector.py", "代码入口：sdk/collector.py", "Wiki 内嵌用 inprocess_transport 绕过 HTTP", "外部 Agent 用 HTTP 上报 trajectory", "ActionType 与 batch 语义一致"],
         [
-            ("「两套 collector」最先看哪段代码？", "打开 app/collectors/trajectory.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
-            ("Demo 里如何验证 两套 collector？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
+            ("「Collector 架构」最先看哪段代码？", "打开 sdk/collector.py；Wiki 内嵌路径看 app/collectors/inprocess_transport.py。"),
+            ("Demo 里如何验证 Collector？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],
     ),
     26: _a(
-        "Q26 与 finish 与离线缓冲 相关。finish flush 剩余 steps；无 EVAL_API_BASE_URL 时纯内存；失败步骤进 _steps 缓冲 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q26 与 finish 与离线缓冲 相关。finish flush 剩余 steps；无 EVAL_API_BASE_URL 时纯内存；失败步骤进 _steps 缓冲 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["sdk/collector.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["finish 与离线缓冲：finish flush 剩余 steps", "代码入口：sdk/collector.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -285,11 +285,11 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     30: _a(
-        "问题「什么是「低侵入埋点」？本项目提供了哪三种 adapter？各自适用什么场景？」考察 低侵入三种 adapter。langgraph 包装节点；callback 映射 LangChain；llm_proxy 幂等包装 LLM 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 app/adapters/，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及分数聚合，说明 planning/tactical 权重 20%，其余四维各 15%，见 aggregate_results。",
-        ["app/adapters/", "sdk/adapters/", "app/graphs/evaluation_graph.py"],
-        ["低侵入三种 adapter：langgraph 包装节点", "代码入口：app/adapters/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        "问题「什么是「低侵入埋点」？本项目提供了哪三种 adapter？各自适用什么场景？」考察 低侵入三种 adapter。langgraph 包装节点；callback 映射 LangChain；llm_proxy 幂等包装 LLM 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 sdk/adapters/，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及分数聚合，说明 planning/tactical 权重 20%，其余四维各 15%，见 aggregate_results。",
+        ["sdk/adapters/", "sdk/adapters/", "app/graphs/evaluation_graph.py"],
+        ["低侵入三种 adapter：langgraph 包装节点", "代码入口：sdk/adapters/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「低侵入三种 adapter」最先看哪段代码？", "打开 app/adapters/，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「低侵入三种 adapter」最先看哪段代码？", "打开 sdk/adapters/，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 低侵入三种 adapter？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],
@@ -306,20 +306,20 @@ ANSWER_BANK: dict[int, dict] = {
     ),
     32: _a(
         "Q32 与 Callback 映射 相关。on_llm_start→think；on_tool_start/end→tool_call/result Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。若涉及分数聚合，说明 planning/tactical 权重 20%，其余四维各 15%，见 aggregate_results。",
-        ["app/adapters/callback.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
-        ["Callback 映射：on_llm_start→think", "代码入口：app/adapters/callback.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        ["sdk/adapters/callback.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
+        ["Callback 映射：on_llm_start→think", "代码入口：sdk/adapters/callback.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「Callback 映射」最先看哪段代码？", "打开 app/adapters/callback.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「Callback 映射」最先看哪段代码？", "打开 sdk/adapters/callback.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 Callback 映射？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],
     ),
     33: _a(
-        "问题「LLM Proxy adapter 的「幂等包装」是什么意思？为什么需要 idempotent？」考察 LLM Proxy 幂等。idempotent 防重复 record 同一 call_id；_seen_events 去重 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 app/adapters/llm_proxy.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。",
-        ["app/adapters/llm_proxy.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
-        ["LLM Proxy 幂等：idempotent 防重复 record 同一 call_id", "代码入口：app/adapters/llm_proxy.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        "问题「LLM Proxy adapter 的「幂等包装」是什么意思？为什么需要 idempotent？」考察 LLM Proxy 幂等。idempotent 防重复 record 同一 call_id；_seen_events 去重 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 sdk/adapters/llm_proxy.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。",
+        ["sdk/adapters/llm_proxy.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
+        ["LLM Proxy 幂等：idempotent 防重复 record 同一 call_id", "代码入口：sdk/adapters/llm_proxy.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「LLM Proxy 幂等」最先看哪段代码？", "打开 app/adapters/llm_proxy.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「LLM Proxy 幂等」最先看哪段代码？", "打开 sdk/adapters/llm_proxy.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 LLM Proxy 幂等？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],
@@ -375,7 +375,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     39: _a(
-        "问题「轨迹 step_number 的语义是什么？乱序上报如何处理？」考察 step_number。单调递增；乱序上报应服务端排序或拒绝 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 sdk/collector.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「轨迹 step_number 的语义是什么？乱序上报如何处理？」考察 step_number。单调递增；乱序上报应服务端排序或拒绝 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 sdk/collector.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["sdk/collector.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["step_number：单调递增", "代码入口：sdk/collector.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -385,7 +385,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     40: _a(
-        "围绕 评估工作流：validate→六 eval 节点→aggregate→END；生产 evaluate_parallel 面试回答应先说业务场景，再落到 app/graphs/evaluation_graph.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。LangGraph 同时服务评估 workflow（evaluation_graph.py）与 Wiki Agent（wiki_agent/agent/graph.py），但生产评估并行走 evaluate_parallel。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 评估工作流：validate→六 eval 节点→aggregate→END；生产 evaluate_parallel 面试回答应先说业务场景，再落到 app/graphs/evaluation_graph.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。LangGraph 同时服务评估 workflow（evaluation_graph.py）与 Wiki Agent（wiki_agent/agent/graph.py），但生产评估并行走 evaluate_parallel。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/graphs/evaluation_graph.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["评估工作流：validate→六 eval 节点→aggregate→END", "代码入口：app/graphs/evaluation_graph.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -395,7 +395,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     41: _a(
-        "Q41 与 EvaluationState 相关。task_id/goal/trajectory/context + 六 score 字段 + overall_evaluation Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。LangGraph 同时服务评估 workflow（evaluation_graph.py）与 Wiki Agent（wiki_agent/agent/graph.py），但生产评估并行走 evaluate_parallel。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q41 与 EvaluationState 相关。task_id/goal/trajectory/context + 六 score 字段 + overall_evaluation Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。LangGraph 同时服务评估 workflow（evaluation_graph.py）与 Wiki Agent（wiki_agent/agent/graph.py），但生产评估并行走 evaluate_parallel。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/graphs/evaluation_graph.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["EvaluationState：task_id/goal/trajectory/context + 六 score 字段 + overall_evaluation", "代码入口：app/graphs/evaluation_graph.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -525,7 +525,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     54: _a(
-        "问题「什么是 LLM-as-Judge？相比传统 rubric + 人工打分，优势和局限分别是什么？」考察 LLM-as-Judge。ChatPromptTemplate + temperature=0 + JSON 分数 六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。 首要读 app/evaluators/base.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「什么是 LLM-as-Judge？相比传统 rubric + 人工打分，优势和局限分别是什么？」考察 LLM-as-Judge。ChatPromptTemplate + temperature=0 + JSON 分数 六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。 首要读 app/evaluators/base.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/base.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["LLM-as-Judge：ChatPromptTemplate + temperature=0 + JSON 分数", "代码入口：app/evaluators/base.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -535,7 +535,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     55: _a(
-        "围绕 temperature=0：降低 Judge 随机性；0.7 会导致同 trajectory 分波动大 面试回答应先说业务场景，再落到 app/evaluators/base.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 temperature=0：降低 Judge 随机性；0.7 会导致同 trajectory 分波动大 面试回答应先说业务场景，再落到 app/evaluators/base.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/base.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["temperature=0：降低 Judge 随机性", "代码入口：app/evaluators/base.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -545,7 +545,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     56: _a(
-        "Q56 与 自评偏见 相关。Judge≠Agent 模型；或多模型 consensus Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q56 与 自评偏见 相关。Judge≠Agent 模型；或多模型 consensus Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/consensus.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["自评偏见：Judge≠Agent 模型", "代码入口：app/evaluators/consensus.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -675,7 +675,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     69: _a(
-        "问题「六维并行评估从 71s 降到 ~15s，瓶颈在哪里？还能继续优化吗？」考察 并行优化。瓶颈是 6 次 LLM RTT；gather 已并行；可缓存或 mini Judge 六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。 首要读 app/graphs/evaluation_graph.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「六维并行评估从 71s 降到 ~15s，瓶颈在哪里？还能继续优化吗？」考察 并行优化。瓶颈是 6 次 LLM RTT；gather 已并行；可缓存或 mini Judge 六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。 首要读 app/graphs/evaluation_graph.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/graphs/evaluation_graph.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["并行优化：瓶颈是 6 次 LLM RTT", "代码入口：app/graphs/evaluation_graph.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -685,7 +685,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     70: _a(
-        "围绕 评估缓存：key=hash(trajectory+prompt_version+model) 面试回答应先说业务场景，再落到 app/services/evaluation_service.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 评估缓存：key=hash(trajectory+prompt_version+model) 面试回答应先说业务场景，再落到 app/services/evaluation_service.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/services/evaluation_service.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["评估缓存：key=hash(trajectory+prompt_version+model)", "代码入口：app/services/evaluation_service.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -695,7 +695,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     71: _a(
-        "Q71 与 部分维度复用 相关。只重跑变更维 Evaluator+aggregate Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q71 与 部分维度复用 相关。只重跑变更维 Evaluator+aggregate Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/graphs/evaluation_graph.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["部分维度复用：只重跑变更维 Evaluator+aggregate", "代码入口：app/graphs/evaluation_graph.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -825,7 +825,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     84: _a(
-        "问题「Agent 没有显式 memory_read/write 动作时，Memory Evaluator 如何工作？」考察 无 memory 动作。LLM 从 trajectory 推断记忆行为 每维 Evaluator 有独立 prompt 与子维权重，overall 在 aggregate_results 再按 20/20/15/15/15/15 汇总。 首要读 app/evaluators/memory_evaluator.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「Agent 没有显式 memory_read/write 动作时，Memory Evaluator 如何工作？」考察 无 memory 动作。LLM 从 trajectory 推断记忆行为 每维 Evaluator 有独立 prompt 与子维权重，overall 在 aggregate_results 再按 20/20/15/15/15/15 汇总。 首要读 app/evaluators/memory_evaluator.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/memory_evaluator.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["无 memory 动作：LLM 从 trajectory 推断记忆行为", "代码入口：app/evaluators/memory_evaluator.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -835,7 +835,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     85: _a(
-        "围绕 长短期记忆：可拆 Evaluator；当前合并 面试回答应先说业务场景，再落到 app/evaluators/memory_evaluator.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。每维 Evaluator 有独立 prompt 与子维权重，overall 在 aggregate_results 再按 20/20/15/15/15/15 汇总。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 长短期记忆：可拆 Evaluator；当前合并 面试回答应先说业务场景，再落到 app/evaluators/memory_evaluator.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。每维 Evaluator 有独立 prompt 与子维权重，overall 在 aggregate_results 再按 20/20/15/15/15/15 汇总。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/memory_evaluator.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["长短期记忆：可拆 Evaluator", "代码入口：app/evaluators/memory_evaluator.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -845,7 +845,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     86: _a(
-        "Q86 与 无 replan 满分 相关。无 replan 且无 missed_opportunities 返回 100 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。每维 Evaluator 有独立 prompt 与子维权重，overall 在 aggregate_results 再按 20/20/15/15/15/15 汇总。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q86 与 无 replan 满分 相关。无 replan 且无 missed_opportunities 返回 100 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。每维 Evaluator 有独立 prompt 与子维权重，overall 在 aggregate_results 再按 20/20/15/15/15/15 汇总。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/replan_evaluator.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["无 replan 满分：无 replan 且无 missed_opportunities 返回 100", "代码入口：app/evaluators/replan_evaluator.py", "无 replan 且无 missed→100 分", "_detect_missed_replans 连续 5 failure", "有 missed 才走 LLM Judge"],
         [
@@ -975,7 +975,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     99: _a(
-        "问题「分块时如何处理标题层级？标题是否拼进 chunk 文本？」考察 标题层级。标题拼入 chunk 保留结构 Wiki 侧 hybrid_search 用 Milvus 语义 + jieba BM25，RRF k=60 融合；检索步骤需 record_retrieval 供 RetrievalEvaluator。 首要读 app/wiki_agent/，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「分块时如何处理标题层级？标题是否拼进 chunk 文本？」考察 标题层级。标题拼入 chunk 保留结构 Wiki 侧 hybrid_search 用 Milvus 语义 + jieba BM25，RRF k=60 融合；检索步骤需 record_retrieval 供 RetrievalEvaluator。 首要读 app/wiki_agent/，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/wiki_agent/", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["标题层级：标题拼入 chunk 保留结构", "代码入口：app/wiki_agent/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -985,7 +985,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     100: _a(
-        "围绕 代码块分块：避免从 markdown 中间切断 fenced code 面试回答应先说业务场景，再落到 app/wiki_agent/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。Wiki 侧 hybrid_search 用 Milvus 语义 + jieba BM25，RRF k=60 融合；检索步骤需 record_retrieval 供 RetrievalEvaluator。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 代码块分块：避免从 markdown 中间切断 fenced code 面试回答应先说业务场景，再落到 app/wiki_agent/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。Wiki 侧 hybrid_search 用 Milvus 语义 + jieba BM25，RRF k=60 融合；检索步骤需 record_retrieval 供 RetrievalEvaluator。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/wiki_agent/", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["代码块分块：避免从 markdown 中间切断 fenced code", "代码入口：app/wiki_agent/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -995,7 +995,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     101: _a(
-        "Q101 与 增量索引 相关。CRUD 触发增量；全量 rebuild 兜底 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。Wiki 侧 hybrid_search 用 Milvus 语义 + jieba BM25，RRF k=60 融合；检索步骤需 record_retrieval 供 RetrievalEvaluator。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q101 与 增量索引 相关。CRUD 触发增量；全量 rebuild 兜底 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。Wiki 侧 hybrid_search 用 Milvus 语义 + jieba BM25，RRF k=60 融合；检索步骤需 record_retrieval 供 RetrievalEvaluator。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/wiki_agent/sync_manager.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["增量索引：CRUD 触发增量", "代码入口：app/wiki_agent/sync_manager.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1125,7 +1125,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     114: _a(
-        "问题「Wiki Agent 的完整请求链路：用户提问 → 检索 → 生成 → 可选知识提取，请逐步说明。」考察 Wiki 链路。提问→hybrid_search→LLM respond→可选 extract Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。 首要读 app/wiki_agent/agent/graph.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「Wiki Agent 的完整请求链路：用户提问 → 检索 → 生成 → 可选知识提取，请逐步说明。」考察 Wiki 链路。提问→hybrid_search→LLM respond→可选 extract Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。 首要读 app/wiki_agent/agent/graph.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/wiki_agent/agent/graph.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["Wiki 链路：提问→hybrid_search→LLM respond→可选 extract", "代码入口：app/wiki_agent/agent/graph.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1135,7 +1135,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     115: _a(
-        "围绕 Chat SSE：SSE 流式 token；事件 type 含 message/done/error 面试回答应先说业务场景，再落到 app/wiki_agent/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 Chat SSE：SSE 流式 token；事件 type 含 message/done/error 面试回答应先说业务场景，再落到 app/wiki_agent/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/wiki_agent/", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["Chat SSE：SSE 流式 token", "代码入口：app/wiki_agent/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1145,7 +1145,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     116: _a(
-        "Q116 与 SYSTEM_PROMPT 相关。约束引用来源、拒答无证据 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q116 与 SYSTEM_PROMPT 相关。约束引用来源、拒答无证据 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/wiki_agent/agent/", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["SYSTEM_PROMPT：约束引用来源、拒答无证据", "代码入口：app/wiki_agent/agent/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1225,11 +1225,11 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     124: _a(
-        "围绕 adapter 路径：镜像关系；SDK 可独立 pip 面试回答应先说业务场景，再落到 app/adapters/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。sdk/ 可独立使用，三种 adapter 映射框架事件到 14 种 ActionType，EVAL_BATCH_SIZE 控制批量 flush。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。",
-        ["app/adapters/", "sdk/adapters/", "app/graphs/evaluation_graph.py"],
-        ["adapter 路径：镜像关系", "代码入口：app/adapters/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        "围绕 adapter 路径：统一使用 sdk/adapters/；pip install -e . 后 from sdk import instrument_langgraph 面试回答应先说业务场景，再落到 sdk/adapters/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。sdk/ 可独立使用，三种 adapter 映射框架事件到 14 种 ActionType，EVAL_BATCH_SIZE 控制批量 flush。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。",
+        ["sdk/adapters/", "sdk/collector.py", "app/graphs/evaluation_graph.py"],
+        ["adapter 路径：统一 sdk/adapters/", "代码入口：sdk/adapters/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「adapter 路径」最先看哪段代码？", "打开 app/adapters/，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「adapter 路径」最先看哪段代码？", "打开 sdk/adapters/，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 adapter 路径？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],
@@ -1275,7 +1275,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     129: _a(
-        "问题「如果 Agent 使用非 LangChain 技术栈（纯 OpenAI API、Anthropic SDK），如何接入？」考察 非 LangChain 接入。手动 record 或 HTTP API sdk/ 可独立使用，三种 adapter 映射框架事件到 14 种 ActionType，EVAL_BATCH_SIZE 控制批量 flush。 首要读 sdk/collector.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「如果 Agent 使用非 LangChain 技术栈（纯 OpenAI API、Anthropic SDK），如何接入？」考察 非 LangChain 接入。手动 record 或 HTTP API sdk/ 可独立使用，三种 adapter 映射框架事件到 14 种 ActionType，EVAL_BATCH_SIZE 控制批量 flush。 首要读 sdk/collector.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["sdk/collector.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["非 LangChain 接入：手动 record 或 HTTP API", "代码入口：sdk/collector.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1285,7 +1285,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     130: _a(
-        "围绕 ActionType 同步：两处常量需 CI diff 检查 面试回答应先说业务场景，再落到 app/models/action_types.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。sdk/ 可独立使用，三种 adapter 映射框架事件到 14 种 ActionType，EVAL_BATCH_SIZE 控制批量 flush。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 ActionType 同步：两处常量需 CI diff 检查 面试回答应先说业务场景，再落到 app/models/action_types.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。sdk/ 可独立使用，三种 adapter 映射框架事件到 14 种 ActionType，EVAL_BATCH_SIZE 控制批量 flush。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/models/action_types.py", "sdk/collector.py", "app/graphs/evaluation_graph.py"],
         ["ActionType 同步：两处常量需 CI diff 检查", "代码入口：app/models/action_types.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1295,7 +1295,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     131: _a(
-        "Q131 与 单调性基准 相关。6 trajectory QUALITY_ORDER 非递增+0.05 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。monotonicity.py 六条合成轨迹，check_monotonicity 容差 +0.05，REFERENCE_SCORES 约 93.1→20.0。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q131 与 单调性基准 相关。6 trajectory QUALITY_ORDER 非递增+0.05 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。monotonicity.py 六条合成轨迹，check_monotonicity 容差 +0.05，REFERENCE_SCORES 约 93.1→20.0。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/benchmarks/monotonicity.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["单调性基准：6 trajectory QUALITY_ORDER 非递增+0.05", "代码入口：app/benchmarks/monotonicity.py", "六条 QUALITY_ORDER 轨迹", "check_monotonicity +0.05", "REFERENCE_SCORES 标定参考"],
         [
@@ -1425,7 +1425,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     144: _a(
-        "问题「SQLAlchemy 2.0 async session 的生命周期如何管理？`Depends(get_db)` 模式？」考察 async session。Depends get_db yield session FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。 首要读 app/db/session.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「SQLAlchemy 2.0 async session 的生命周期如何管理？`Depends(get_db)` 模式？」考察 async session。Depends get_db yield session FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。 首要读 app/db/session.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/db/session.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["async session：Depends get_db yield session", "代码入口：app/db/session.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1435,7 +1435,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     145: _a(
-        "围绕 SQLite PostgreSQL：DATABASE_URL 切换；Alembic 可选 面试回答应先说业务场景，再落到 app/core/config.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 SQLite PostgreSQL：DATABASE_URL 切换；Alembic 可选 面试回答应先说业务场景，再落到 app/core/config.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/core/config.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["SQLite PostgreSQL：DATABASE_URL 切换", "代码入口：app/core/config.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1445,7 +1445,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     146: _a(
-        "Q146 与 AUTH_ENABLED 相关。API Key header；health 跳过 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q146 与 AUTH_ENABLED 相关。API Key header；health 跳过 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/core/config.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["AUTH_ENABLED：API Key header", "代码入口：app/core/config.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1575,7 +1575,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     159: _a(
-        "问题「`EVAL_WEBHOOK_URL` 通知机制的安全考虑？」考察 WEBHOOK 安全。EVAL_WEBHOOK_URL HMAC 签名 当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。 首要读 app/core/config.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「`EVAL_WEBHOOK_URL` 通知机制的安全考虑？」考察 WEBHOOK 安全。EVAL_WEBHOOK_URL HMAC 签名 当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。 首要读 app/core/config.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/core/config.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["WEBHOOK 安全：EVAL_WEBHOOK_URL HMAC 签名", "代码入口：app/core/config.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1585,7 +1585,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     160: _a(
-        "围绕 平台观测：ENABLE_TRACING OTEL 面试回答应先说业务场景，再落到 app/core/config.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 平台观测：ENABLE_TRACING OTEL 面试回答应先说业务场景，再落到 app/core/config.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/core/config.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["平台观测：ENABLE_TRACING OTEL", "代码入口：app/core/config.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1595,7 +1595,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     161: _a(
-        "Q161 与 Judge 监控 相关。记录 latency/token metrics Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q161 与 Judge 监控 相关。记录 latency/token metrics Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/base.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["Judge 监控：记录 latency/token metrics", "代码入口：app/evaluators/base.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1725,7 +1725,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     174: _a(
-        "问题「阅读 `hybrid_search` 的 RRF 实现，手工算两个排名的融合结果。」考察 RRF 手算。两列表 rank 代入 1/(60+r+1) 相加 改动 Evaluator 需同步 app/models/schemas.py、evaluators/__init__.py、evaluation_graph 注册与 aggregate WEIGHTS。 首要读 app/wiki_agent/agent/tools/search_tools.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「阅读 `hybrid_search` 的 RRF 实现，手工算两个排名的融合结果。」考察 RRF 手算。两列表 rank 代入 1/(60+r+1) 相加 改动 Evaluator 需同步 app/models/schemas.py、evaluators/__init__.py、evaluation_graph 注册与 aggregate WEIGHTS。 首要读 app/wiki_agent/agent/tools/search_tools.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/wiki_agent/agent/tools/search_tools.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["RRF 手算：两列表 rank 代入 1/(60+r+1) 相加", "代码入口：app/wiki_agent/agent/tools/search_tools.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1735,7 +1735,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     175: _a(
-        "围绕 新增 Safety 维：新 evaluator+schema+权重 面试回答应先说业务场景，再落到 app/evaluators/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。改动 Evaluator 需同步 app/models/schemas.py、evaluators/__init__.py、evaluation_graph 注册与 aggregate WEIGHTS。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 新增 Safety 维：新 evaluator+schema+权重 面试回答应先说业务场景，再落到 app/evaluators/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。改动 Evaluator 需同步 app/models/schemas.py、evaluators/__init__.py、evaluation_graph 注册与 aggregate WEIGHTS。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/", "app/graphs/evaluation_graph.py", "app/graphs/evaluation_graph.py"],
         ["新增 Safety 维：新 evaluator+schema+权重", "代码入口：app/evaluators/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1745,7 +1745,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     176: _a(
-        "Q176 与 效率 Evaluator 相关。统计 step 数与 goal 达成 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。改动 Evaluator 需同步 app/models/schemas.py、evaluators/__init__.py、evaluation_graph 注册与 aggregate WEIGHTS。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q176 与 效率 Evaluator 相关。统计 step 数与 goal 达成 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。改动 Evaluator 需同步 app/models/schemas.py、evaluators/__init__.py、evaluation_graph 注册与 aggregate WEIGHTS。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/base.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["效率 Evaluator：统计 step 数与 goal 达成", "代码入口：app/evaluators/base.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1875,7 +1875,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     189: _a(
-        "问题「RLHF / DPO 训练的 Agent 和 prompt-based Agent，评估方法应该有什么不同？」考察 RLHF vs prompt。RLHF Agent 评 policy 一致性 回答应落到本项目 trade-off：轨迹驱动、LLM Judge 校准、单调性回归门禁，而非纯概念。 首要读 app/evaluators/，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "问题「RLHF / DPO 训练的 Agent 和 prompt-based Agent，评估方法应该有什么不同？」考察 RLHF vs prompt。RLHF Agent 评 policy 一致性 回答应落到本项目 trade-off：轨迹驱动、LLM Judge 校准、单调性回归门禁，而非纯概念。 首要读 app/evaluators/，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/evaluators/", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["RLHF vs prompt：RLHF Agent 评 policy 一致性", "代码入口：app/evaluators/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1885,7 +1885,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     190: _a(
-        "围绕 长上下文：截断与摘要策略 面试回答应先说业务场景，再落到 sdk/collector.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。回答应落到本项目 trade-off：轨迹驱动、LLM Judge 校准、单调性回归门禁，而非纯概念。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "围绕 长上下文：截断与摘要策略 面试回答应先说业务场景，再落到 sdk/collector.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。回答应落到本项目 trade-off：轨迹驱动、LLM Judge 校准、单调性回归门禁，而非纯概念。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["sdk/collector.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["长上下文：截断与摘要策略", "代码入口：sdk/collector.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
@@ -1895,7 +1895,7 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     191: _a(
-        "Q191 与 个人负责 相关。结合候选人实际；参考 evaluators/graph/sdk Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。回答应落到本项目 trade-off：轨迹驱动、LLM Judge 校准、单调性回归门禁，而非纯概念。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。",
+        "Q191 与 个人负责 相关。结合候选人实际；参考 evaluators/graph/sdk Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。回答应落到本项目 trade-off：轨迹驱动、LLM Judge 校准、单调性回归门禁，而非纯概念。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。",
         ["app/", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
         ["个人负责：结合候选人实际", "代码入口：app/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [

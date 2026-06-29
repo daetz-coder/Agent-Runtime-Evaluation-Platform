@@ -14,7 +14,7 @@ SDK 的 `finish(auto_run=True)` 做了什么？离线缓冲是如何实现的？
 
 ## 参考答案
 
-Q26 与 finish 与离线缓冲 相关。finish flush 剩余 steps；无 EVAL_API_BASE_URL 时纯内存；失败步骤进 _steps 缓冲 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+Q26 与 finish 与离线缓冲 相关。finish flush 剩余 steps；无 EVAL_API_BASE_URL 时纯内存；失败步骤进 _steps 缓冲 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

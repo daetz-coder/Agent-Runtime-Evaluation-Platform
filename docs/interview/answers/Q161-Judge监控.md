@@ -14,7 +14,7 @@
 
 ## 参考答案
 
-Q161 与 Judge 监控 相关。记录 latency/token metrics Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+Q161 与 Judge 监控 相关。记录 latency/token metrics Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

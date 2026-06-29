@@ -14,7 +14,7 @@
 
 ## 参考答案
 
-Q86 与 无 replan 满分 相关。无 replan 且无 missed_opportunities 返回 100 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。每维 Evaluator 有独立 prompt 与子维权重，overall 在 aggregate_results 再按 20/20/15/15/15/15 汇总。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+Q86 与 无 replan 满分 相关。无 replan 且无 missed_opportunities 返回 100 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。每维 Evaluator 有独立 prompt 与子维权重，overall 在 aggregate_results 再按 20/20/15/15/15/15 汇总。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

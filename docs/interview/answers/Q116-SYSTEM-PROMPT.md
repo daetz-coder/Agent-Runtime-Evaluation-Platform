@@ -14,7 +14,7 @@
 
 ## 参考答案
 
-Q116 与 SYSTEM_PROMPT 相关。约束引用来源、拒答无证据 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+Q116 与 SYSTEM_PROMPT 相关。约束引用来源、拒答无证据 Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

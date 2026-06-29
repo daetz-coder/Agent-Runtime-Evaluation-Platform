@@ -14,7 +14,7 @@
 
 ## 参考答案
 
-围绕 temperature=0：降低 Judge 随机性；0.7 会导致同 trajectory 分波动大 面试回答应先说业务场景，再落到 app/evaluators/base.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+围绕 temperature=0：降低 Judge 随机性；0.7 会导致同 trajectory 分波动大 面试回答应先说业务场景，再落到 app/evaluators/base.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

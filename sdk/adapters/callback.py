@@ -13,7 +13,7 @@ LangChain Callback Adapter - 自动收集轨迹
 - 失败事件 (failure) — LLM/Tool/Chain 错误
 
 使用方式：
-    from app.adapters.callback import create_callback_handler
+    from sdk.adapters.callback import create_callback_handler
 
     # 创建 handler
     handler = create_callback_handler()
@@ -293,7 +293,7 @@ def create_callback_handler() -> EvalCallbackHandler:
         回调处理器实例
 
     使用方式：
-        from app.adapters.callback import create_callback_handler
+        from sdk.adapters.callback import create_callback_handler
 
         # 创建 handler
         handler = create_callback_handler()

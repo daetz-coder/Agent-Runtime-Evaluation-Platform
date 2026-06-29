@@ -18,14 +18,14 @@ Q32 与 Callback 映射 相关。on_llm_start→think；on_tool_start/end→tool
 
 ## 代码依据
 
-- `app/adapters/callback.py`
+- `sdk/adapters/callback.py`
 - `app/graphs/evaluation_graph.py`
 - `app/evaluators/base.py`
 
 ## 回答要点
 
 - Callback 映射：on_llm_start→think
-- 代码入口：app/adapters/callback.py
+- 代码入口：sdk/adapters/callback.py
 - 与六维 LLM-as-Judge 评估链路相关
 - 轨迹 schema 见 app/models/action_types.py
 
@@ -33,7 +33,7 @@ Q32 与 Callback 映射 相关。on_llm_start→think；on_tool_start/end→tool
 
 **Q: 「Callback 映射」最先看哪段代码？**
 
-A: 打开 app/adapters/callback.py，再对照 app/graphs/evaluation_graph.py 的数据流。
+A: 打开 sdk/adapters/callback.py，再对照 app/graphs/evaluation_graph.py 的数据流。
 
 **Q: Demo 里如何验证 Callback 映射？**
 

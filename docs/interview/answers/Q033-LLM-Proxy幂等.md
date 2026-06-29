@@ -14,18 +14,18 @@ LLM Proxy adapter 的「幂等包装」是什么意思？为什么需要 idempot
 
 ## 参考答案
 
-问题「LLM Proxy adapter 的「幂等包装」是什么意思？为什么需要 idempotent？」考察 LLM Proxy 幂等。idempotent 防重复 record 同一 call_id；_seen_events 去重 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 app/adapters/llm_proxy.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。
+问题「LLM Proxy adapter 的「幂等包装」是什么意思？为什么需要 idempotent？」考察 LLM Proxy 幂等。idempotent 防重复 record 同一 call_id；_seen_events 去重 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 sdk/adapters/llm_proxy.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。
 
 ## 代码依据
 
-- `app/adapters/llm_proxy.py`
+- `sdk/adapters/llm_proxy.py`
 - `app/graphs/evaluation_graph.py`
 - `app/evaluators/base.py`
 
 ## 回答要点
 
 - LLM Proxy 幂等：idempotent 防重复 record 同一 call_id
-- 代码入口：app/adapters/llm_proxy.py
+- 代码入口：sdk/adapters/llm_proxy.py
 - 与六维 LLM-as-Judge 评估链路相关
 - 轨迹 schema 见 app/models/action_types.py
 
@@ -33,7 +33,7 @@ LLM Proxy adapter 的「幂等包装」是什么意思？为什么需要 idempot
 
 **Q: 「LLM Proxy 幂等」最先看哪段代码？**
 
-A: 打开 app/adapters/llm_proxy.py，再对照 app/graphs/evaluation_graph.py 的数据流。
+A: 打开 sdk/adapters/llm_proxy.py，再对照 app/graphs/evaluation_graph.py 的数据流。
 
 **Q: Demo 里如何验证 LLM Proxy 幂等？**
 

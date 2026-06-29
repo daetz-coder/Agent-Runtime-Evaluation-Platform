@@ -38,7 +38,7 @@
 
 ## 轨迹（Trajectory）与埋点
 
-- [★★ Q025](answers/Q025-两套collector对比.md) — 请对比 `app/collectors/trajectory.py` 和 `sdk/collector.py` 两套实现：为什么存在两份？如何保持同步？
+- [★★ Q025](answers/Q025-两套collector对比.md) — 请说明 `sdk/collector.py` 与 `app/collectors/inprocess_transport.py` 的关系：为什么 Wiki 内嵌时需要 in-process transport？
 - [★ Q026](answers/Q026-finish与离线缓冲.md) — SDK 的 `finish(auto_run=True)` 做了什么？离线缓冲是如何实现的？
 - [★ Q027](answers/Q027-EVAL_BATCH_SIZE.md) — `EVAL_BATCH_SIZE` 批量上报的设计考虑是什么？太小或太大有什么影响？
 - [★ Q028](answers/Q028-上报失败重试.md) — 轨迹上报失败时（网络抖动、后端 500），SDK 会丢数据还是重试？你会如何改进？
@@ -155,7 +155,7 @@
 ## SDK 与零侵入接入
 
 - [★★ Q123](answers/Q123-零侵入SDK.md) — 「零侵入 SDK 接入」的具体含义是什么？开发者最少需要改几行代码？
-- [★ Q124](answers/Q124-adapter路径.md) — 三种 adapter 的安装/导入路径是什么？`app/adapters` 和 `sdk/adapters` 的关系？
+- [★ Q124](answers/Q124-adapter路径.md) — 三种 adapter 的安装/导入路径是什么？为什么统一放在 `sdk/adapters/`？
 - [★ Q125](answers/Q125-LangGraph兼容性.md) — LangGraph adapter 包装后，原有的 `graph.compile()`、`graph.ainvoke()` 接口是否完全兼容？
 - [★ Q126](answers/Q126-同步异步节点.md) — 同步节点函数和异步节点函数，adapter 如何处理？
 - [★ Q127](answers/Q127-state-diff截断.md) — 状态 diff 截断策略是什么？大 state 会不会导致轨迹爆炸？

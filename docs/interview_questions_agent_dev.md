@@ -75,7 +75,7 @@
 
 ### 收集机制
 
-25. **★** 请对比 `app/collectors/trajectory.py` 和 `sdk/collector.py` 两套实现：为什么存在两份？如何保持同步？
+25. **★** 请说明 `sdk/collector.py` 与 `app/collectors/inprocess_transport.py` 的关系：为什么 Wiki 内嵌时需要 in-process transport？
 26. SDK 的 `finish(auto_run=True)` 做了什么？离线缓冲是如何实现的？
 27. `EVAL_BATCH_SIZE` 批量上报的设计考虑是什么？太小或太大有什么影响？
 28. 轨迹上报失败时（网络抖动、后端 500），SDK 会丢数据还是重试？你会如何改进？
@@ -257,7 +257,7 @@
 ## 9. SDK 与零侵入接入
 
 123. **★** 「零侵入 SDK 接入」的具体含义是什么？开发者最少需要改几行代码？
-124. 三种 adapter 的安装/导入路径是什么？`app/adapters` 和 `sdk/adapters` 的关系？
+124. 三种 adapter 的安装/导入路径是什么？为什么统一放在 `sdk/adapters/`？
 125. LangGraph adapter 包装后，原有的 `graph.compile()`、`graph.ainvoke()` 接口是否完全兼容？
 126. 同步节点函数和异步节点函数，adapter 如何处理？
 127. 状态 diff 截断策略是什么？大 state 会不会导致轨迹爆炸？

@@ -14,7 +14,7 @@ SQLite 默认 + PostgreSQL 可选，迁移策略是什么？Alembic 用到什么
 
 ## 参考答案
 
-围绕 SQLite PostgreSQL：DATABASE_URL 切换；Alembic 可选 面试回答应先说业务场景，再落到 app/core/config.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+围绕 SQLite PostgreSQL：DATABASE_URL 切换；Alembic 可选 面试回答应先说业务场景，再落到 app/core/config.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

@@ -14,7 +14,7 @@ LangGraph 评估图（`evaluation_graph.py`）的节点是如何定义的？Stat
 
 ## 参考答案
 
-Q41 与 EvaluationState 相关。task_id/goal/trajectory/context + 六 score 字段 + overall_evaluation Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。LangGraph 同时服务评估 workflow（evaluation_graph.py）与 Wiki Agent（wiki_agent/agent/graph.py），但生产评估并行走 evaluate_parallel。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+Q41 与 EvaluationState 相关。task_id/goal/trajectory/context + 六 score 字段 + overall_evaluation Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。LangGraph 同时服务评估 workflow（evaluation_graph.py）与 Wiki Agent（wiki_agent/agent/graph.py），但生产评估并行走 evaluate_parallel。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

@@ -14,7 +14,7 @@ Chat 接口是 SSE 流式还是一次性返回？流式事件类型有哪些？
 
 ## 参考答案
 
-围绕 Chat SSE：SSE 流式 token；事件 type 含 message/done/error 面试回答应先说业务场景，再落到 app/wiki_agent/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+围绕 Chat SSE：SSE 流式 token；事件 type 含 message/done/error 面试回答应先说业务场景，再落到 app/wiki_agent/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

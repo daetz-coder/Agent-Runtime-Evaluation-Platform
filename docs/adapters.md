@@ -106,7 +106,7 @@ npm run dev
 
 ```python
 # 在 graph.py 或 main.py 中添加
-from app.adapters.langgraph import instrument_langgraph
+from sdk.adapters.langgraph import instrument_langgraph
 
 # 替换 build_graph()
 graph = instrument_langgraph(build_graph())
@@ -169,7 +169,7 @@ EVAL_BATCH_SIZE=10
 
 ```python
 from langgraph.graph import StateGraph, END
-from app.adapters.langgraph import instrument_langgraph
+from sdk.adapters.langgraph import instrument_langgraph
 
 # 定义你的 Agent
 def build_graph():

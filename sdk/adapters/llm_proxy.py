@@ -12,7 +12,7 @@ LLM Proxy Adapter - 代理 LLM 调用，自动收集轨迹
 - 工具调用 (tool_call) — LLM 返回 tool_calls 时记录
 
 使用方式：
-    from app.adapters import create_proxy_llm
+    from sdk import create_proxy_llm
 
     # 原来的代码
     llm = ChatZhipuAI(...)
@@ -248,7 +248,7 @@ def create_proxy_llm(llm: BaseChatModel) -> BaseChatModel:
         代理 LLM 实例（透明包装）
 
     使用方式：
-        from app.adapters import create_proxy_llm
+        from sdk import create_proxy_llm
 
         # 原来的代码
         llm = ChatZhipuAI(...)

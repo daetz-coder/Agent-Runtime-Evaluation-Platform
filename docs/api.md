@@ -22,7 +22,7 @@ http://localhost:8000/api/v1
 | `RATE_LIMIT_EVAL_PER_MINUTE` | `10` | 每分钟每客户端最大请求数 |
 
 **限流范围**: 所有前缀为 `/api/v1/evaluations/` 和 `/api/v1/benchmark/` 的 POST 请求。包括但不限于：
-- `POST /evaluations/run`、`POST /evaluations/run/stream`、`POST /evaluations/run-legacy`
+- `POST /evaluations/run`、`POST /evaluations/run/stream`
 - `POST /evaluations/`、`POST /evaluations/quick`、`POST /evaluations/batch`
 - `POST /evaluations/stream`、`POST /evaluations/consensus`、`POST /evaluations/incremental`
 - `POST /benchmark/monotonicity/run`
@@ -62,7 +62,6 @@ http://localhost:8000/api/v1
 |------|------|------|
 | `POST /evaluations/run` | **沙箱评估** — Agent 在 Docker 容器内运行，自动捕获轨迹并评估 |
 | `POST /evaluations/run/stream` | **SSE 流式沙箱评估** — 实时推送 agent_step + eval_progress |
-| `POST /evaluations/run-legacy` | **一步式评估** — 提交 goal+轨迹，直接返回分数 |
 
 `POST /evaluations/run` 请求体：
 ```json

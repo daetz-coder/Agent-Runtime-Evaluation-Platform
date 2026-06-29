@@ -113,7 +113,7 @@ async def list_tasks(
     )
 
 
-@router.post("/{task_id}/trajectory", status_code=201, deprecated=True)
+@router.post("/{task_id}/trajectory", status_code=201)
 async def add_trajectory(
     task_id: str,
     steps: List[TrajectoryStep],
@@ -121,10 +121,11 @@ async def add_trajectory(
     ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
-    [DEPRECATED] Add trajectory steps to a task.
+    Add trajectory steps to an existing task.
 
-    Use POST /api/v1/evaluations/run instead, which runs the agent
-    inside a sandbox and captures the trajectory automatically.
+    Used by the Dashboard, SDK HTTP transport, and external Agent integrations
+    that capture their own runtime trace (as opposed to sandbox mode where the
+    platform runs the agent via POST /evaluations/run).
     """
     require_role(ctx, WorkspaceRole.EVALUATOR)
     service = EvaluationService(db)
@@ -137,7 +138,7 @@ async def add_trajectory(
         await add_audit_log(
             db, ws_id, ctx.user_id, AuditAction.TRAJECTORY_ADDED, "task", task_id, {"steps": len(steps)}
         )
-    return {"message": f"Added {len(steps)} trajectory steps", "task_id": task_id, "deprecated": True}
+    return {"message": f"Added {len(steps)} trajectory steps", "task_id": task_id}
 
 
 @router.put("/{task_id}", response_model=TaskResponse)

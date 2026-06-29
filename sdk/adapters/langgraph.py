@@ -13,7 +13,7 @@ LangGraph Adapter - 包装 LangGraph，自动收集轨迹
 - 失败事件 (failure) — 节点异常时自动记录
 
 使用方式：
-    from app.adapters.langgraph import instrument_langgraph
+    from sdk.adapters.langgraph import instrument_langgraph
 
     # 原来的代码
     graph = build_graph()
@@ -386,7 +386,7 @@ def instrument_langgraph(graph: Union[StateGraph, CompiledStateGraph]) -> Union[
         包装后的图（透明包装）
 
     使用方式：
-        from app.adapters.langgraph import instrument_langgraph
+        from sdk.adapters.langgraph import instrument_langgraph
 
         # 原来的代码
         graph = build_graph()

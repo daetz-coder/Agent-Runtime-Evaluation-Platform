@@ -14,7 +14,7 @@
 
 ## 参考答案
 
-问题「阅读 `hybrid_search` 的 RRF 实现，手工算两个排名的融合结果。」考察 RRF 手算。两列表 rank 代入 1/(60+r+1) 相加 改动 Evaluator 需同步 app/models/schemas.py、evaluators/__init__.py、evaluation_graph 注册与 aggregate WEIGHTS。 首要读 app/wiki_agent/agent/tools/search_tools.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+问题「阅读 `hybrid_search` 的 RRF 实现，手工算两个排名的融合结果。」考察 RRF 手算。两列表 rank 代入 1/(60+r+1) 相加 改动 Evaluator 需同步 app/models/schemas.py、evaluators/__init__.py、evaluation_graph 注册与 aggregate WEIGHTS。 首要读 app/wiki_agent/agent/tools/search_tools.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

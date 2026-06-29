@@ -1,6 +1,8 @@
 """
 Data collectors for trajectory collection.
-实际实现位于 sdk/collector.py 中。
+
+TrajectoryCollector lives in sdk/collector.py (single implementation).
+Wiki Agent uses app/collectors/inprocess_transport.py for same-process DB writes.
 """
 
 from sdk.collector import ActionType, TrajectoryCollector, get_collector, reset_collector

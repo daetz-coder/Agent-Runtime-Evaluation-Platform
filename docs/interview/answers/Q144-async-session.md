@@ -14,7 +14,7 @@ SQLAlchemy 2.0 async session 的生命周期如何管理？`Depends(get_db)` 模
 
 ## 参考答案
 
-问题「SQLAlchemy 2.0 async session 的生命周期如何管理？`Depends(get_db)` 模式？」考察 async session。Depends get_db yield session FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。 首要读 app/db/session.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+问题「SQLAlchemy 2.0 async session 的生命周期如何管理？`Depends(get_db)` 模式？」考察 async session。Depends get_db yield session FastAPI 异步 + SQLAlchemy 2.0；POST /evaluations 返回 202，/evaluations/stream 提供 SSE progress。 首要读 app/db/session.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

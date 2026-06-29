@@ -1,4 +1,4 @@
-# Q124: 三种 adapter 的安装/导入路径是什么？`app/adapters` 和 `sdk/adapters` 的关系？
+# Q124: 三种 adapter 的安装/导入路径是什么？为什么统一放在 `sdk/adapters/`？
 
 ## 元信息
 
@@ -10,22 +10,22 @@
 
 ## 问题
 
-三种 adapter 的安装/导入路径是什么？`app/adapters` 和 `sdk/adapters` 的关系？
+三种 adapter 的安装/导入路径是什么？为什么统一放在 `sdk/adapters/`？
 
 ## 参考答案
 
-围绕 adapter 路径：镜像关系；SDK 可独立 pip 面试回答应先说业务场景，再落到 app/adapters/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。sdk/ 可独立使用，三种 adapter 映射框架事件到 14 种 ActionType，EVAL_BATCH_SIZE 控制批量 flush。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。
+围绕 adapter 路径：统一使用 sdk/adapters/；pip install -e . 后 from sdk import instrument_langgraph 面试回答应先说业务场景，再落到 sdk/adapters/ 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。sdk/ 可独立使用，三种 adapter 映射框架事件到 14 种 ActionType，EVAL_BATCH_SIZE 控制批量 flush。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。
 
 ## 代码依据
 
-- `app/adapters/`
 - `sdk/adapters/`
+- `sdk/collector.py`
 - `app/graphs/evaluation_graph.py`
 
 ## 回答要点
 
-- adapter 路径：镜像关系
-- 代码入口：app/adapters/
+- adapter 路径：统一 sdk/adapters/
+- 代码入口：sdk/adapters/
 - 与六维 LLM-as-Judge 评估链路相关
 - 轨迹 schema 见 app/models/action_types.py
 
@@ -33,7 +33,7 @@
 
 **Q: 「adapter 路径」最先看哪段代码？**
 
-A: 打开 app/adapters/，再对照 app/graphs/evaluation_graph.py 的数据流。
+A: 打开 sdk/adapters/，再对照 app/graphs/evaluation_graph.py 的数据流。
 
 **Q: Demo 里如何验证 adapter 路径？**
 

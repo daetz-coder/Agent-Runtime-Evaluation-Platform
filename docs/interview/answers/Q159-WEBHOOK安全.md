@@ -14,7 +14,7 @@
 
 ## 参考答案
 
-问题「`EVAL_WEBHOOK_URL` 通知机制的安全考虑？」考察 WEBHOOK 安全。EVAL_WEBHOOK_URL HMAC 签名 当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。 首要读 app/core/config.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+问题「`EVAL_WEBHOOK_URL` 通知机制的安全考虑？」考察 WEBHOOK 安全。EVAL_WEBHOOK_URL HMAC 签名 当前 BackgroundTasks 适合 Demo 量级；10 万/日需 Celery、PostgreSQL、Judge 限流与多租户 workspace。 首要读 app/core/config.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

@@ -14,7 +14,7 @@
 
 ## 参考答案
 
-问题「轨迹 step_number 的语义是什么？乱序上报如何处理？」考察 step_number。单调递增；乱序上报应服务端排序或拒绝 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 sdk/collector.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+问题「轨迹 step_number 的语义是什么？乱序上报如何处理？」考察 step_number。单调递增；乱序上报应服务端排序或拒绝 轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。 首要读 sdk/collector.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

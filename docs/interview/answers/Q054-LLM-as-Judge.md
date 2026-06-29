@@ -14,7 +14,7 @@
 
 ## 参考答案
 
-问题「什么是 LLM-as-Judge？相比传统 rubric + 人工打分，优势和局限分别是什么？」考察 LLM-as-Judge。ChatPromptTemplate + temperature=0 + JSON 分数 六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。 首要读 app/evaluators/base.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+问题「什么是 LLM-as-Judge？相比传统 rubric + 人工打分，优势和局限分别是什么？」考察 LLM-as-Judge。ChatPromptTemplate + temperature=0 + JSON 分数 六维 Evaluator 继承 BaseEvaluator，temperature=0，JSON 解析失败时各子维 fallback 50 分。 首要读 app/evaluators/base.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

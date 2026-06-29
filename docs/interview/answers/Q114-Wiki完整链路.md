@@ -14,7 +14,7 @@ Wiki Agent 的完整请求链路：用户提问 → 检索 → 生成 → 可选
 
 ## 参考答案
 
-问题「Wiki Agent 的完整请求链路：用户提问 → 检索 → 生成 → 可选知识提取，请逐步说明。」考察 Wiki 链路。提问→hybrid_search→LLM respond→可选 extract Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。 首要读 app/wiki_agent/agent/graph.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 app/adapters/ 与 sdk/adapters/ 三种 adapter 的场景选择。
+问题「Wiki Agent 的完整请求链路：用户提问 → 检索 → 生成 → 可选知识提取，请逐步说明。」考察 Wiki 链路。提问→hybrid_search→LLM respond→可选 extract Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。 首要读 app/wiki_agent/agent/graph.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及接入，说明 sdk/adapters/ 三种 adapter 的场景选择。
 
 ## 代码依据
 

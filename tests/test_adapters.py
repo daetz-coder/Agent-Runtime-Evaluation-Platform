@@ -17,7 +17,7 @@ def test_proxy_llm():
     """测试 LLM Proxy — BaseChatModel 透明代理，记录 llm_call + tool_decision"""
     from langchain_openai import ChatOpenAI
 
-    from app.adapters.llm_proxy import create_proxy_llm
+    from sdk.adapters.llm_proxy import create_proxy_llm
     from app.collectors import get_collector
 
     collector = get_collector()
@@ -56,7 +56,7 @@ def test_callback_handler():
     """测试 Callback Handler — on_llm_start/end, on_tool_start/end/error"""
     from langchain_core.callbacks import BaseCallbackHandler
 
-    from app.adapters.callback import create_callback_handler
+    from sdk.adapters.callback import create_callback_handler
 
     handler = create_callback_handler()
 
@@ -106,7 +106,7 @@ async def test_langgraph_instrument():
     raw_graph.set_finish_point("sync_step")
 
     # 一行代码 instrument
-    from app.adapters.langgraph import instrument_langgraph
+    from sdk.adapters.langgraph import instrument_langgraph
 
     instrumented = instrument_langgraph(raw_graph)
 
@@ -138,7 +138,7 @@ async def test_langgraph_forwards_config():
     from langchain_core.runnables import RunnableConfig
     from langgraph.graph import StateGraph
 
-    from app.adapters.langgraph import instrument_langgraph
+    from sdk.adapters.langgraph import instrument_langgraph
 
     class TestState(TypedDict):
         value: str

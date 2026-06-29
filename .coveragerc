@@ -3,7 +3,6 @@ source = app
 omit =
     app/wiki_agent/*
     app/benchmarks/*
-    app/adapters/*
     app/collectors/*
     */tests/*
     */__pycache__/*
