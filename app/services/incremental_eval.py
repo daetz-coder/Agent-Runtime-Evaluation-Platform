@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from app.core.config import settings
 from app.db.database import async_session_factory
 from app.db.models import AgentTask, AgentTrajectory, Evaluation, EvaluationStatus, TaskStatus
-from app.graphs.evaluation_graph import evaluate_parallel
+from app.graphs.evaluation_graph import evaluate_partial
 from app.models.schemas import TrajectoryDiffResponse, TrajectoryStep
 from app.services.diff_service import DiffService
 
@@ -141,7 +141,7 @@ class IncrementalEvalService:
                     )
                     for s in head_traj
                 ]
-                full_result = await evaluate_parallel(head_task.goal, steps, head_task.context)
+                full_result = await evaluate_partial(head_task.goal, steps, head_task.context, re_eval_dims)
 
                 # Take only the re-evaluated dimensions
                 for dim in re_eval_dims:
@@ -180,6 +180,15 @@ class IncrementalEvalService:
 
             await db.flush()
             await db.commit()
+
+            from app.core.cache import cache_delete, cache_delete_pattern
+
+            await cache_delete_pattern("report:*")
+            await cache_delete(f"task:{head_task_id}")
+            await cache_delete(f"trajectory:{head_task_id}")
+            ws_id = head_task.workspace_id
+            await cache_delete(f"dashboard:{ws_id or 'all'}:counters")
+            await cache_delete(f"eval_dashboard:{ws_id or 'all'}")
 
             return eval_id, reused_dims, re_eval_dims, diff, new_eval.status.value, new_eval.overall_score
 

@@ -69,6 +69,7 @@ class RegressionDetectionService:
         base_eval_id: str,
         head_eval_id: str,
         include_diff: bool = True,
+        workspace_id: Optional[str] = None,
     ) -> RegressionReport:
         """
         Compare two evaluations by ID and detect regressions.
@@ -77,16 +78,27 @@ class RegressionDetectionService:
             base_eval_id: Reference (baseline) evaluation ID.
             head_eval_id: New evaluation ID to check.
             include_diff: If True, include trajectory diff in the report.
+            workspace_id: If set, verify both evaluations belong to this workspace.
 
         Returns:
             RegressionReport with per-dimension deltas and regression flags.
         """
         async with async_session_factory() as db:
+            from app.db.models import AgentTask
+
             base_eval = await db.get(Evaluation, base_eval_id)
             head_eval = await db.get(Evaluation, head_eval_id)
 
             if not base_eval or not head_eval:
                 raise ValueError("One or both evaluations not found")
+
+            if workspace_id:
+                base_task = await db.get(AgentTask, base_eval.task_id)
+                head_task = await db.get(AgentTask, head_eval.task_id)
+                if not base_task or base_task.workspace_id != workspace_id:
+                    raise ValueError("Base evaluation not found in this workspace")
+                if not head_task or head_task.workspace_id != workspace_id:
+                    raise ValueError("Head evaluation not found in this workspace")
 
             report = self._compare_objects(
                 base_eval=base_eval,

@@ -448,3 +448,43 @@ async def evaluate_parallel(
     scores["overall"] = {"overall_score": round(overall, 1)}
 
     return scores
+
+
+EVALUATOR_CLASSES = {
+    "planning": PlanningEvaluator,
+    "tactical": TacticalEvaluator,
+    "tool_use": ToolUseEvaluator,
+    "memory": MemoryEvaluator,
+    "replan": ReplanEvaluator,
+    "retrieval": RetrievalEvaluator,
+}
+
+
+async def evaluate_partial(
+    goal: str,
+    trajectory: List[TrajectoryStep],
+    context: Optional[Dict[str, Any]],
+    dimensions: List[str],
+) -> Dict[str, Any]:
+    """Run only the requested evaluators in parallel."""
+    import asyncio
+
+    dims = [d for d in dimensions if d in EVALUATOR_CLASSES]
+    if not dims:
+        return {}
+
+    async def _eval(dim_name: str):
+        try:
+            ev = EVALUATOR_CLASSES[dim_name]()
+            result = await ev.evaluate(goal=goal, trajectory=trajectory, context=context)
+            judge_raw = ev.get_judge_raw_history()
+            result_dict = result.model_dump() if hasattr(result, "model_dump") else result
+            if judge_raw:
+                result_dict["_judge_raw"] = judge_raw
+            return dim_name, result_dict
+        except Exception as e:
+            logger.error("Partial eval [%s] failed: %s", dim_name, e)
+            return dim_name, {"overall": 0, "feedback": str(e)}
+
+    results = await asyncio.gather(*[_eval(dim) for dim in dims])
+    return {dim_name: result_dict for dim_name, result_dict in results}
