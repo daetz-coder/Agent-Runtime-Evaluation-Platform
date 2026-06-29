@@ -11,7 +11,7 @@ The Agent Runtime Evaluation Platform evaluates the runtime quality of AI agents
 │                        API Layer (FastAPI)                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  /api/v1/tasks │ /api/v1/evaluations │ /api/v1/reports │ /api/v1/benchmark │
-│  /api/v1/workspaces │ /api/wiki/* │ /api/chat/* │ /api/v1/settings │
+│  /api/wiki/* │ /api/chat/* │ /api/v1/settings │
 │  CORS → CorrelationIdMiddleware → AuthMiddleware → RateLimitMiddleware     │
 │  → PrometheusMiddleware (middleware chain)                                 │
 └────────────────────┴───────────────────┴─────────────────┴───────────────────┘
@@ -267,18 +267,7 @@ sandbox_evaluation
 | **Worker 重启** | `max_tasks_per_child=50`，防止内存泄漏 |
 | **Fallback** | Celery 不可用时自动降级到 BackgroundTasks |
 
-### 12. Multi-tenant Resource Quotas（多租户配额）
-
-Workspace 级别的资源限制，评估前检查，超限返回 HTTP 429：
-
-| 配额 | 字段 | 默认 | 检查时机 |
-|------|------|------|----------|
-| 沙箱并发 | `sandbox_quota` | 3 | `POST /evaluations/run` |
-| 最大步数 | `max_steps_per_eval` | 50 | `POST /evaluations/run` |
-| 月评估次数 | `eval_count_limit_monthly` | 1000 | 所有评估端点 |
-| 存储上限 | `storage_limit_mb` | 1024 | 文件上传时 |
-
-### 13. Webhook Retry（通知重试）
+### 12. Webhook Retry（通知重试）
 
 评估完成后通过 Webhook 通知外部系统，指数退避重试：
 

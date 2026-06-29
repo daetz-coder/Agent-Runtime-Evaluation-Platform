@@ -353,15 +353,3 @@ celery -A app.celery_app worker -l info -c 4 -Q evaluation,sandbox
 
 ---
 
-## 14. 多租户资源配额
-
-Workspace 级别的资源限制：
-
-| 配额 | 默认值 | 说明 |
-|------|--------|------|
-| `sandbox_quota` | 3 | 同时运行的沙箱数 |
-| `max_steps_per_eval` | 50 | 单次评估最大 Agent 步数 |
-| `eval_count_limit_monthly` | 1000 | 月评估次数上限 |
-| `storage_limit_mb` | 1024 | workspace 存储上限 |
-
-超限时 API 返回 HTTP 429 + 详细错误信息。

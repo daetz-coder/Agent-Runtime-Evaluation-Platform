@@ -31,7 +31,6 @@ from fastapi.routing import APIRoute
 
 from app.api.v1.endpoints import benchmark, evaluation, reports, system, tasks
 from app.api.v1.endpoints import settings as settings_endpoints
-from app.api.workspace_endpoints import router as workspace_router
 from app.core.cache import close_redis, init_redis
 from app.core.config import settings
 from app.db.database import close_db, init_db
@@ -256,7 +255,6 @@ collector.finish()
     register_routes(wiki_vector_api.api_router, "", ["wiki-agent"])
     register_routes(wiki_vector_api.page_router, "", ["wiki-agent"])
     register_routes(wiki_debug.router, "", ["debug"])
-    register_routes(workspace_router, "/api/v1", ["workspaces"])
 
     from app.api.auth_middleware import AuthMiddleware
 

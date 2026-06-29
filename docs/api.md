@@ -141,20 +141,6 @@ make run-dev       # 热重载后端
 make db-upgrade    # 数据库迁移
 ```
 
-### Workspaces（多租户）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `POST /api/v1/workspaces/` | 创建工作区（自动生成 API Key） |
-| `GET /api/v1/workspaces/` | 列出工作区 |
-| `GET /api/v1/workspaces/{id}` | 获取工作区详情 |
-| `POST /api/v1/workspaces/{id}/rotate-key` | 轮换 API Key |
-| `POST /api/v1/workspaces/{id}/members` | 添加成员（admin/evaluator/viewer） |
-| `DELETE /api/v1/workspaces/{id}/members/{uid}` | 移除成员 |
-| `GET /api/v1/workspaces/{id}/audit` | 审计日志 |
-
 ### Wiki Agent 知识库
 
 | 方法 | 路径 | 说明 |
