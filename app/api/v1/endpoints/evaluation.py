@@ -37,11 +37,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _create_task_checked(
+    service: EvaluationService,
+    task_data,
+    workspace_id: Optional[str],
+):
+    """Create task or raise HTTP 409 on cross-workspace id conflict."""
+    try:
+        return await service.create_task(task_data, workspace_id=workspace_id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+
 @router.get("/", response_model=List[EvaluationListItem])
 async def list_evaluations(
     skip: int = 0,
     limit: int = 100,
     status: Optional[str] = None,
+    min_score: Optional[float] = None,
+    max_score: Optional[float] = None,
     db: AsyncSession = Depends(get_db),
     ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
@@ -53,6 +67,8 @@ async def list_evaluations(
         limit=limit,
         status=status,
         workspace_id=ctx.filter_workspace_id(),
+        min_score=min_score,
+        max_score=max_score,
     )
     # 通过 response header 返回总数
     from fastapi.responses import JSONResponse
@@ -61,6 +77,17 @@ async def list_evaluations(
         content=[e.model_dump(mode="json") for e in evaluations],
         headers={"X-Total-Count": str(total)},
     )
+
+
+@router.get("/dashboard")
+async def get_evaluations_dashboard(
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """Aggregate evaluation stats for list page (not limited to current page)."""
+    require_role(ctx, WorkspaceRole.VIEWER)
+    service = EvaluationService(db)
+    return await service.get_evaluations_dashboard(workspace_id=ctx.filter_workspace_id())
 
 
 async def _run_evaluation_background(
@@ -141,7 +168,7 @@ async def run_evaluation(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    evaluation = await service.create_evaluation(
+    evaluation, created_new = await service.create_evaluation(
         request.task_id,
         stream_mode=request.use_stream,
         workspace_id=ws_filter,
@@ -151,12 +178,12 @@ async def run_evaluation(
         raise HTTPException(status_code=500, detail="Evaluation failed to start")
 
     ws_id = ws_filter or ctx.workspace_id
-    if ws_id:
+    if ws_id and created_new:
         await add_audit_log(db, ws_id, ctx.user_id, AuditAction.EVAL_CREATED, "evaluation", evaluation.id)
 
     await db.commit()
 
-    if not request.use_stream:
+    if not request.use_stream and created_new:
         # Prefer Celery task queue; fall back to BackgroundTasks
         try:
             from app.celery_app import run_evaluation_task
@@ -178,8 +205,11 @@ async def run_evaluation(
 
 
 @router.get("/settings")
-async def get_eval_settings():
+async def get_eval_settings(
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
     """返回评估公开配置（不含密钥）。"""
+    require_role(ctx, WorkspaceRole.VIEWER)
     return {
         "default_provider": settings.DEFAULT_LLM_PROVIDER,
         "parallel_enabled": settings.EVAL_PARALLEL,
@@ -306,132 +336,180 @@ async def run_sandbox_evaluation_stream(
         raise HTTPException(status_code=429, detail=str(e))
 
     async def event_generator():
+        from app.db.models import Evaluation, EvaluationStatus, TaskStatus
+
         async with async_session_factory() as session:
             service = EvaluationService(session)
+            task_id: Optional[str] = None
+            evaluation_id: Optional[str] = None
 
-            from app.models.schemas import TaskCreate
-            from app.services.quota import SANDBOX_EVAL_MODE
+            try:
+                from app.models.schemas import TaskCreate
+                from app.services.quota import SANDBOX_EVAL_MODE
 
-            sandbox_context = dict(request.context or {})
-            sandbox_context["eval_mode"] = SANDBOX_EVAL_MODE
-            task_data = TaskCreate(goal=request.goal, context=sandbox_context)
-            task_response = await service.create_task(task_data, workspace_id=ws_filter)
-            task_id = task_response.id
+                sandbox_context = dict(request.context or {})
+                sandbox_context["eval_mode"] = SANDBOX_EVAL_MODE
+                task_data = TaskCreate(goal=request.goal, context=sandbox_context)
+                task_response = await _create_task_checked(service, task_data, ws_filter)
+                task_id = task_response.id
 
-            yield {"event": "task_created", "data": json.dumps({"task_id": task_id})}
+                task_model = await service._get_task_model(task_id, workspace_id=ws_filter)
+                if not task_model:
+                    yield {"event": "error", "data": json.dumps({"message": "Task not found"})}
+                    return
+                task_model.status = TaskStatus.RUNNING
+                task_model.started_at = datetime.now(timezone.utc)
+                await session.flush()
 
-            runner = AgentRunner()
-            agent_result = await runner.run(
-                goal=request.goal,
-                workspace_files=request.workspace_files,
-                tools=request.tools,
-                model=request.model,
-                provider=request.provider,
-                context=request.context,
-                max_steps=request.max_steps,
-                temperature=request.temperature,
-            )
-
-            for step in agent_result.trajectory:
-                yield {"event": "agent_step", "data": json.dumps(step, default=str)}
-
-            yield {
-                "event": "agent_done",
-                "data": json.dumps(
-                    {
-                        "success": agent_result.success,
-                        "steps_taken": agent_result.steps_taken,
-                        "duration_ms": agent_result.duration_ms,
-                        "final_answer": agent_result.final_answer[:500],
-                    }
-                ),
-            }
-
-            if agent_result.trajectory:
-                await service.add_trajectory(task_id, agent_result.trajectory, workspace_id=ws_filter)
-
-            if agent_result.trajectory and agent_result.success:
-                from app.evaluators import (
-                    MemoryEvaluator,
-                    PlanningEvaluator,
-                    ReplanEvaluator,
-                    RetrievalEvaluator,
-                    TacticalEvaluator,
-                    ToolUseEvaluator,
-                )
-                from app.models.schemas import TrajectoryStep as TS
-
-                steps = [
-                    TS(
-                        step_number=s["step_number"],
-                        action_type=s["action_type"],
-                        action_detail=s.get("action_detail", {}),
-                        observation=s.get("observation"),
-                        timestamp=s.get("timestamp"),
-                    )
-                    for s in agent_result.trajectory
-                ]
-
-                evaluators = [
-                    ("planning", PlanningEvaluator),
-                    ("tactical", TacticalEvaluator),
-                    ("tool_use", ToolUseEvaluator),
-                    ("memory", MemoryEvaluator),
-                    ("replan", ReplanEvaluator),
-                    ("retrieval", RetrievalEvaluator),
-                ]
-                total = len(evaluators)
-                dim_results = {}
-
-                for idx, (dim_name, EvalClass) in enumerate(evaluators, 1):
-                    try:
-                        ev = EvalClass()
-                        r = await ev.evaluate(goal=request.goal, trajectory=steps, context=request.context)
-                        score = getattr(r, "overall", 0)
-                        dim_data = r.model_dump() if hasattr(r, "model_dump") else {"overall": score}
-                        judge_raw = ev.get_judge_raw_history()
-                        if judge_raw:
-                            dim_data["_judge_raw"] = judge_raw
-                        dim_results[dim_name] = dim_data
-                        yield {
-                            "event": "eval_progress",
-                            "data": json.dumps(
-                                {
-                                    "dimension": dim_name,
-                                    "score": score,
-                                    "progress": idx,
-                                    "total": total,
-                                }
-                            ),
-                        }
-                    except Exception as e:
-                        dim_results[dim_name] = {"overall": 0, "feedback": str(e)}
-                        yield {
-                            "event": "error",
-                            "data": json.dumps(
-                                {
-                                    "dimension": dim_name,
-                                    "message": str(e),
-                                }
-                            ),
-                        }
-
-                weights = settings.EVAL_DIMENSION_WEIGHTS
-                score_values = {d: (dim_results.get(d) or {}).get("overall", 0) for d in weights}
-                overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
+                eval_response, _ = await service.create_evaluation(task_id, workspace_id=ws_filter)
+                if not eval_response:
+                    yield {"event": "error", "data": json.dumps({"message": "Failed to create evaluation"})}
+                    return
+                evaluation_id = eval_response.id
 
                 yield {
-                    "event": "result",
+                    "event": "task_created",
+                    "data": json.dumps({"task_id": task_id, "evaluation_id": evaluation_id}),
+                }
+
+                runner = AgentRunner()
+                agent_result = await runner.run(
+                    goal=request.goal,
+                    workspace_files=request.workspace_files,
+                    tools=request.tools,
+                    model=request.model,
+                    provider=request.provider,
+                    context=request.context,
+                    max_steps=request.max_steps,
+                    temperature=request.temperature,
+                )
+
+                for step in agent_result.trajectory:
+                    yield {"event": "agent_step", "data": json.dumps(step, default=str)}
+
+                yield {
+                    "event": "agent_done",
                     "data": json.dumps(
                         {
-                            "scores": score_values,
-                            "overall": overall,
+                            "success": agent_result.success,
+                            "steps_taken": agent_result.steps_taken,
+                            "duration_ms": agent_result.duration_ms,
+                            "final_answer": agent_result.final_answer[:500],
                         }
                     ),
                 }
 
-            await session.commit()
-            yield {"event": "done", "data": "{}"}
+                if agent_result.trajectory:
+                    await service.add_trajectory(task_id, agent_result.trajectory, workspace_id=ws_filter)
+
+                if agent_result.trajectory and agent_result.success:
+                    from app.evaluators import (
+                        MemoryEvaluator,
+                        PlanningEvaluator,
+                        ReplanEvaluator,
+                        RetrievalEvaluator,
+                        TacticalEvaluator,
+                        ToolUseEvaluator,
+                    )
+                    from app.models.schemas import TrajectoryStep as TS
+
+                    steps = [
+                        TS(
+                            step_number=s["step_number"],
+                            action_type=s["action_type"],
+                            action_detail=s.get("action_detail", {}),
+                            observation=s.get("observation"),
+                            timestamp=s.get("timestamp"),
+                        )
+                        for s in agent_result.trajectory
+                    ]
+
+                    evaluators = [
+                        ("planning", PlanningEvaluator),
+                        ("tactical", TacticalEvaluator),
+                        ("tool_use", ToolUseEvaluator),
+                        ("memory", MemoryEvaluator),
+                        ("replan", ReplanEvaluator),
+                        ("retrieval", RetrievalEvaluator),
+                    ]
+                    total = len(evaluators)
+                    dim_results = {}
+
+                    for idx, (dim_name, EvalClass) in enumerate(evaluators, 1):
+                        try:
+                            ev = EvalClass()
+                            r = await ev.evaluate(goal=request.goal, trajectory=steps, context=request.context)
+                            score = getattr(r, "overall", 0)
+                            dim_data = r.model_dump() if hasattr(r, "model_dump") else {"overall": score}
+                            judge_raw = ev.get_judge_raw_history()
+                            if judge_raw:
+                                dim_data["_judge_raw"] = judge_raw
+                            dim_results[dim_name] = dim_data
+                            yield {
+                                "event": "eval_progress",
+                                "data": json.dumps(
+                                    {
+                                        "dimension": dim_name,
+                                        "score": score,
+                                        "progress": idx,
+                                        "total": total,
+                                    }
+                                ),
+                            }
+                        except Exception as e:
+                            dim_results[dim_name] = {"overall": 0, "feedback": str(e)}
+                            yield {
+                                "event": "error",
+                                "data": json.dumps({"dimension": dim_name, "message": str(e)}),
+                            }
+
+                    weights = settings.EVAL_DIMENSION_WEIGHTS
+                    score_values = {d: (dim_results.get(d) or {}).get("overall", 0) for d in weights}
+                    overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
+                    parallel_result = {**dim_results, "overall": {"overall_score": overall}}
+
+                    await service.finalize_from_parallel(evaluation_id, task_id, parallel_result)
+
+                    yield {
+                        "event": "result",
+                        "data": json.dumps(
+                            {
+                                "scores": score_values,
+                                "overall": overall,
+                                "evaluation_id": evaluation_id,
+                                "task_id": task_id,
+                            }
+                        ),
+                    }
+                else:
+                    eval_row = await session.get(Evaluation, evaluation_id)
+                    if eval_row:
+                        eval_row.status = EvaluationStatus.FAILED
+                    task_model.status = TaskStatus.FAILED
+                    task_model.completed_at = datetime.now(timezone.utc)
+                    await session.flush()
+                    yield {
+                        "event": "error",
+                        "data": json.dumps({"message": agent_result.error or "Agent run failed"}),
+                    }
+            except HTTPException as e:
+                yield {"event": "error", "data": json.dumps({"message": str(e.detail)})}
+            except Exception as e:
+                logger.exception("Sandbox stream failed")
+                if task_id:
+                    task_model = await service._get_task_model(task_id, workspace_id=ws_filter)
+                    if task_model:
+                        task_model.status = TaskStatus.FAILED
+                        task_model.completed_at = datetime.now(timezone.utc)
+                    if evaluation_id:
+                        eval_row = await session.get(Evaluation, evaluation_id)
+                        if eval_row and eval_row.status == EvaluationStatus.IN_PROGRESS:
+                            eval_row.status = EvaluationStatus.FAILED
+                    await session.flush()
+                yield {"event": "error", "data": json.dumps({"message": str(e)})}
+            finally:
+                await session.commit()
+                yield {"event": "done", "data": "{}"}
 
     return EventSourceResponse(event_generator())
 
@@ -588,18 +666,22 @@ async def batch_evaluation(
         except QuotaExceeded as e:
             results.append({"task_id": task_id, "status": "quota_exceeded", "detail": str(e)})
             continue
-        evaluation = await service.create_evaluation(task_id, workspace_id=ws_filter)
-        try:
-            from app.celery_app import run_evaluation_task
+        evaluation, created_new = await service.create_evaluation(task_id, workspace_id=ws_filter)
+        if not evaluation:
+            results.append({"task_id": task_id, "status": "failed"})
+            continue
+        if created_new:
+            try:
+                from app.celery_app import run_evaluation_task
 
-            run_evaluation_task.delay(task_id, evaluation.id, workspace_id=ws_filter)
-        except Exception:
-            background_tasks.add_task(
-                _run_evaluation_background,
-                task_id,
-                evaluation.id,
-                ws_filter,
-            )
+                run_evaluation_task.delay(task_id, evaluation.id, workspace_id=ws_filter)
+            except Exception:
+                background_tasks.add_task(
+                    _run_evaluation_background,
+                    task_id,
+                    evaluation.id,
+                    ws_filter,
+                )
         results.append(
             {
                 "task_id": task_id,
@@ -785,59 +867,80 @@ async def evaluation_stream(
         yield {"event": "done", "data": "{}"}
 
     async def event_generator():
-        if evaluation_id:
-            async with async_session_factory() as session:
-                eval_row = await session.get(Evaluation, evaluation_id)
-                if eval_row and eval_row.status == EvaluationStatus.COMPLETED:
-                    if eval_row.task_id != request.task_id:
-                        yield {"event": "error", "data": json.dumps({"message": "Evaluation not found for this task"})}
+        claimed = False
+        try:
+            if evaluation_id:
+                async with async_session_factory() as session:
+                    eval_row = await session.get(Evaluation, evaluation_id)
+                    if not eval_row:
+                        yield {"event": "error", "data": json.dumps({"message": "Evaluation not found"})}
                         return
-                    async for msg in yield_completed_evaluation(eval_row):
-                        yield msg
+                    if eval_row.task_id != request.task_id:
+                        yield {
+                            "event": "error",
+                            "data": json.dumps({"message": "Evaluation not found for this task"}),
+                        }
+                        return
+                    if eval_row.status == EvaluationStatus.COMPLETED:
+                        async for msg in yield_completed_evaluation(eval_row):
+                            yield msg
+                        return
+                    if eval_row.status != EvaluationStatus.IN_PROGRESS:
+                        yield {"event": "error", "data": json.dumps({"message": "Evaluation is not runnable"})}
+                        return
+
+                if not await EvaluationService.try_claim_stream(evaluation_id):
+                    yield {
+                        "event": "error",
+                        "data": json.dumps({"message": "Another stream is already running for this evaluation"}),
+                    }
+                    return
+                claimed = True
+
+            await mark_running()
+
+            _ = asyncio.ensure_future(asyncio.gather(*[run_eval(dim, cls) for dim, cls in evaluators]))
+
+            completed = 0
+            while completed < total:
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=180)
+                    yield msg
+                    if msg["event"] == "progress":
+                        completed = json.loads(msg["data"])["progress"]
+                except asyncio.TimeoutError:
+                    yield {"event": "error", "data": json.dumps({"message": "Evaluation timeout"})}
                     return
 
-        await mark_running()
+            weights = settings.EVAL_DIMENSION_WEIGHTS
+            score_values = {d: (dim_results.get(d) or {}).get("overall", 0) for d in weights}
+            overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
+            parallel_result = {**dim_results, "overall": {"overall_score": overall}}
 
-        # Launch all evaluators concurrently (fire-and-forget via task)
-        _ = asyncio.ensure_future(asyncio.gather(*[run_eval(dim, cls) for dim, cls in evaluators]))
+            if evaluation_id:
+                try:
+                    async with async_session_factory() as session:
+                        svc = EvaluationService(session)
+                        await svc.finalize_from_parallel(evaluation_id, task_id, parallel_result)
+                        await session.commit()
+                except Exception as e:
+                    logger.error("Failed to persist stream evaluation %s: %s", evaluation_id, e)
+                    yield {"event": "error", "data": json.dumps({"message": f"Persist failed: {e}"})}
 
-        completed = 0
-        while completed < total:
-            try:
-                msg = await asyncio.wait_for(queue.get(), timeout=180)
-                yield msg
-                if msg["event"] == "progress":
-                    completed = json.loads(msg["data"])["progress"]
-            except asyncio.TimeoutError:
-                yield {"event": "error", "data": json.dumps({"message": "Evaluation timeout"})}
-                return
-
-        weights = settings.EVAL_DIMENSION_WEIGHTS
-        score_values = {d: (dim_results.get(d) or {}).get("overall", 0) for d in weights}
-        overall = round(sum(weights[d] * score_values[d] for d in weights), 1)
-        parallel_result = {**dim_results, "overall": {"overall_score": overall}}
-
-        if evaluation_id:
-            try:
-                async with async_session_factory() as session:
-                    svc = EvaluationService(session)
-                    await svc.finalize_from_parallel(evaluation_id, task_id, parallel_result)
-                    await session.commit()
-            except Exception as e:
-                logger.error("Failed to persist stream evaluation %s: %s", evaluation_id, e)
-                yield {"event": "error", "data": json.dumps({"message": f"Persist failed: {e}"})}
-
-        yield {
-            "event": "result",
-            "data": json.dumps(
-                {
-                    "scores": score_values,
-                    "overall": overall,
-                    "evaluation_id": evaluation_id,
-                }
-            ),
-        }
-        yield {"event": "done", "data": "{}"}
+            yield {
+                "event": "result",
+                "data": json.dumps(
+                    {
+                        "scores": score_values,
+                        "overall": overall,
+                        "evaluation_id": evaluation_id,
+                    }
+                ),
+            }
+            yield {"event": "done", "data": "{}"}
+        finally:
+            if claimed and evaluation_id:
+                await EvaluationService.release_stream_claim(evaluation_id)
 
     return EventSourceResponse(event_generator())
 
@@ -1030,6 +1133,7 @@ async def get_evaluation_judge_raw(
 @router.post("/incremental", response_model=IncrementalEvalResponse)
 async def incremental_evaluation(
     request: IncrementalEvalRequest,
+    db: AsyncSession = Depends(get_db),
     ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
@@ -1042,6 +1146,15 @@ async def incremental_evaluation(
     Use ``force_dimensions`` to override and force specific dimensions to re-evaluate.
     """
     require_role(ctx, WorkspaceRole.EVALUATOR)
+    ws_filter = ctx.filter_workspace_id()
+
+    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
+
+    try:
+        await enforce_workspace_quotas(db, ws_filter)
+    except QuotaExceeded as e:
+        raise HTTPException(status_code=429, detail=str(e))
+
     from app.services.incremental_eval import IncrementalEvalService
 
     service = IncrementalEvalService()
@@ -1087,20 +1200,7 @@ async def check_regression(
     """
     require_role(ctx, WorkspaceRole.VIEWER)
     ws_filter = ctx.filter_workspace_id()
-    from app.db.models import AgentTask, Evaluation
     from app.services.regression_detection import RegressionDetectionService
-
-    if ws_filter:
-        base_eval = await db.get(Evaluation, base_evaluation_id)
-        head_eval = await db.get(Evaluation, head_evaluation_id)
-        if not base_eval or not head_eval:
-            raise HTTPException(status_code=404, detail="One or both evaluations not found")
-        base_task = await db.get(AgentTask, base_eval.task_id)
-        head_task = await db.get(AgentTask, head_eval.task_id)
-        if not base_task or base_task.workspace_id != ws_filter:
-            raise HTTPException(status_code=404, detail="Base evaluation not found")
-        if not head_task or head_task.workspace_id != ws_filter:
-            raise HTTPException(status_code=404, detail="Head evaluation not found")
 
     service = RegressionDetectionService()
     try:
@@ -1108,6 +1208,7 @@ async def check_regression(
             base_eval_id=base_evaluation_id,
             head_eval_id=head_evaluation_id,
             include_diff=include_diff,
+            workspace_id=ws_filter,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -1167,9 +1268,10 @@ async def run_legacy_evaluation(
 
     # 1. Create task
     task_data = TaskCreate(goal=goal, context=context or {})
-    task = await service.create_task(
+    task = await _create_task_checked(
+        service,
         task_data,
-        workspace_id=ctx.filter_workspace_id(),
+        ctx.filter_workspace_id(),
     )
 
     # 2. Add trajectory
