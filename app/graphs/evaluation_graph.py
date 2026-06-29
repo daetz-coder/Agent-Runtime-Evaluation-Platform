@@ -326,8 +326,20 @@ def _generate_recommendations(
     replan: Dict,
     retrieval: Dict,
 ) -> List[str]:
-    """Generate improvement recommendations."""
+    """Generate improvement recommendations from LLM suggestions (with hardcoded fallback)."""
     recommendations = []
+
+    # Collect all LLM-generated suggestions first
+    llm_suggestions = []
+    for dim in (planning, tactical, tool_use, memory, replan, retrieval):
+        dim_suggestions = dim.get("llm_suggestions") or []
+        if isinstance(dim_suggestions, list):
+            llm_suggestions.extend(dim_suggestions)
+
+    if llm_suggestions:
+        return llm_suggestions[:6]  # cap at 6 recommendations
+
+    # ── Hardcoded fallback (used when LLM didn't return suggestions) ──
 
     # Planning recommendations
     if planning.get("overall", 0) < 60:
@@ -335,9 +347,7 @@ def _generate_recommendations(
 
     # Tactical recommendations
     if tactical.get("overall", 0) < 60:
-        recommendations.append(
-            "改进战术决策：每一步行动前校验其与当前状态和任务目标的相关性。"
-        )
+        recommendations.append("改进战术决策：每一步行动前校验其与当前状态和任务目标的相关性。")
 
     # Tool use recommendations
     if tool_use.get("applicable", True) is not False and tool_use.get("overall", 0) < 60:

@@ -136,12 +136,21 @@ class ToolUseEvaluator(BaseEvaluator):
         # Calculate weighted overall score
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
+        # Extract LLM suggestions from inefficient_calls
+        llm_suggestions = []
+        inefficient = scores.get("inefficient_calls") or []
+        if isinstance(inefficient, list):
+            for call in inefficient:
+                if isinstance(call, dict) and call.get("suggestion"):
+                    llm_suggestions.append(call["suggestion"])
+
         return ToolUseScore(
             selection_quality=scores.get("selection_quality", 0),
             parameter_accuracy=scores.get("parameter_accuracy", 0),
             result_utilization=scores.get("result_utilization", 0),
             overall=overall,
             feedback=scores.get("feedback", "Evaluation completed."),
+            llm_suggestions=llm_suggestions,
         )
 
     def _format_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> str:

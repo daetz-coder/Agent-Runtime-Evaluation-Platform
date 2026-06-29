@@ -134,12 +134,22 @@ class MemoryEvaluator(BaseEvaluator):
         # Calculate weighted overall score
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
+        # Extract LLM suggestions (from suggestions field or forgotten_facts)
+        llm_suggestions = scores.get("suggestions") or []
+        if not llm_suggestions:
+            forgotten = scores.get("forgotten_facts") or []
+            if isinstance(forgotten, list):
+                for fact in forgotten:
+                    if isinstance(fact, str):
+                        llm_suggestions.append(f"需关注已遗忘的关键信息：{fact}")
+
         return MemoryScore(
             retention=scores.get("retention", 0),
             relevance=scores.get("relevance", 0),
             consistency=scores.get("consistency", 0),
             overall=overall,
             feedback=scores.get("feedback", "Evaluation completed."),
+            llm_suggestions=llm_suggestions,
         )
 
     def _infer_key_facts(self, goal: str, trajectory: List[TrajectoryStep]) -> List[str]:

@@ -125,12 +125,21 @@ class TacticalEvaluator(BaseEvaluator):
         # Calculate weighted overall score
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
+        # Extract LLM suggestions from problematic_actions
+        llm_suggestions = []
+        problematic = scores.get("problematic_actions") or []
+        if isinstance(problematic, list):
+            for action in problematic:
+                if isinstance(action, dict) and action.get("suggestion"):
+                    llm_suggestions.append(action["suggestion"])
+
         return TacticalScore(
             relevance=scores.get("relevance", 0),
             efficiency=scores.get("efficiency", 0),
             correctness=scores.get("correctness", 0),
             overall=overall,
             feedback=scores.get("feedback", "Evaluation completed."),
+            llm_suggestions=llm_suggestions,
         )
 
     def _extract_actions(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:

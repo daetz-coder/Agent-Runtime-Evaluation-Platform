@@ -149,6 +149,12 @@ class RetrievalEvaluator(BaseEvaluator):
                 },
             )
             scores = self._parse_scores(response.content)
+            # Populate llm_suggestions from missing_info
+            missing_info = scores.get("missing_info") or []
+            if isinstance(missing_info, list):
+                scores["llm_suggestions"] = [
+                    f"信息缺口：{info}" for info in missing_info if isinstance(info, str)
+                ]
             return RetrievalScore(**scores)
         except Exception as e:
             logger.error("Retrieval evaluation failed: %s", e)

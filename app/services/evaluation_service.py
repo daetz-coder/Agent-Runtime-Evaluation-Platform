@@ -1045,7 +1045,19 @@ class EvaluationService:
         )
 
     def _build_recommendations(self, feedback: Dict[str, Any]) -> List[str]:
-        """Rebuild recommendations from persisted dimension scores."""
+        """Rebuild recommendations from LLM-generated suggestions (with hardcoded fallback)."""
+        # Collect all LLM-generated suggestions first
+        llm_suggestions = []
+        for dim_name in ("planning", "tactical", "tool_use", "memory", "replan", "retrieval"):
+            dim_feedback = feedback.get(dim_name) or {}
+            dim_suggestions = dim_feedback.get("llm_suggestions") or []
+            if isinstance(dim_suggestions, list):
+                llm_suggestions.extend(dim_suggestions)
+
+        if llm_suggestions:
+            return llm_suggestions[:6]
+
+        # ── Hardcoded fallback ──
         recommendations: List[str] = []
         labels = {
             "planning": "改进规划：执行前补充关键步骤、依赖关系和验收标准。",

@@ -133,6 +133,9 @@ class PlanningEvaluator(BaseEvaluator):
         # Calculate weighted overall score
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
+        # Extract LLM suggestions (falls back to hardcoded if not present)
+        llm_suggestions = scores.get("suggestions") or []
+
         return PlanningScore(
             coverage=scores.get("coverage", 0),
             ordering=scores.get("ordering", 0),
@@ -140,6 +143,7 @@ class PlanningEvaluator(BaseEvaluator):
             completeness=scores.get("completeness", 0),
             overall=overall,
             feedback=scores.get("feedback", "Evaluation completed."),
+            llm_suggestions=llm_suggestions,
         )
 
     def _format_plan(self, plans: List[Dict[str, Any]]) -> str:

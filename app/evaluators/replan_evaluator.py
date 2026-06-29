@@ -141,12 +141,22 @@ class ReplanEvaluator(BaseEvaluator):
         # Calculate weighted overall score
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
+        # Extract LLM suggestions from missed replan opportunities
+        llm_suggestions = scores.get("suggestions") or []
+        if not llm_suggestions:
+            missed = scores.get("missed_replan_opportunities") or []
+            if isinstance(missed, list):
+                for opp in missed:
+                    if isinstance(opp, dict) and opp.get("reason"):
+                        llm_suggestions.append(opp["reason"])
+
         return ReplanScore(
             trigger_appropriateness=scores.get("trigger_appropriateness", 0),
             adaptation_quality=scores.get("adaptation_quality", 0),
             learning_from_failure=scores.get("learning_from_failure", 0),
             overall=overall,
             feedback=scores.get("feedback", "Evaluation completed."),
+            llm_suggestions=llm_suggestions,
         )
 
     def _detect_missed_replans(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:

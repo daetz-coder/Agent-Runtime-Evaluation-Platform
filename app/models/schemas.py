@@ -160,6 +160,7 @@ class PlanningScore(BaseModel):
     completeness: float = Field(..., ge=0, le=100, description="Completeness of plan")
     overall: float = Field(..., ge=0, le=100, description="Overall planning score")
     feedback: str = Field(..., description="Detailed feedback")
+    llm_suggestions: List[str] = Field(default_factory=list, description="LLM-generated improvement suggestions")
 
 
 class TacticalScore(BaseModel):
@@ -170,6 +171,7 @@ class TacticalScore(BaseModel):
     correctness: float = Field(..., ge=0, le=100, description="Correctness of action")
     overall: float = Field(..., ge=0, le=100, description="Overall tactical score")
     feedback: str = Field(..., description="Detailed feedback")
+    llm_suggestions: List[str] = Field(default_factory=list, description="LLM-generated improvement suggestions")
 
 
 class ToolUseScore(BaseModel):
@@ -182,6 +184,7 @@ class ToolUseScore(BaseModel):
     result_utilization: float = Field(..., ge=0, le=100, description="How well results are used")
     overall: float = Field(..., ge=0, le=100, description="Overall tool use score")
     feedback: str = Field(..., description="Detailed feedback")
+    llm_suggestions: List[str] = Field(default_factory=list, description="LLM-generated improvement suggestions")
     sandbox_results: Optional[List[Dict[str, Any]]] = Field(
         default=None,
         description="Sandbox execution results (None = sandbox disabled or no code detected)",
@@ -196,6 +199,7 @@ class MemoryScore(BaseModel):
     consistency: float = Field(..., ge=0, le=100, description="Consistency with previous context")
     overall: float = Field(..., ge=0, le=100, description="Overall memory score")
     feedback: str = Field(..., description="Detailed feedback")
+    llm_suggestions: List[str] = Field(default_factory=list, description="LLM-generated improvement suggestions")
 
 
 class ReplanScore(BaseModel):
@@ -208,6 +212,7 @@ class ReplanScore(BaseModel):
     learning_from_failure: float = Field(..., ge=0, le=100, description="Did agent learn from failures?")
     overall: float = Field(..., ge=0, le=100, description="Overall replan score")
     feedback: str = Field(..., description="Detailed feedback")
+    llm_suggestions: List[str] = Field(default_factory=list, description="LLM-generated improvement suggestions")
 
 
 class RetrievalScore(BaseModel):
@@ -220,6 +225,7 @@ class RetrievalScore(BaseModel):
     feedback: str = Field("")
     hallucination_detected: bool = Field(False)
     missing_info: List[str] = Field(default_factory=list)
+    llm_suggestions: List[str] = Field(default_factory=list, description="LLM-generated improvement suggestions")
 
 
 class OverallEvaluation(BaseModel):
