@@ -2,7 +2,7 @@
 Wiki-Agent 检索评估 — 独立版（不需要后端运行）
 
 对比 BM25 / Semantic / Hybrid 三种搜索策略的准确率。
-如果 ChromaDB 或 BM25 索引未初始化，会跳过对应策略。
+如果 Milvus 或 BM25 索引未初始化，会跳过对应策略。
 
 用法:
     python -m tests.eval_retrieval_standalone
@@ -95,7 +95,7 @@ def main():
         print("  请确保:")
         print("    1. pip install -e . 已执行")
         print("    2. .env 文件存在（含 DEEPSEEK_API_KEY）")
-        print("    3. 先启动一次后端以初始化 ChromaDB + BM25 索引")
+        print("    3. 先启动一次后端以初始化 Milvus + BM25 索引")
         return
 
     if errors:

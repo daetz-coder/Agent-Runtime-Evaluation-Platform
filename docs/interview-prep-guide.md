@@ -30,7 +30,7 @@
 
 | 技术点 | 优先级 | 说明 | 项目对应 |
 |--------|--------|------|----------|
-| 向量检索 | 🔴 必须 | Embedding → ANN 搜索 | ✅ ChromaDB/Milvus |
+| 向量检索 | 🔴 必须 | Embedding → ANN 搜索 | ✅ Milvus Lite |
 | BM25 检索 | 🔴 必须 | 关键词检索 + 中文分词 | ✅ rank_bm25 + jieba |
 | 混合检索 | 🔴 必须 | 向量 + 关键词融合 | ✅ RRF 倒数秩融合 |
 | Reranker | 🔴 必须 | 交叉编码器精排 | ✅ bge-reranker-base ONNX |
@@ -123,7 +123,7 @@ graph.invoke(Command(resume=True), config)
     │
     ├── ① Embedding 编码（bge-small-zh, 512 维）
     │       ↓
-    │   向量检索（ChromaDB/Milvus, cosine similarity）
+    │   向量检索（Milvus Lite, cosine similarity）
     │       ↓
     │   Top-K 候选
     │

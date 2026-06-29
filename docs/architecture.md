@@ -152,7 +152,7 @@ their full trajectory for evaluation.
 |-----------|------|-------------|
 | **AgentRunner** | `runner.py` | Orchestrates agent execution: acquire session → setup workspace → create LLM → run LangGraph → capture trajectory |
 | **LangGraph Agent** | `graph.py` | ReAct loop: think → act → observe. Auto-injects `_llm_trace` (prompt/response/model/latency) into each step |
-| **Prompts** | `prompts/` (package) + `prompts_compat.py` | System prompt templates in `templates/v1.1.yaml`. Versioned via `PROMPT_VERSION=v1.1` constant |
+| **Prompts** | `prompts/` (package) | System prompt templates in `templates/v1.1.yaml`. Versioned via `PROMPT_VERSION=v1.1` constant |
 | **Mock Executor** | `mock_executor.py` | `SANDBOX_MOCK_MODE=true` — returns predefined trajectory without Docker |
 | **TrajectoryRecorder** | `trajectory_recorder.py` | Records 14 action types. Accepts optional `llm_trace` parameter |
 | **SessionPool** | `sandbox/session_pool.py` | Docker container pool with writable `/workspace` |
@@ -290,7 +290,7 @@ attempt 4: delay=4s  → POST webhook_url (final retry)
 | **Backend Framework** | FastAPI + Uvicorn | REST API + SSE streaming, fully async |
 | **Agent Orchestration** | LangGraph + LangChain | Agent ReAct loop, evaluation workflow graph |
 | **AI Models** | DeepSeek / GLM / Qwen / OpenAI | LLM inference + LLM-as-Judge evaluation |
-| **Vector Search** | Milvus Lite + FAISS + BM25 | Wiki Agent hybrid search (vector + keyword) |
+| **Vector Search** | Milvus Lite + BM25 (RRF) | Wiki Agent hybrid search (vector + keyword) |
 | **Database** | SQLAlchemy Async + SQLite / PostgreSQL | Persistence with Alembic migration management |
 | **Cache** | Redis (optional, graceful degradation) | LLM response cache, report aggregation, rate limiting |
 | **Frontend** | Vue 3 + TypeScript + Element Plus + ECharts | Management panel and data visualization |

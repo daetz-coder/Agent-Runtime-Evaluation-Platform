@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
 ![Vue 3](https://img.shields.io/badge/Vue_3-v3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-v0.3-1C3C5C?logo=langchain&logoColor=white)
@@ -73,7 +73,7 @@ cd frontend && npm run dev
 | 后端框架 | FastAPI + Uvicorn | REST API + SSE 实时流，全异步 |
 | Agent 编排 | LangGraph + LangChain | Agent ReAct 循环、评估工作流 |
 | AI 模型 | DeepSeek / GLM / Qwen / OpenAI / Anthropic | LLM 推理 + LLM-as-Judge 评估裁判 |
-| 向量检索 | Milvus Lite + FAISS + BM25 | RAG 知识库混合检索（向量 + 关键词） |
+| 向量检索 | Milvus Lite + BM25 (RRF) | RAG 知识库混合检索（向量 + 关键词） |
 | 数据库 | SQLAlchemy Async + SQLite / PostgreSQL | 持久化存储，Alembic 迁移管理 |
 | 缓存 | Redis（可选，优雅降级） | LLM 响应缓存、报表聚合、接口限流 |
 | 前端 | Vue 3 + TypeScript + Element Plus + ECharts | 管理面板与可视化图表 |

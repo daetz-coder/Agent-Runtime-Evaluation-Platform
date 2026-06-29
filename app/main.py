@@ -132,7 +132,7 @@ AI Agent 全维度评估平台，支持 **Sandbox 评测** 与 **外部轨迹评
 | **后端框架** | FastAPI + Uvicorn | REST API + SSE 实时流 |
 | **Agent 编排** | LangGraph | Agent 状态图/工作流 |
 | **AI 模型** | DeepSeek / GLM / Qwen / OpenAI | LLM 推理与评估裁判 |
-| **向量检索** | Milvus Lite + FAISS | RAG 知识库混合检索 |
+| **向量检索** | Milvus Lite + BM25 (RRF) | RAG 知识库混合检索 |
 | **数据库** | SQLite (dev) / PostgreSQL (prod) + Redis | 持久化 + 缓存 |
 | **前端** | Vue 3 + Element Plus + TypeScript | 管理面板与可视化 |
 | **采集 SDK** | Python SDK (in-process / HTTP) | Trajectory 自动埋点 |

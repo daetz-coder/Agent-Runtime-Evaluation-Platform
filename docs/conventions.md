@@ -62,7 +62,7 @@ app/benchmarks/
 app/agent_runtime/    
   runner.py           Agent Runtime 沙箱执行引擎
   graph.py            LangGraph ReAct agent 循环 (自动注入 _llm_trace)
-  prompts.py          系统提示词 (PROMPT_VERSION=v1.1 版本化)
+  prompts/            系统提示词包 (PROMPT_VERSION=v1.1, templates/v1.1.yaml)
   mock_executor.py    Mock 模式 — 无需 Docker 返回预定义轨迹
   sandbox/            Docker 沙箱容器管理 (SessionPool + WorkspaceManager)
   tools/              沙箱内工具 (python/bash/file)
@@ -96,7 +96,7 @@ Makefile              开发常用命令 (lint/test/golden/check-ci/run)
 - **Config**: `.env` via pydantic-settings, UPPER_CASE fields. Secrets never committed.
 - **Redis**: optional dependency — all cache operations degrade gracefully (return None/False) when Redis is unavailable. Use `app.core.cache` helpers, never raw redis calls. Key prefix: `eval:` (configurable via `REDIS_KEY_PREFIX`). Cache invalidation on write — never rely on TTL alone for stale data.
 - **Wiki Agent**: chunking uses `RecursiveCharacterTextSplitter` (LangChain), multi-format via `load_document()` (PDF/Word/MD/TXT)
-- **Versioning**: `app/agent_runtime/prompts.py:PROMPT_VERSION` — incremented when system prompt changes. Stored in each `Evaluation.prompt_version` for traceability.
+- **Versioning**: `app/agent_runtime/prompts/__init__.py:PROMPT_VERSION` — incremented when system prompt changes. Stored in each `Evaluation.prompt_version` for traceability.
 
 ## Notes
 

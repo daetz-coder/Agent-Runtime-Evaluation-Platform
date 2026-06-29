@@ -76,7 +76,7 @@
 - 配置中心（Nacos / Consul）
 - 服务发现与注册
 - API 网关（Kong / Traefik）
-- 分布式链路追踪（OpenTelemetry — 你的 pyproject.toml 里已有，但没真的用起来）
+- 分布式链路追踪（OpenTelemetry — 已在 evaluation / agent runtime 路径埋点，可选接 Jaeger）
 
 #### 6. 微调（Fine-tuning）基础
 - LoRA / QLoRA 概念
@@ -109,7 +109,7 @@ Week 7-8: Agent 沙箱
 
 ## 可以立刻开始做的（零学习成本）
 
-- 把项目中已有的 `OpenTelemetry` 配置真正跑起来（pyproject.toml 里有依赖但没用）
+- 把项目中已有的 `OpenTelemetry` 配置跑起来（`ENABLE_TRACING=true` + Jaeger/OTEL Collector）
 - 给项目加 GitHub Actions CI（跑 pytest + ruff + mypy）
 - 写 `docs/mcp-a2a-plan.md` — 设计如何在现有平台中集成 MCP + A2A
 

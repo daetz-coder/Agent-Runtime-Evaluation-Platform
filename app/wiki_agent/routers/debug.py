@@ -59,11 +59,9 @@ async def get_overview():
         pass
 
     try:
-        import chromadb
+        from app.wiki_agent.agent.tools.vector_store import MilvusVectorStore
 
-        client = chromadb.PersistentClient(path=settings.CHROMA_DIR)
-        col = client.get_collection("wiki_knowledge")
-        result["vectors"] = col.count()
+        result["vectors"] = MilvusVectorStore().count()
     except Exception:
         pass
 
