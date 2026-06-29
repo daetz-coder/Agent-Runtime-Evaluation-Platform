@@ -2,7 +2,7 @@
 评估器 Benchmark — 测量不同 trajectory 规模下的耗时与 token 消耗。
 
 用法:
-    python -m tests.benchmark_evaluators
+    python -m scripts.benchmark_evaluators
 
 需要 .env 中配置了 DEEPSEEK_API_KEY。
 """

@@ -14,18 +14,18 @@
 
 ## 参考答案
 
-问题「多模型 benchmark（`benchmark_multimodel.py`）结论是什么？不同 Judge 模型排序是否一致？」考察 benchmark_multimodel。多 Judge 模型排序一致性 monotonicity.py 六条合成轨迹，check_monotonicity 容差 +0.05，REFERENCE_SCORES 约 93.1→20.0。 首要读 app/benchmarks/，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。
+问题「多模型 benchmark（`benchmark_multimodel.py`）结论是什么？不同 Judge 模型排序是否一致？」考察 benchmark_multimodel。多 Judge 模型排序一致性 monotonicity.py 六条合成轨迹，check_monotonicity 容差 +0.05，REFERENCE_SCORES 约 93.1→20.0。 首要读 scripts/benchmark_multimodel.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。
 
 ## 代码依据
 
-- `app/benchmarks/`
+- `scripts/benchmark_multimodel.py`
 - `app/graphs/evaluation_graph.py`
 - `app/evaluators/base.py`
 
 ## 回答要点
 
 - benchmark_multimodel：多 Judge 模型排序一致性
-- 代码入口：app/benchmarks/
+- 代码入口：scripts/benchmark_multimodel.py
 - 与六维 LLM-as-Judge 评估链路相关
 - 轨迹 schema 见 app/models/action_types.py
 
@@ -33,7 +33,7 @@
 
 **Q: 「benchmark_multimodel」最先看哪段代码？**
 
-A: 打开 app/benchmarks/，再对照 app/graphs/evaluation_graph.py 的数据流。
+A: 打开 scripts/benchmark_multimodel.py，再对照 app/graphs/evaluation_graph.py 的数据流。
 
 **Q: Demo 里如何验证 benchmark_multimodel？**
 

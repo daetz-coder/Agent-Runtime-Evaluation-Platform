@@ -28,10 +28,10 @@
 | Golden Test Suite | `make golden` |
 | CI Gate (golden + regression) | `make check-ci` |
 | Regression check | `make check-regression BASE=<id> HEAD=<id>` |
-| Benchmark: multi-trajectory | `python -m tests.benchmark_score_distribution` |
-| Benchmark: multi-model cost | `python -m tests.benchmark_multimodel` |
-| Eval: accuracy verification | `python -m tests.eval_evaluator_accuracy` |
-| Eval: Wiki retrieval | `python -m tests.eval_retrieval_standalone` |
+| Benchmark: multi-trajectory | `python -m scripts.benchmark_score_distribution` |
+| Benchmark: multi-model cost | `python -m scripts.benchmark_multimodel` |
+| Eval: accuracy verification | `python -m scripts.eval_evaluator_accuracy` |
+| Eval: Wiki retrieval | `python -m scripts.eval_retrieval_standalone` |
 | Adapters integration test | `python -m tests.test_adapters` |
 
 ## Architecture

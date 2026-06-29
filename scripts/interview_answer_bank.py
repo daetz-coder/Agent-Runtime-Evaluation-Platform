@@ -1335,11 +1335,11 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     135: _a(
-        "问题「`eval_evaluator_accuracy.py` 的好/坏场景对比测试是如何设计的？」考察 eval_evaluator_accuracy。好/坏场景对比断言 monotonicity.py 六条合成轨迹，check_monotonicity 容差 +0.05，REFERENCE_SCORES 约 93.1→20.0。 首要读 tests/，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及分数聚合，说明 planning/tactical 权重 20%，其余四维各 15%，见 aggregate_results。",
-        ["tests/", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
-        ["eval_evaluator_accuracy：好/坏场景对比断言", "代码入口：tests/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        "问题「`eval_evaluator_accuracy.py` 的好/坏场景对比测试是如何设计的？」考察 eval_evaluator_accuracy。好/坏场景对比断言 monotonicity.py 六条合成轨迹，check_monotonicity 容差 +0.05，REFERENCE_SCORES 约 93.1→20.0。 首要读 scripts/eval_evaluator_accuracy.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及分数聚合，说明 planning/tactical 权重 20%，其余四维各 15%，见 aggregate_results。",
+        ["scripts/eval_evaluator_accuracy.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
+        ["eval_evaluator_accuracy：好/坏场景对比断言", "代码入口：scripts/eval_evaluator_accuracy.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「eval_evaluator_accuracy」最先看哪段代码？", "打开 tests/，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「eval_evaluator_accuracy」最先看哪段代码？", "打开 scripts/eval_evaluator_accuracy.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 eval_evaluator_accuracy？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],
@@ -1365,11 +1365,11 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     138: _a(
-        "问题「多模型 benchmark（`benchmark_multimodel.py`）结论是什么？不同 Judge 模型排序是否一致？」考察 benchmark_multimodel。多 Judge 模型排序一致性 monotonicity.py 六条合成轨迹，check_monotonicity 容差 +0.05，REFERENCE_SCORES 约 93.1→20.0。 首要读 app/benchmarks/，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。",
-        ["app/benchmarks/", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
-        ["benchmark_multimodel：多 Judge 模型排序一致性", "代码入口：app/benchmarks/", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        "问题「多模型 benchmark（`benchmark_multimodel.py`）结论是什么？不同 Judge 模型排序是否一致？」考察 benchmark_multimodel。多 Judge 模型排序一致性 monotonicity.py 六条合成轨迹，check_monotonicity 容差 +0.05，REFERENCE_SCORES 约 93.1→20.0。 首要读 scripts/benchmark_multimodel.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。",
+        ["scripts/benchmark_multimodel.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
+        ["benchmark_multimodel：多 Judge 模型排序一致性", "代码入口：scripts/benchmark_multimodel.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「benchmark_multimodel」最先看哪段代码？", "打开 app/benchmarks/，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「benchmark_multimodel」最先看哪段代码？", "打开 scripts/benchmark_multimodel.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 benchmark_multimodel？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],

@@ -6,8 +6,8 @@
   2. 真实 LLM 模式 (EVAL_USE_REAL_LLM=1): 调用真实 LLM 获取实际分数
 
 用法:
-    python -m tests.eval_evaluator_accuracy
-    EVAL_USE_REAL_LLM=1 python -m tests.eval_evaluator_accuracy
+    python -m scripts.eval_evaluator_accuracy
+    EVAL_USE_REAL_LLM=1 python -m scripts.eval_evaluator_accuracy
 """
 
 import asyncio

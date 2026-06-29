@@ -76,7 +76,7 @@ start.bat
 # 健康检查
 curl http://localhost:8000/health
 
-# 运行示例评估
+# 运行示例评估（SDK 采集 + 自动评估）
 python example_evaluation.py
 
 # SDK 演示
@@ -87,16 +87,16 @@ python example/sdk_demo.py
 
 ```bash
 # 多轨迹评估分布（6 条 × 6 评估器）
-python -m tests.benchmark_score_distribution
+python -m scripts.benchmark_score_distribution
 
 # 多模型成本对比
-python -m tests.benchmark_multimodel
+python -m scripts.benchmark_multimodel
 
 # 评估器准确性验证
-python -m tests.eval_evaluator_accuracy
+python -m scripts.eval_evaluator_accuracy
 
 # Wiki-Agent 检索评估
-python -m tests.eval_retrieval_standalone
+python -m scripts.eval_retrieval_standalone
 
 # Adapter 集成测试
 python -m tests.test_adapters

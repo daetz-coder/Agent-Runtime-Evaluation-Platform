@@ -5,7 +5,7 @@
 输出分维度统计（mean/std/min/max）和维度间 Pearson 相关性矩阵。
 
 用法:
-    python -m tests.benchmark_score_distribution
+    python -m scripts.benchmark_score_distribution
 """
 
 import asyncio

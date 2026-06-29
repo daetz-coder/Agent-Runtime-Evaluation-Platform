@@ -5,7 +5,7 @@
 同时对比多模型的评估成本。
 
 用法:
-    python -m tests.benchmark_multimodel
+    python -m scripts.benchmark_multimodel
 """
 
 import asyncio

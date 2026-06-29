@@ -117,7 +117,7 @@ cd frontend && npm run dev
 | 单次成本（DeepSeek） | ¥0.012（GPT-4o 的 1/27） |
 | 检索基准（Wiki Agent） | Semantic Top-1: 85%, MRR: 0.91 |
 
-> 以上数据来源 `tests/benchmark_*.py` 和 `tests/eval_*.py`，基于真实 LLM 调用。
+> 以上数据来源 `scripts/benchmark_*.py` 和 `scripts/eval_*.py`，基于真实 LLM 调用。
 
 ---
 
@@ -200,7 +200,8 @@ app/                        # 后端应用
 
 frontend/                   # Vue 3 前端（dashboard / evaluations / analytics / wiki）
 sdk/                        # 独立 SDK 包（外部项目零侵入集成）
-tests/                      # 测试用例（单元测试 / 基准测试 / Golden Test Suite）
+scripts/                    # 校准脚本（benchmark / 检索评估 / 面试题生成）
+tests/                      # pytest 单元测试与 Golden Test Suite
 docs/                       # 文档
 ```
 

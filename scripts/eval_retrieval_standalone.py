@@ -5,7 +5,7 @@ Wiki-Agent 检索评估 — 独立版（不需要后端运行）
 如果 Milvus 或 BM25 索引未初始化，会跳过对应策略。
 
 用法:
-    python -m tests.eval_retrieval_standalone
+    python -m scripts.eval_retrieval_standalone
 """
 
 import sys
