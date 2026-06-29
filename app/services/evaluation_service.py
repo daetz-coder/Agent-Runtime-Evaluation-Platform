@@ -139,8 +139,8 @@ class EvaluationService:
 
         existing = await self._get_task_model(task_id)
         if existing:
-            if workspace_id and existing.workspace_id and existing.workspace_id != workspace_id:
-                raise ValueError(f"Task {task_id} already exists in another workspace")
+            if existing.workspace_id != workspace_id:
+                raise ValueError(f"Task {task_id} already exists in a different workspace scope")
             return self._task_to_response(existing)
 
         task = AgentTask(

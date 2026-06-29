@@ -1,4 +1,4 @@
-import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'
+import axios, { type AxiosRequestConfig, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 
 export interface ApiRequestConfig extends AxiosRequestConfig {
@@ -10,17 +10,18 @@ export interface ApiRequestConfig extends AxiosRequestConfig {
 interface ApiClient {
   get<T = any>(url: string, config?: ApiRequestConfig): Promise<T>
   post<T = any>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<T>
+  put<T = any>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<T>
   delete<T = any>(url: string, config?: ApiRequestConfig): Promise<T>
 }
 
 const apiKey = import.meta.env.VITE_API_KEY as string | undefined
 
-function attachAuthHeader(config: AxiosRequestConfig): AxiosRequestConfig {
+function attachAuthHeader(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
   if (apiKey) {
     config.headers = {
       ...config.headers,
       Authorization: `Bearer ${apiKey}`,
-    }
+    } as InternalAxiosRequestConfig['headers']
   }
   return config
 }

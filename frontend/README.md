@@ -216,3 +216,66 @@ A: 检查是否使用了 `scoped` 样式，确认选择器优先级。
 - [Element Plus 文档](https://element-plus.org/)
 - [ECharts 文档](https://echarts.apache.org/)
 - [Vite 文档](https://vitejs.dev/)
+
+## 📊 页面效果一览
+
+### 仪表板（Dashboard）
+- **统计卡片** — 总评估数、平均分、最高/最低维度评分、趋势方向
+- **雷达图** — 6 维度能力全景（Planning / Tactical / Tool Use / Memory / Replan / Retrieval）
+- **趋势折线** — 各维度均分按时间变化（支持按天/周聚合）
+- **维度对比柱状图** — 各维度均分 ± 标准差横向对比
+- **问题洞察** — 自动识别最低维度 + 典型反馈摘要
+- **最近评估** — 最近 5 条评估记录快捷入口
+
+### 评估详情（Evaluation Detail）
+- **综合得分** — 加权总分 + 质量等级标签（优秀/良好/一般/较差）
+- **评分卡 6 张** — 每维度子指标得分 + LLM judge 详细反馈
+- **雷达图** — 该次评估的 6 维能力形状
+- **Trajectory 时间线** — 按步骤回放 Agent 行为（think / tool_call / plan 等）
+- **Replay 调试器** — 展开查看每步 LLM 原始 Prompt / Response / Model / Latency
+- **Judge 透明面板** — 选择维度查看 Judge 原始 Prompt + Response + 解析后的分数
+
+### 数据分析（Analytics）
+- **得分分布** — 各分数段的评估计数直方图
+- **维度趋势对比** — 多维度在同一时间轴的折线叠加
+- **相关性热力图** — 6 维两两 Pearson 相关系数矩阵（发现冗余/独立维度）
+- **性能热力图** — 评估耗时 × 模型 × 维度交叉分析
+- **智能洞察** — 自动分类"持续改进"/"需关注"/"退化中"维度
+- **改进建议** — LLM 基于历史低分维度生成可操作建议
+
+### 任务管理（Tasks）
+- **任务列表** — 支持状态筛选、关键词搜索、分页
+- **创建/更新/删除** — CRUD，创建时自动生成 workspace_id 隔离
+- **Dashboard 统计** — 任务总数、状态分布、最新 5 条
+
+### 系统设置（Settings）
+- **系统健康状态** — Redis / Milvus / 数据库 / ReRank 状态标签
+- **评估配置** — 批量大小、并行开关、超时设置
+- **知识库统计** — 知识页数、向量分块、BM25 分块数
+- **环境信息** — 环境变量、版本号
+
+### 配色与评分映射
+
+| 质量等级 | 评分范围 | 颜色 | Element Plus Tag |
+|----------|----------|------|------------------|
+| 优秀 | ≥ 80 | 🟢 绿色 | `type="success"` |
+| 良好 | ≥ 60 | 🟡 黄色 | `type="warning"` |
+| 一般 | ≥ 40 | 🟠 橙色 | 自定义 CSS |
+| 较差 | < 40 | 🔴 红色 | `type="danger"` |
+
+### SSE 实时流
+
+```typescript
+// 流式评估的事件类型（EventSource）
+event: progress   → {"dimension":"planning","score":85,"progress":1,"total":6}
+event: result     → {"scores":{...},"overall":88}
+event: error      → {"dimension":"...","message":"..."}
+event: done       → {}
+
+// 流式沙箱 Agent 执行事件
+event: agent_step  → {"step_number":1,"action_type":"think",...}
+event: agent_done  → {"success":true,"steps_taken":5}
+event: eval_progress → {"dimension":"planning","score":85}
+event: result      → {"evaluation":{...}}
+event: done        → {}
+```

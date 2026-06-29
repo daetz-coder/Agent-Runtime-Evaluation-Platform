@@ -104,30 +104,109 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.APP_NAME,
         description="""
-## Agent Runtime Evaluation Platform
+# Agent Runtime Evaluation Platform
 
-Evaluate AI agents using **Agent in Sandbox** architecture — the platform runs
-agents inside Docker sandbox containers and evaluates them across 6 dimensions:
+AI Agent 全维度评估平台，支持 **Sandbox 评测** 与 **外部轨迹评测** 两种模式，覆盖规划、决策、工具使用、记忆、重规划、检索 6 大能力维度。
 
-1. **Planning Quality** - Coverage, ordering, granularity, completeness
-2. **Tactical Decisions** - Relevance, efficiency, correctness of next actions
-3. **Tool Use** - Selection quality, parameter accuracy, result utilization
-4. **Memory** - Retention, relevance, consistency of recalled information
-5. **Replanning** - Trigger appropriateness, adaptation quality, learning from failure
-6. **Retrieval Quality** - Relevance, evidence accuracy, coverage, hallucination detection
+---
 
-### How It Works
+## 📐 系统架构
 
-1. Submit a goal via `POST /api/v1/evaluations/run`
-2. Platform launches an agent inside a sandbox container
-3. Agent reasons with LLM, executes tools (Python, Bash, file I/O) in the sandbox
-4. Full trajectory is captured automatically
-5. 6 evaluators score the agent's performance
+```
+┌───────────────┐     ┌───────────────────┐     ┌──────────────────┐
+│   Frontend    │────▶│   FastAPI Server   │────▶│   Docker Sandbox │
+│  (Vue 3 +     │◀────│  (Python 3.14)    │◀────│   (Agent 运行)   │
+│   Element+)   │     │                   │     │                  │
+└───────────────┘     ├───────────────────┤     └──────────────────┘
+                      │   Evaluators × 6  │          │
+                      │   (LLM Judge)     │          ▼
+                      ├───────────────────┤     ┌──────────────────┐
+                      │   Redis Cache     │     │   SQLite / PG    │
+                      │   (LLM 响应/会话) │     │   (任务/轨迹/评估)│
+                      └───────────────────┘     └──────────────────┘
+```
 
-### Legacy Mode
+## 🛠️ 技术栈
 
-External agents can still submit trajectories via `POST /api/v1/tasks/{id}/trajectory`
-(deprecated) for evaluation.
+| 层次 | 技术 | 用途 |
+|---|---|---|
+| **后端框架** | FastAPI + Uvicorn | REST API + SSE 实时流 |
+| **Agent 编排** | LangGraph | Agent 状态图/工作流 |
+| **AI 模型** | DeepSeek / GLM / Qwen / OpenAI | LLM 推理与评估裁判 |
+| **向量检索** | Milvus Lite + FAISS | RAG 知识库混合检索 |
+| **数据库** | SQLite (dev) / PostgreSQL (prod) + Redis | 持久化 + 缓存 |
+| **前端** | Vue 3 + Element Plus + TypeScript | 管理面板与可视化 |
+| **采集 SDK** | Python SDK (in-process / HTTP) | Trajectory 自动埋点 |
+| **容器** | Docker (Sandbox 执行环境) | 安全隔离的 Agent 运行沙箱 |
+
+## 🔑 关键特性
+
+- **双模评测** — Sandbox 自动化评测 / 外部 SDK 埋点轨迹评测
+- **6 维评分** — Planning、Tactical、Tool Use、Memory、Replan、Retrieval
+- **多模型共识** — 跨厂商（DeepSeek + GLM + Qwen）独立评分，输出均值和置信度
+- **增量评估** — 回归检测，比较历史评分变化趋势
+- **LLM 响应缓存** — Redis 缓存 LLM 调用，多模型共识时按模型名隔离缓存
+- **实时流式评测** — SSE 推送评测进度与中间结果
+- **RAG 知识库** — 基于 Milvus + BM25 混合检索的 Wiki Agent
+- **OpenTelemetry 链路追踪** — 可选集成，支持导出到 Jaeger/Collector
+
+## 🚀 快速开始
+
+### Sandbox 评测模式
+```bash
+POST /api/v1/evaluations/run
+{
+  "goal": "分析项目依赖并生成升级报告",
+  "sandbox": {
+    "image": "python:3.14-slim",
+    "workspace": "./repos/my-project"
+  }
+}
+```
+→ Agent 在 Docker 沙箱中运行，自动采集轨迹 → 6 维评分 → SSE 实时推送结果
+
+### SDK 埋点模式（外部 Agent）
+```python
+from sdk import get_collector
+
+collector = get_collector()
+task_id = collector.start("分析项目依赖")
+collector.record_plan(steps=[...])
+collector.record_tool_call(name="bash", input="pip list --outdated", output="...")
+collector.finish()
+```
+→ SDK 将轨迹上报至平台 → 异步完成评估
+
+## 📊 效果展示
+
+### 评估仪表盘
+- **任务列表** — 按状态/工作空间筛选，搜索目标关键词
+- **评分趋势** — 6 维度雷达图 + 历史趋势折线
+- **评分分布** — 各分数段的统计直方图
+
+### 评估详情页
+- **Trajectory 时间线** — 可视化回放 Agent 执行步骤
+- **打分明细** — 每个维度的 LLM Judge 原始 Prompt / Response
+- **多模型对比** — Consensus 模式下各厂商评分横向对比
+- **回归检测** — 与历史评估的分数变化对比
+
+### 系统管理
+- **健康检查** — Redis / Milvus / 数据库 / ReRank 状态一览
+- **缓存管理** — 手动刷新/清除各缓存
+
+## 📂 API 总览
+
+| 分组 | 前缀 | 说明 |
+|---|---|---|
+| **评估** | `/api/v1/evaluations/` | 创建、运行、流式评测、共识评估、批量评估 |
+| **任务** | `/api/v1/tasks/` | 任务 CRUD、轨迹提交 |
+| **报告** | `/api/v1/reports/` | 评分报告、趋势分析、回归检测 |
+| **系统** | `/api/v1/system/` | 健康检查、配置查看 |
+| **设置** | `/api/v1/settings/` | 系统设置 |
+| **基准** | `/api/v1/benchmark/` | 性能基准测试 |
+
+---
+> **Version:** 0.1.0 | **Swagger UI:** `/docs` | **ReDoc:** `/redoc`
         """,
         version="0.1.0",
         docs_url="/docs",

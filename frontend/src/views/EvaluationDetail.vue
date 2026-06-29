@@ -544,7 +544,6 @@ const judgeRawLoading = ref(false)
 
 // Diff
 const diffDialogVisible = ref(false)
-const diffBaseEvalId = ref('')
 const diffData = ref<any>(null)
 const diffLoading = ref(false)
 

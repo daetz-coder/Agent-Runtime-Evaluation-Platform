@@ -121,6 +121,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { streamAuthHeaders } from '@/api'
 
 interface VectorStats {
   available: boolean
@@ -158,7 +159,7 @@ const statCards = ref([
 
 async function loadStats() {
   try {
-    const res = await fetch('/api/wiki/vector-stats')
+    const res = await fetch('/api/wiki/vector-stats', { headers: streamAuthHeaders() })
     if (!res.ok) throw new Error(`统计接口 HTTP ${res.status}`)
     const data = await res.json()
     stats.value = data
@@ -178,7 +179,7 @@ async function loadStats() {
 
 async function loadPaths() {
   try {
-    const res = await fetch('/api/wiki/vector-paths')
+    const res = await fetch('/api/wiki/vector-paths', { headers: streamAuthHeaders() })
     if (!res.ok) throw new Error(`路径列表 HTTP ${res.status}`)
     const data = await res.json()
     paths.value = data.items || []
@@ -195,7 +196,7 @@ async function loadChunks(page = 1) {
   if (keywordFilter.value) params.set('keyword', keywordFilter.value)
 
   try {
-    const res = await fetch(`/api/wiki/vector-chunks?${params}`)
+    const res = await fetch(`/api/wiki/vector-chunks?${params}`, { headers: streamAuthHeaders() })
     if (!res.ok) throw new Error(`分块列表 HTTP ${res.status}`)
     const data = await res.json()
     if (data.error) {
@@ -228,7 +229,7 @@ async function rebuildIndex() {
 
   rebuilding.value = true
   try {
-    const res = await fetch('/api/wiki/vector-rebuild', { method: 'POST' })
+    const res = await fetch('/api/wiki/vector-rebuild', { method: 'POST', headers: streamAuthHeaders() })
     const data = await res.json()
     if (!res.ok) throw new Error(data.detail || data.message || `HTTP ${res.status}`)
     ElMessage.success(data.message || `已重建 ${data.reindexed ?? 0} 篇`)

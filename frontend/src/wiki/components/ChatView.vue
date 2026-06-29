@@ -226,6 +226,7 @@
 import { ref, reactive, computed, nextTick, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { wikiApi } from "../api/index.js";
+import { streamAuthHeaders } from "@/api";
 
 const router = useRouter();
 const emit = defineEmits(["knowledgeUpdated", "navigateTo"]);
@@ -264,7 +265,7 @@ const suggestions = [
 // 加载会话列表
 async function loadSessions() {
   try {
-    const res = await fetch("/api/chat/sessions");
+    const res = await fetch("/api/chat/sessions", { headers: streamAuthHeaders() });
     const data = await res.json();
     sessions.value = data.sessions.map((s) => ({
       ...s,
@@ -291,7 +292,7 @@ async function loadSessions() {
 // 加载会话消息
 async function loadSessionMessages(sessionId) {
   try {
-    const res = await fetch(`/api/chat/sessions/${sessionId}`);
+    const res = await fetch(`/api/chat/sessions/${sessionId}`, { headers: streamAuthHeaders() });
     if (!res.ok) return;
     const data = await res.json();
 
@@ -315,6 +316,7 @@ async function createSession() {
   try {
     const res = await fetch(`/api/chat/sessions?session_id=${id}&name=${encodeURIComponent("新对话")}`, {
       method: "POST",
+      headers: streamAuthHeaders(),
     });
     const data = await res.json();
     sessions.value.unshift({ id: data.id, name: data.name, messages: [] });
@@ -337,7 +339,7 @@ async function switchSession(id) {
 
 async function deleteSession(id) {
   try {
-    await fetch(`/api/chat/sessions/${id}`, { method: "DELETE" });
+    await fetch(`/api/chat/sessions/${id}`, { method: "DELETE", headers: streamAuthHeaders() });
   } catch (e) {}
 
   sessions.value = sessions.value.filter((s) => s.id !== id);
@@ -395,7 +397,7 @@ async function sendMessage(text) {
   try {
     const res = await fetch("/api/chat/stream", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: streamAuthHeaders(),
       body: JSON.stringify({
         session_id: currentSessionId.value,
         message: text,
@@ -477,7 +479,7 @@ async function confirmExtraction(msg) {
   try {
     const res = await fetch("/api/chat/confirm", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: streamAuthHeaders(),
       body: JSON.stringify({
         thread_id: msg.extraction.thread_id,
         confirm: true,
@@ -512,7 +514,7 @@ async function rejectExtraction(msg) {
   try {
     await fetch("/api/chat/confirm", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: streamAuthHeaders(),
       body: JSON.stringify({
         thread_id: msg.extraction.thread_id,
         confirm: false,

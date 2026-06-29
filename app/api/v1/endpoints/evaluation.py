@@ -868,6 +868,7 @@ async def evaluation_stream(
 
     async def event_generator():
         claimed = False
+        eval_tasks: list[asyncio.Task] = []
         try:
             if evaluation_id:
                 async with async_session_factory() as session:
@@ -899,7 +900,7 @@ async def evaluation_stream(
 
             await mark_running()
 
-            _ = asyncio.ensure_future(asyncio.gather(*[run_eval(dim, cls) for dim, cls in evaluators]))
+            eval_tasks = [asyncio.create_task(run_eval(dim, cls)) for dim, cls in evaluators]
 
             completed = 0
             while completed < total:
@@ -911,6 +912,8 @@ async def evaluation_stream(
                 except asyncio.TimeoutError:
                     yield {"event": "error", "data": json.dumps({"message": "Evaluation timeout"})}
                     return
+
+            await asyncio.gather(*eval_tasks, return_exceptions=True)
 
             weights = settings.EVAL_DIMENSION_WEIGHTS
             score_values = {d: (dim_results.get(d) or {}).get("overall", 0) for d in weights}
@@ -939,6 +942,11 @@ async def evaluation_stream(
             }
             yield {"event": "done", "data": "{}"}
         finally:
+            for task_item in eval_tasks:
+                if not task_item.done():
+                    task_item.cancel()
+            if eval_tasks:
+                await asyncio.gather(*eval_tasks, return_exceptions=True)
             if claimed and evaluation_id:
                 await EvaluationService.release_stream_claim(evaluation_id)
 

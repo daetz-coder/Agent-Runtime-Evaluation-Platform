@@ -60,3 +60,49 @@ Trajectory (SDK/Wiki Agent) → EvaluationService → 6 Evaluators (并行)
 ## 6. Wiki Agent 闭环
 
 Wiki Agent 聊天时通过 `EvaluationTrace` 采集 trajectory（含 retrieval 步骤），可选自动触发评估，形成「Agent 运行 → 评估 → 改进」演示闭环。
+
+## 7. 效果展示
+
+### 前端可视化体系
+
+| 页面 | 图表类型 | 数据来源 | 刷新时机 |
+|------|----------|----------|----------|
+| 仪表板 | 雷达图 + 趋势折线 + 柱状图 + 统计卡片 | `GET /reports/summary` + `GET /reports/trends` | 页面加载，缓存 30s |
+| 评估详情 | 6 维评分卡 + 雷达图 + 时间线 | `GET /evaluations/{id}` | 评估完成时自动刷新 |
+| 数据分析 | 分布直方图 + 热力图 + 多折线叠加 | `GET /reports/dimensions/{dim}` + `GET /reports/trends` | 页面加载 |
+| Replay 调试 | 步骤展开列表，LLM 原始 Prompt/Response | `GET /evaluations/{id}/replay` | 手动点击 |
+| Judge 透明面板 | 原始 Judge Prompt + Response + 解析后分数 | `GET /evaluations/{id}/judge-raw/{dim}` | 手动点击 |
+| 系统设置 | 状态标签 + 配置表单 | `GET /system/health` | 页面加载 + 手动刷新 |
+
+### 评分展示规范
+
+| 等级 | 范围 | 颜色 | UI 展示 |
+|------|------|------|---------|
+| 优秀 | ≥ 80 | `success` (绿色) | 标签 + 绿色进度条 |
+| 良好 | ≥ 60 | `warning` (黄色) | 标签 + 黄色进度条 |
+| 一般 | ≥ 40 | `orange` (橙色) | 标签 + 橙色进度条 |
+| 较差 | < 40 | `danger` (红色) | 标签 + 红色进度条 |
+
+### Consensus 多模型对比
+
+多模型共识评估的输出在 Dashboard 上以横向表格 + 柱状图展示：
+
+```
+═══ 规划维度 Consensus ═══
+deepseek-chat:     72%  ████████████████████████████░░  72
+glm-4:             75%  ██████████████████████████████  75
+qwen-plus:         70%  ██████████████████████████░░░░  70
+────────────────────────────────────────────────────
+综合均分: 72.3  |  分歧度 (std): 2.1  |  一致性: 高 ✅
+```
+
+## 8. 关键设计要点
+
+| 要点 | 方案 | 理由 |
+|------|------|------|
+| **缓存隔离** | Cache key 包含模型名 | 避免多模型共识时缓存串用导致 std=0 |
+| **优雅降级** | 所有外部依赖 try/except 兜底 | Redis/Celery/Docker 不可用时核心功能不掉 |
+| **并行评估** | `asyncio.gather` 并发 6 评估器 | 单次评估 15-30s，串行需 90-180s |
+| **Ghost Plan 过滤** | 跳过只有 {goal,context} 的 plan 步骤 | 避免任务创建时的空 plan 被误判为真实规划 |
+| **增量重算** | Trajectory Diff → 只重算变化维度 | 修改 prompt 后节省 2/3 评估时间 |
+| **版本追踪** | evaluation 记录 prompt_version / model_name | 每次评估可追溯使用的配置版本 |

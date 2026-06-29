@@ -289,3 +289,85 @@ attempt 3: delay=2s  → POST webhook_url (retry)
 attempt 4: delay=4s  → POST webhook_url (final retry)
 → 全部失败: 记录日志，不阻塞评估流程
 ```
+
+---
+
+## Tech Stack
+
+| Category | Technology | Purpose |
+|----------|-----------|---------|
+| **Backend Framework** | FastAPI + Uvicorn | REST API + SSE streaming, fully async |
+| **Agent Orchestration** | LangGraph + LangChain | Agent ReAct loop, evaluation workflow graph |
+| **AI Models** | DeepSeek / GLM / Qwen / OpenAI | LLM inference + LLM-as-Judge evaluation |
+| **Vector Search** | Milvus Lite + FAISS + BM25 | Wiki Agent hybrid search (vector + keyword) |
+| **Database** | SQLAlchemy Async + SQLite / PostgreSQL | Persistence with Alembic migration management |
+| **Cache** | Redis (optional, graceful degradation) | LLM response cache, report aggregation, rate limiting |
+| **Frontend** | Vue 3 + TypeScript + Element Plus + ECharts | Management panel and data visualization |
+| **Container** | Docker | Agent sandbox isolation |
+| **Observability** | OpenTelemetry + Prometheus + structlog | Distributed tracing, metrics, structured logging |
+| **Task Queue** | Celery (optional, graceful degradation) | Async evaluation tasks with exponential backoff |
+| **Data Science** | sentence-transformers + CrossEncoder | Reranker for retrieval re-ranking |
+| **SDK** | Python SDK (httpx + langchain-core) | Zero-instrumentation trajectory collection |
+
+## Key Points
+
+### Architectural Decisions
+
+1. **LangGraph over linear pipeline** — State graph enables clean parallel execution of 6 evaluators, easy to add new dimensions without affecting existing logic
+2. **Redis as optional dependency** — All cache operations catch exceptions and return None/False when Redis is unavailable; app core functionality is never blocked by cache layer
+3. **Separate evaluators over monolithic judge** — Each evaluator is independently testable; changes to one dimension's judge prompt won't affect others
+4. **Cache key includes model name** — `llm:{Evaluator}:{Model}:{prompt_hash}` ensures multi-model consensus evaluators don't share a single cached response
+5. **SSE streaming over polling** — Real-time push of agent steps and evaluation progress, enabling live UI updates without client polling
+
+## Effect Display
+
+### Frontend Visualization Reference
+
+| Page | Components | Description |
+|------|------------|-------------|
+| **Dashboard** | Radar chart, trend line chart, bar chart, stat cards | 6-dimension capability overview, score trends over time |
+| **Tasks** | Task list with filters, table view | CRUD management, status/skip/limit filtering |
+| **Evaluations** | Filterable evaluation list | Status and score range filtering |
+| **Evaluation Detail** | Score cards, radar chart, trajectory timeline | Per-dimension breakdown, LLM judge transparency, replay debugger |
+| **Analytics** | Distribution chart, correlation heatmap, performance heatmap | Score distribution, dimensional correlation analysis, suggestions |
+| **Settings** | System status indicators, configuration forms | Health status (Redis/Milvus/DB/ReRank), runtime config |
+
+### Score Quality Scale
+
+| Level | Range | Color | Meaning |
+|-------|-------|-------|---------|
+| **优秀 (Excellent)** | 80-100 | 🟢 Green | Agent performs well across all dimensions |
+| **良好 (Good)** | 60-79 | 🟡 Yellow | Generally good, minor improvements needed |
+| **一般 (Fair)** | 40-59 | 🟠 Orange | Noticeable issues in multiple dimensions |
+| **较差 (Poor)** | 0-39 | 🔴 Red | Significant problems, requires substantial improvement |
+
+### Data Flow for Visualization
+
+```
+Trajectory Data
+    │
+    ▼
+EvaluationService.evaluate()
+    │
+    ├── asyncio.gather(6 evaluators)
+    │   ├── PlanningEvaluator → scores + feedback
+    │   ├── TacticalEvaluator → scores + feedback
+    │   ├── ToolUseEvaluator → scores + feedback
+    │   ├── MemoryEvaluator  → scores + feedback
+    │   ├── ReplanEvaluator  → scores + feedback
+    │   └── RetrievalEvaluator → scores + feedback
+    │
+    ▼
+OverallEvaluation (aggregated)
+    │
+    ├── DB Storage → Evaluation model
+    ├── Cache Invalidation → report:* + dashboard:*
+    │
+    ▼
+Frontend
+    ├── Dashboard → HTTP GET /reports/summary + /reports/trends
+    ├── EvaluationDetail → HTTP GET /evaluations/{id}
+    ├── Replay Debugger  → HTTP GET /evaluations/{id}/replay
+    ├── Judge Panel      → HTTP GET /evaluations/{id}/judge-raw
+    └── Analytics        → HTTP GET /reports/dimensions/{dim} + /reports/trends
+```
