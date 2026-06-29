@@ -68,6 +68,22 @@ async def get_workspace(
     return WorkspaceResponse.model_validate(ws)
 
 
+@router.get("/{workspace_id}/members", response_model=List[dict])
+async def list_members(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    require_workspace_access(ctx, workspace_id, WorkspaceRole.VIEWER)
+    result = await db.execute(
+        select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
+    )
+    return [
+        {"user_id": m.user_id, "role": m.role.value, "joined_at": m.joined_at.isoformat()}
+        for m in result.scalars().all()
+    ]
+
+
 @router.post("/{workspace_id}/rotate-key")
 async def rotate_api_key(
     workspace_id: str,
@@ -135,6 +151,22 @@ async def remove_member(
     await add_audit_log(db, workspace_id, ctx.user_id, AuditAction.MEMBER_REMOVED, "member", user_id)
     await db.flush()
     return {"message": "Member removed"}
+
+
+@router.delete("/{workspace_id}")
+async def delete_workspace(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: WorkspaceContext = Depends(get_workspace_context),
+):
+    """Delete a workspace and its members/audit logs (cascade)."""
+    require_workspace_access(ctx, workspace_id, WorkspaceRole.ADMIN)
+    ws = await db.get(Workspace, workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    await db.delete(ws)
+    await db.flush()
+    return {"message": "Workspace deleted"}
 
 
 @router.get("/{workspace_id}/audit", response_model=List[AuditLogResponse])

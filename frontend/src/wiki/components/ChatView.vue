@@ -77,8 +77,8 @@
                   </details>
                 </div>
                 <!-- AI 回复内容 -->
-                <div v-if="msg.content" class="msg-bubble assistant-bubble">
-                  <div v-html="renderMarkdown(msg.content)"></div>
+                <div v-if="msg.content" class="msg-bubble assistant-bubble" :class="{ streaming: msg.streaming }">
+                  <div class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
                 </div>
                 <!-- 评估任务链接 -->
                 <div v-if="msg.evaluationTaskId" class="evaluation-link-card">
@@ -227,6 +227,7 @@ import { ref, reactive, computed, nextTick, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { wikiApi } from "../api/index.js";
 import { streamAuthHeaders } from "@/api";
+import { marked } from 'marked'
 
 const router = useRouter();
 const emit = defineEmits(["knowledgeUpdated", "navigateTo"]);
@@ -304,8 +305,10 @@ async function loadSessionMessages(sessionId) {
         wikiResults: m.wiki_results,
         extraction: m.extraction,
         extractionStatus: m.extraction?.status || (m.extraction?.auto_saved ? 'confirmed' : null),
+        streaming: false,
       }));
     }
+    await scrollToBottom({ immediate: true });
   } catch (e) {
     console.error("加载会话消息失败:", e);
   }
@@ -334,6 +337,8 @@ async function switchSession(id) {
   const session = sessions.value.find((s) => s.id === id);
   if (session && session.messages.length === 0) {
     await loadSessionMessages(id);
+  } else {
+    await scrollToBottom({ immediate: true });
   }
 }
 
@@ -390,6 +395,7 @@ async function sendMessage(text) {
     extraction: null,
     extractionResult: null,
     evaluationTaskId: null,
+    streaming: true,
   });
   session.messages.push(aiMsg);
   loading.value = true;
@@ -447,8 +453,10 @@ async function sendMessage(text) {
             if (data.evaluation_task_id) {
               aiMsg.evaluationTaskId = data.evaluation_task_id;
             }
+            aiMsg.streaming = false;
           } else if (data.type === "error") {
             aiMsg.content = `错误: ${data.message}`;
+            aiMsg.streaming = false;
           }
         } catch (e) {}
       }
@@ -458,6 +466,7 @@ async function sendMessage(text) {
   } catch (e) {
     aiMsg.content = `连接失败: ${e.message}`;
   } finally {
+    aiMsg.streaming = false;
     loading.value = false;
     scrollToBottom();
   }
@@ -530,15 +539,17 @@ async function rejectExtraction(msg) {
   }
 }
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (messagesRef.value) {
-      messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
-    }
-  });
+async function scrollToBottom(options = {}) {
+  const { immediate = false } = options;
+  await nextTick();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  if (messagesRef.value) {
+    messagesRef.value.scrollTo({
+      top: messagesRef.value.scrollHeight,
+      behavior: immediate ? "auto" : "smooth",
+    });
+  }
 }
-
-import { marked } from 'marked'
 
 function renderMarkdown(text) {
   if (!text) return "";
@@ -792,24 +803,90 @@ onMounted(async () => {
 .assistant-bubble {
   background: #f5f7fa;
   color: #1a1a1a;
+  border: 1px solid #edf0f4;
+  max-width: 100%;
 }
 
-.assistant-bubble :deep(h1) {
+.assistant-bubble.streaming .markdown-body::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 16px;
+  margin-left: 3px;
+  vertical-align: -2px;
+  border-radius: 2px;
+  background: #4a90d9;
+  animation: cursor-blink 1s step-end infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 45% { opacity: 1; }
+  46%, 100% { opacity: 0; }
+}
+
+.markdown-body {
+  color: #202124;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body :deep(*) {
+  max-width: 100%;
+}
+
+.markdown-body :deep(:first-child) {
+  margin-top: 0;
+}
+
+.markdown-body :deep(:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(p) {
+  margin: 0.45rem 0;
+}
+
+.markdown-body :deep(h1) {
   font-size: 20px;
-  margin: 12px 0 8px;
+  line-height: 1.35;
+  margin: 14px 0 8px;
 }
 
-.assistant-bubble :deep(h2) {
+.markdown-body :deep(h2) {
   font-size: 17px;
+  line-height: 1.4;
+  margin: 12px 0 7px;
+}
+
+.markdown-body :deep(h3) {
+  font-size: 15px;
+  line-height: 1.45;
   margin: 10px 0 6px;
 }
 
-.assistant-bubble :deep(h3) {
-  font-size: 15px;
-  margin: 8px 0 4px;
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 0.45rem 0;
+  padding-left: 1.35rem;
 }
 
-.assistant-bubble :deep(code) {
+.markdown-body :deep(li) {
+  margin: 0.18rem 0;
+  padding-left: 0.1rem;
+}
+
+.markdown-body :deep(li > p) {
+  margin: 0.15rem 0;
+}
+
+.markdown-body :deep(blockquote) {
+  margin: 0.7rem 0;
+  padding: 0.15rem 0 0.15rem 0.85rem;
+  color: #5f6368;
+  border-left: 3px solid #c9d7e8;
+}
+
+.markdown-body :deep(code) {
   background: #e8e8e8;
   padding: 1px 5px;
   border-radius: 3px;
@@ -817,23 +894,61 @@ onMounted(async () => {
   font-family: "SF Mono", Monaco, monospace;
 }
 
-.assistant-bubble :deep(.code-block) {
-  background: #1e1e1e;
-  color: #d4d4d4;
-  padding: 14px;
+.markdown-body :deep(pre) {
+  background: #20242a;
+  color: #e8eaed;
+  padding: 13px 14px;
   border-radius: 8px;
   overflow-x: auto;
-  margin: 10px 0;
+  margin: 0.75rem 0;
   font-size: 13px;
+  line-height: 1.6;
 }
 
-.assistant-bubble :deep(.code-block code) {
+.markdown-body :deep(pre code) {
   background: none;
   color: inherit;
   padding: 0;
+  white-space: pre;
 }
 
-.assistant-bubble :deep(strong) {
+.markdown-body :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  border: 1px solid #d8dee8;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.markdown-body :deep(th) {
+  background: #eef3f8;
+  font-weight: 600;
+}
+
+.markdown-body :deep(a) {
+  color: #256fc2;
+  text-decoration: none;
+}
+
+.markdown-body :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.markdown-body :deep(hr) {
+  height: 1px;
+  margin: 0.9rem 0;
+  border: 0;
+  background: #dfe5ec;
+}
+
+.markdown-body :deep(strong) {
   font-weight: 600;
 }
 

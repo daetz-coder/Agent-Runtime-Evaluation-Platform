@@ -75,6 +75,12 @@ const router = createRouter({
           component: () => import('@/views/Settings.vue'),
           meta: { title: '系统设置', icon: 'Setting' },
         },
+        {
+          path: 'workspaces',
+          name: 'Workspaces',
+          component: () => import('@/views/Workspaces.vue'),
+          meta: { title: '工作区管理', icon: 'Avatar' },
+        },
       ],
     },
   ],
