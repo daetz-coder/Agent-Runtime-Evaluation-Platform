@@ -20,8 +20,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, type_coerce
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.types import JSON
 
 from app.api.workspace import Workspace
 from app.db.models import AgentTask, Evaluation
@@ -101,6 +102,12 @@ class QuotaService:
 
         from app.db.models import TaskStatus
 
+        bind = self.db.get_bind()
+        if bind.dialect.name == "sqlite":
+            eval_mode_expr = func.json_extract(type_coerce(AgentTask.context, JSON), "$.eval_mode")
+        else:
+            eval_mode_expr = AgentTask.context["eval_mode"].as_string()
+
         result = await self.db.execute(
             select(func.count())
             .select_from(AgentTask)
@@ -108,7 +115,7 @@ class QuotaService:
                 AgentTask.workspace_id == workspace_id,
                 AgentTask.status == TaskStatus.RUNNING,
                 AgentTask.context.isnot(None),
-                AgentTask.context["eval_mode"].as_string() == SANDBOX_EVAL_MODE,
+                eval_mode_expr == SANDBOX_EVAL_MODE,
             )
         )
         running = result.scalar_one()
