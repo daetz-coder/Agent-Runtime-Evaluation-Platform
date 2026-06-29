@@ -151,18 +151,26 @@ class PlanningEvaluator(BaseEvaluator):
         for i, plan in enumerate(plans, 1):
             if isinstance(plan, dict):
                 steps = plan.get("steps", plan.get("milestones", []))
-                if isinstance(steps, list):
+                if isinstance(steps, list) and steps:
                     for j, step in enumerate(steps, 1):
                         if isinstance(step, dict):
                             lines.append(f"{j}. {step.get('description', step.get('name', str(step)))}")
                         else:
                             lines.append(f"{j}. {step}")
                 else:
-                    lines.append(f"{i}. {plan}")
+                    # No structured steps — format the plan goal/content directly
+                    goal_text = plan.get("goal", "") or plan.get("plan", "") or plan.get("content", "")
+                    if goal_text:
+                        lines.append(f"Goal: {goal_text}")
+                        context = plan.get("context")
+                        if context and isinstance(context, dict):
+                            lines.append(f"Context: {context}")
+                    else:
+                        lines.append(f"{i}. {plan}")
             else:
                 lines.append(f"{i}. {plan}")
 
-        return "\n".join(lines) if lines else "Plan format not recognized"
+        return "\n".join(lines) if lines else "No structured plan data found"
 
     def _format_plan_updates(self, plan_updates: List[Dict[str, Any]]) -> str:
         """Format plan updates into readable text."""
