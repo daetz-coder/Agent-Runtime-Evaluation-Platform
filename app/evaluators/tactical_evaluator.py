@@ -14,7 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import TacticalScore, TrajectoryStep
 
-TACTICAL_EVALUATION_PROMPT = """你是一位 AI Agent 战术决策评估专家。
+TACTICAL_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、problematic_actions）。你是一位 AI Agent 战术决策评估专家。
 
 ## 用户目标
 {goal}

@@ -14,7 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import MemoryScore, TrajectoryStep
 
-MEMORY_EVALUATION_PROMPT = """你是一位 AI Agent 记忆质量评估专家。
+MEMORY_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、forgotten_facts、inconsistencies）。你是一位 AI Agent 记忆质量评估专家。
 
 ## 用户目标
 {goal}

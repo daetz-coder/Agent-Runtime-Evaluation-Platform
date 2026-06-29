@@ -23,7 +23,7 @@ from app.models.schemas import TrajectoryStep
 
 logger = logging.getLogger(__name__)
 
-RETRIEVAL_EVAL_PROMPT = """你是一位 RAG（检索增强生成）质量评估专家。
+RETRIEVAL_EVAL_PROMPT = """你必须用中文输出所有内容（包括 feedback、missing_info）。你是一位 RAG（检索增强生成）质量评估专家。
 
 ## 问题 / 目标
 {goal}

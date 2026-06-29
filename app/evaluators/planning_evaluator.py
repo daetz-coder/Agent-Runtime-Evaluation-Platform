@@ -15,7 +15,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import PlanningScore, TrajectoryStep
 
-PLANNING_EVALUATION_PROMPT = """你是一位 AI Agent 规划质量评估专家。
+PLANNING_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、missing_milestones、suggestions）。你是一位 AI Agent 规划质量评估专家。
 
 ## 用户目标
 {goal}

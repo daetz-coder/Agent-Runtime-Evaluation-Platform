@@ -14,7 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import ReplanScore, TrajectoryStep
 
-REPLAN_EVALUATION_PROMPT = """你是一位 AI Agent 重规划决策评估专家。
+REPLAN_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、missed_replan_opportunities、unnecessary_replans）。你是一位 AI Agent 重规划决策评估专家。
 
 ## 用户目标
 {goal}

@@ -14,7 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.evaluators.base import BaseEvaluator
 from app.models.schemas import ToolUseScore, TrajectoryStep
 
-TOOL_USE_EVALUATION_PROMPT = """你是一位 AI Agent 工具使用评估专家。
+TOOL_USE_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、inefficient_calls）。你是一位 AI Agent 工具使用评估专家。
 
 ## 用户目标
 {goal}
