@@ -25,6 +25,14 @@ function attachAuthHeader(config: AxiosRequestConfig): AxiosRequestConfig {
   return config
 }
 
+export function streamAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`
+  }
+  return headers
+}
+
 const axiosInstance = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,
@@ -104,7 +112,7 @@ export const taskApi = {
     return api.get(`/tasks/${id}`, config)
   },
 
-  list(params?: { skip?: number; limit?: number }) {
+  list(params?: { skip?: number; limit?: number; status?: string; search?: string }) {
     return fetchPaginated('/tasks/', { params })
   },
 
@@ -127,8 +135,12 @@ export const taskApi = {
 
 // Evaluation API
 export const evaluationApi = {
-  list(params?: { skip?: number; limit?: number; status?: string }) {
+  list(params?: { skip?: number; limit?: number; status?: string; min_score?: number; max_score?: number }) {
     return fetchPaginated('/evaluations/', { params })
+  },
+
+  getDashboard() {
+    return api.get('/evaluations/dashboard')
   },
 
   run(data: { task_id: string; include_details?: boolean; use_stream?: boolean }) {

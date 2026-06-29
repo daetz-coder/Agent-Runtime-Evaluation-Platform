@@ -4,7 +4,7 @@
     <div class="page-header">
       <div class="header-left">
         <h2>评估记录</h2>
-        <span class="eval-count">共 {{ evaluations.length }} 条记录</span>
+        <span class="eval-count">共 {{ totalEvaluations }} 条记录</span>
       </div>
       <el-button type="primary" @click="fetchEvaluations">
         <el-icon><Refresh /></el-icon>
@@ -90,7 +90,7 @@
 
     <!-- Evaluation List -->
     <el-card class="eval-list-card" shadow="never">
-      <el-table :data="filteredEvaluations" style="width: 100%" v-loading="loading">
+      <el-table :data="evaluations" style="width: 100%" v-loading="loading">
         <el-table-column prop="id" label="ID" width="280">
           <template #default="{ row }">
             <span class="eval-id">{{ row.id.substring(0, 8) }}...</span>
@@ -166,7 +166,7 @@
       </el-table>
 
       <!-- 空状态 -->
-      <el-empty v-if="!loading && filteredEvaluations.length === 0" description="暂无评估记录" />
+      <el-empty v-if="!loading && evaluations.length === 0" description="暂无评估记录" />
 
       <!-- Pagination -->
       <div class="pagination-wrapper">
@@ -202,6 +202,11 @@ const scoreRange = ref<[number, number]>([0, 100])
 const currentPage = ref(1)
 const pageSize = ref(20)
 const totalEvaluations = ref(0)
+const dashboardStats = ref({
+  total: 0,
+  status_counts: {} as Record<string, number>,
+  average_score: 0,
+})
 
 // Dimensions config
 const dimensions = [
@@ -213,42 +218,11 @@ const dimensions = [
   { key: 'retrieval', name: '检索', color: '#9b59b6' },
 ]
 
-// Computed
-const filteredEvaluations = computed(() => {
-  let result = evaluations.value
-
-  if (statusFilter.value) {
-    result = result.filter(e => e.status === statusFilter.value)
-  }
-
-  // Score filter
-  const [minScore, maxScore] = scoreRange.value
-  result = result.filter(e => {
-    const score = e.overall_score || 0
-    return score >= minScore && score <= maxScore
-  })
-
-  return result
-})
-
-const completedCount = computed(() => {
-  return evaluations.value.filter(e => e.status === 'completed').length
-})
-
-const inProgressCount = computed(() => {
-  return evaluations.value.filter(e => e.status === 'in_progress').length
-})
-
-const failedCount = computed(() => {
-  return evaluations.value.filter(e => e.status === 'failed').length
-})
-
-const averageScore = computed(() => {
-  const completed = evaluations.value.filter(e => e.overall_score)
-  if (completed.length === 0) return 0
-  const sum = completed.reduce((acc, e) => acc + (e.overall_score || 0), 0)
-  return Math.round(sum / completed.length)
-})
+// Stats from dashboard API (full dataset, not current page)
+const completedCount = computed(() => dashboardStats.value.status_counts.completed || 0)
+const inProgressCount = computed(() => dashboardStats.value.status_counts.in_progress || 0)
+const failedCount = computed(() => dashboardStats.value.status_counts.failed || 0)
+const averageScore = computed(() => dashboardStats.value.average_score || 0)
 
 // Methods
 const getStatusType = (status: string) => {
@@ -288,12 +262,24 @@ const formatDateTime = (date: string) => {
   return dayjs(d).format('YYYY-MM-DD HH:mm:ss')
 }
 
+const fetchDashboard = async () => {
+  try {
+    dashboardStats.value = await evaluationApi.getDashboard()
+  } catch (error) {
+    console.error('Failed to fetch evaluation dashboard:', error)
+  }
+}
+
 const fetchEvaluations = async () => {
   loading.value = true
   try {
+    const [minScore, maxScore] = scoreRange.value
     const { items, total } = await evaluationApi.list({
       skip: (currentPage.value - 1) * pageSize.value,
       limit: pageSize.value,
+      status: statusFilter.value || undefined,
+      min_score: minScore > 0 ? minScore : undefined,
+      max_score: maxScore < 100 ? maxScore : undefined,
     })
     evaluations.value = items as any[]
     totalEvaluations.value = total
@@ -312,6 +298,8 @@ const goToEvaluationDetail = (row: { id: string; stream_mode?: boolean }) => {
 const resetFilters = () => {
   statusFilter.value = ''
   scoreRange.value = [0, 100]
+  currentPage.value = 1
+  fetchEvaluations()
 }
 
 const handleDeleteEvaluation = async (evaluation: any) => {
@@ -319,6 +307,7 @@ const handleDeleteEvaluation = async (evaluation: any) => {
     await evaluationApi.delete(evaluation.id)
     ElMessage.success('评估记录已删除')
     fetchEvaluations()
+    fetchDashboard()
   } catch (error) {
     console.error('Failed to delete evaluation:', error)
   }
@@ -326,6 +315,7 @@ const handleDeleteEvaluation = async (evaluation: any) => {
 
 // Lifecycle
 onMounted(() => {
+  fetchDashboard()
   fetchEvaluations()
 })
 </script>
