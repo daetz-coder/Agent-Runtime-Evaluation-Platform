@@ -6,6 +6,16 @@
   <img src="https://img.shields.io/badge/Vue_3-v3.5+-4FC08D?logo=vuedotfiles" alt="Vue 3">
   <img src="https://img.shields.io/badge/LangGraph-v0.3+-3399FF?logo=langchain" alt="LangGraph">
   <img src="https://img.shields.io/badge/SQLAlchemy-async-FF6B6B?logo=sqlalchemy" alt="SQLAlchemy Async">
+  <img src="https://img.shields.io/badge/TypeScript-v5.7-3178C6?logo=typescript" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Docker-2496ED?logo=docker" alt="Docker">
+  <img src="https://img.shields.io/badge/Redis-DC382D?logo=redis" alt="Redis">
+  <br>
+  <img src="https://img.shields.io/badge/LangChain-v0.3-3399FF?logo=langchain" alt="LangChain">
+  <img src="https://img.shields.io/badge/Milvus-00A98F?logo=milvus" alt="Milvus">
+  <img src="https://img.shields.io/badge/Element_Plus-409EFF?logo=elementor" alt="Element Plus">
+  <img src="https://img.shields.io/badge/ECharts-AA344D?logo=echarts" alt="ECharts">
+  <img src="https://img.shields.io/badge/Vite-646CFF?logo=vite" alt="Vite">
+  <img src="https://img.shields.io/badge/Pydantic-E92063?logo=pydantic" alt="Pydantic">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
 </p>
 
