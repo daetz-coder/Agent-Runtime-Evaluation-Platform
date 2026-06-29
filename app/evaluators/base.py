@@ -137,8 +137,24 @@ class BaseEvaluator(ABC):
         return "\n".join(lines)
 
     def _extract_plans(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract planning steps from trajectory."""
-        return [step.action_detail for step in trajectory if step.action_type == "plan"]
+        """Extract planning steps from trajectory.
+        
+        Skips "ghost plans" that are just {goal, context} without any structured
+        plan content — these are task-creation artifacts, not actual plans.
+        """
+        plans = []
+        for step in trajectory:
+            if step.action_type == "plan":
+                detail = step.action_detail
+                if isinstance(detail, dict):
+                    # A real plan must have at least one of: steps, milestones, plan content
+                    has_structure = any(
+                        detail.get(k) for k in ("steps", "milestones", "plan", "content")
+                    )
+                    if not has_structure and set(detail.keys()).issubset({"goal", "context"}):
+                        continue  # Ghost plan — skip
+                plans.append(detail)
+        return plans
 
     def _extract_tool_calls(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
         """Extract tool call steps from trajectory."""
