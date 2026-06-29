@@ -8,15 +8,19 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 
+from app.wiki_agent.config import settings
 from app.wiki_agent.session import store as session_store
 from sdk import create_proxy_llm, get_collector, instrument_langgraph
 from sdk.collector import ActionType
 
 logger = logging.getLogger(__name__)
+
+_plan_llm: BaseChatModel | None = None
 
 
 # ── Graph / LLM 自动采集包裹 ────────────────────────────────
@@ -30,6 +34,50 @@ def instrument_graph(graph):
 def wrap_llm(llm: BaseChatModel) -> BaseChatModel:
     """用 SDK 包裹 LLM，自动采集 LLM 调用和工具决策。"""
     return create_proxy_llm(llm)
+
+
+def _get_plan_llm() -> BaseChatModel:
+    """Lazy LLM for structured plan generation (avoids circular import from graph.py)."""
+    global _plan_llm
+    if _plan_llm is not None:
+        return _plan_llm
+
+    from langchain_openai import ChatOpenAI
+
+    model = settings.ZHIPUAI_CHAT_MODEL if settings.ZHIPUAI_API_KEY else settings.DEEPSEEK_MODEL
+    api_key = settings.ZHIPUAI_API_KEY or settings.DEEPSEEK_API_KEY
+    base_url = settings.ZHIPUAI_BASE_URL if settings.ZHIPUAI_API_KEY else settings.DEEPSEEK_BASE_URL
+    if not api_key:
+        raise ValueError("No LLM API key configured for plan generation")
+
+    _plan_llm = wrap_llm(
+        ChatOpenAI(
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            temperature=0.3,
+            streaming=False,
+        )
+    )
+    return _plan_llm
+
+
+def _parse_plan_json(content: str) -> dict | None:
+    """Extract a JSON object from LLM output (supports markdown fences)."""
+    text = content.strip()
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if fence:
+        text = fence.group(1).strip()
+
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start == -1 or end <= start:
+        return None
+
+    try:
+        return json.loads(text[start:end])
+    except json.JSONDecodeError:
+        return None
 
 
 # ── 会话生命周期 ────────────────────────────────────────────
@@ -67,15 +115,18 @@ async def _generate_plan(goal: str) -> dict:
         from langchain_core.prompts import ChatPromptTemplate
 
         p = ChatPromptTemplate.from_template("{prompt}")
-        chain = p | chat_llm
+        chain = p | _get_plan_llm()
         response = await chain.ainvoke({"prompt": prompt})
 
-        start = response.content.find("{")
-        end = response.content.rfind("}") + 1
-        if start != -1 and end > start:
-            return json.loads(response.content[start:end])
-    except Exception:
-        pass
+        parsed = _parse_plan_json(response.content)
+        if parsed and parsed.get("steps"):
+            return parsed
+        if parsed:
+            logger.warning("Plan JSON parsed but missing steps: %s", parsed)
+        else:
+            logger.warning("Failed to parse plan JSON from LLM response: %s", response.content[:300])
+    except Exception as exc:
+        logger.warning("Plan generation failed: %s", exc)
 
     return {"goal": goal}
 

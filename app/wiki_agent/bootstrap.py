@@ -138,3 +138,22 @@ async def startup() -> None:
     seed_knowledge_if_empty()
     await init_db()
     sync_indexes_if_needed()
+    preload_reranker_if_enabled()
+
+
+def preload_reranker_if_enabled() -> None:
+    """Eager-load reranker at startup so load errors surface in logs early."""
+    if not settings.RERANK_ENABLED:
+        print("[Wiki Agent] Rerank disabled (RERANK_ENABLED=false)")
+        return
+
+    from app.wiki_agent.agent.tools.reranker import get_reranker_model, get_reranker_status
+
+    get_reranker_model()
+    status = get_reranker_status()
+    if status["loaded"]:
+        print(f"[Wiki Agent] Rerank ready: {status['model_id']}")
+    elif status.get("error"):
+        print(f"[Wiki Agent] Rerank unavailable: {status['error']}")
+    else:
+        print("[Wiki Agent] Rerank not loaded")

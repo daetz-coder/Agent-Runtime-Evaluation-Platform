@@ -82,6 +82,20 @@
             </el-descriptions-item>
             <el-descriptions-item label="向量分块">{{ systemStatus.wiki?.milvus?.total_chunks ?? 0 }}</el-descriptions-item>
             <el-descriptions-item label="BM25 分块">{{ systemStatus.wiki?.bm25_chunks ?? 0 }}</el-descriptions-item>
+            <el-descriptions-item label="ReRank">
+              <el-tag
+                :type="systemStatus.wiki?.rerank?.loaded ? 'success' : (systemStatus.wiki?.rerank?.enabled ? 'warning' : 'info')"
+                size="small"
+              >
+                {{
+                  !systemStatus.wiki?.rerank?.enabled
+                    ? '已关闭'
+                    : systemStatus.wiki?.rerank?.loaded
+                      ? '已加载'
+                      : '未加载'
+                }}
+              </el-tag>
+            </el-descriptions-item>
             <el-descriptions-item label="知识页数">{{ systemStatus.wiki?.knowledge_pages ?? 0 }}</el-descriptions-item>
             <el-descriptions-item label="Milvus URI" :span="2">
               <code>{{ systemStatus.wiki?.milvus?.uri }}</code>
@@ -99,6 +113,21 @@
             :closable="false"
             style="margin-top: 16px"
           />
+
+          <el-alert
+            v-if="systemStatus?.wiki?.rerank?.enabled && !systemStatus?.wiki?.rerank?.loaded"
+            :title="systemStatus.wiki.rerank.error || 'ReRank 模型未加载，混合检索将降级为 RRF 排序'"
+            type="warning"
+            show-icon
+            :closable="false"
+            style="margin-top: 16px"
+          >
+            <template #default>
+              <p v-if="!systemStatus.wiki.rerank.has_local_weights">
+                本地目录缺少 PyTorch 权重，请运行：<code>python download_reranker.py</code>
+              </p>
+            </template>
+          </el-alert>
         </el-card>
       </el-tab-pane>
 

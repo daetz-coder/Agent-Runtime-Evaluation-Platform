@@ -57,9 +57,12 @@ def _get_wiki_health() -> dict:
     knowledge_dir = Path(wiki_settings.KNOWLEDGE_DIR)
     page_count = len(list(knowledge_dir.rglob("*.md"))) if knowledge_dir.exists() else 0
 
+    from app.wiki_agent.agent.tools.reranker import get_reranker_status
+
     return {
         "knowledge_dir": wiki_settings.KNOWLEDGE_DIR,
         "knowledge_pages": page_count,
         "milvus": milvus_stats,
         "bm25_chunks": len(bm25._tokenized_corpus),
+        "rerank": get_reranker_status(),
     }
