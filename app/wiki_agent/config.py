@@ -28,6 +28,11 @@ class WikiAgentSettings(BaseSettings):
     DB_PATH: str = str(WIKI_DATA_DIR / "chat.db")
     BM25_INDEX_PATH: str = str(WIKI_DATA_DIR / "bm25_index.pkl")
 
+    # Query Rewrite (pre-retrieval pipeline)
+    QUERY_REWRITE_ENABLED: bool = True
+    QUERY_REWRITE_SIMILARITY_THRESHOLD: float = 0.7
+    QUERY_REWRITE_MAX_QUERIES: int = 5
+
     # Rerank (cross-encoder after RRF)
     RERANK_ENABLED: bool = True
     RERANK_MODEL: str = "BAAI/bge-reranker-base"

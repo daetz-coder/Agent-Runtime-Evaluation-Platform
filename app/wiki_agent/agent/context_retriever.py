@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.wiki_agent.agent.tools import search_tools
+from app.wiki_agent.agent.tools.query_rewriter import rewrite_query
 from app.wiki_agent.session import store as session_store
 
 # 预算常量（字符数，约 1 token ≈ 2.5 中文字符）
@@ -41,15 +42,27 @@ async def retrieve_context(
 ) -> RetrievedContext:
     """统一检索三路记忆，返回 RetrievedContext。"""
 
-    # ① External KB — hybrid search
-    wiki_results = search_tools.hybrid_search(user_message, limit=3)
+    # ① Query 改写 Pipeline（上下文补齐 + 路由分类 + 多策略改写 + 相似度校验）
+    rewritten_queries = await rewrite_query(user_message, chat_history)
 
-    # ② Long-term Memory — session key_facts
+    # ② External KB — 对每个改写 query 做 hybrid_search，合并去重
+    seen_paths: set[str] = set()
+    wiki_results: list[dict] = []
+    for q in rewritten_queries:
+        results = search_tools.hybrid_search(q, limit=3)
+        for r in results:
+            path = r.get("path", "")
+            if path and path not in seen_paths:
+                seen_paths.add(path)
+                wiki_results.append(r)
+    wiki_results = wiki_results[:5]  # 最终取 top 5
+
+    # ③ Long-term Memory — session key_facts
     key_facts: list[str] = []
     if session_id:
         key_facts = await session_store.get_session_key_facts(session_id)
 
-    # ③ Short-term Memory — recent chat history
+    # ④ Short-term Memory — recent chat history
     history_summary = _summarize_history(chat_history, HISTORY_RECENT_COUNT)
 
     return RetrievedContext(
