@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from app.services.evaluation_service import EvaluationService
@@ -36,22 +38,28 @@ async def test_create_task_cross_workspace_conflict():
     from app.db.database import async_session_factory
     from app.models.schemas import TaskCreate
 
+    # Use unique IDs to avoid collisions with stale data from previous runs
+    suffix = uuid.uuid4().hex[:8]
+    ws_a_id = f"ws-a-{suffix}"
+    ws_b_id = f"ws-b-{suffix}"
+    task_id = f"shared-task-{suffix}"
+
     async with async_session_factory() as db:
-        ws_a = Workspace(id="ws-a-test", name="WS A", api_key="key_a_test")
-        ws_b = Workspace(id="ws-b-test", name="WS B", api_key="key_b_test")
+        ws_a = Workspace(id=ws_a_id, name="WS A", api_key=f"key_a_{suffix}")
+        ws_b = Workspace(id=ws_b_id, name="WS B", api_key=f"key_b_{suffix}")
         db.add_all([ws_a, ws_b])
         await db.flush()
 
         service = EvaluationService(db)
         task = await service.create_task(
-            TaskCreate(id="shared-task-id", goal="Shared", context={}),
-            workspace_id="ws-a-test",
+            TaskCreate(id=task_id, goal="Shared", context={}),
+            workspace_id=ws_a_id,
         )
         await db.commit()
-        assert task.id == "shared-task-id"
+        assert task.id == task_id
 
         with pytest.raises(ValueError, match="different workspace scope"):
             await service.create_task(
-                TaskCreate(id="shared-task-id", goal="Shared again", context={}),
-                workspace_id="ws-b-test",
+                TaskCreate(id=task_id, goal="Shared again", context={}),
+                workspace_id=ws_b_id,
             )
