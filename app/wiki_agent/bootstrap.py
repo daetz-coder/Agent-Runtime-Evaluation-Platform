@@ -139,6 +139,22 @@ async def startup() -> None:
     await init_db()
     sync_indexes_if_needed()
     preload_reranker_if_enabled()
+    start_env_monitor()
+
+
+def start_env_monitor() -> None:
+    """启动环境监控器，自动感知 knowledge/ 目录变化"""
+    import asyncio
+
+    from app.wiki_agent.agent.tools.env_monitor import get_env_monitor
+
+    monitor = get_env_monitor()
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(monitor.start())
+        print("[Wiki Agent] Environment monitor started (poll interval: 5s)")
+    except RuntimeError:
+        print("[Wiki Agent] Environment monitor skipped (no event loop)")
 
 
 def preload_reranker_if_enabled() -> None:
