@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Annotated, Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,8 +51,8 @@ async def _create_task_checked(
 
 @router.get("/", response_model=List[EvaluationListItem])
 async def list_evaluations(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     status: Optional[str] = None,
     min_score: Optional[float] = None,
     max_score: Optional[float] = None,
@@ -193,7 +193,11 @@ async def run_evaluation(
                 evaluation.id,
                 workspace_id=ws_filter,
             )
-        except Exception:
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Celery dispatch failed (%s), falling back to BackgroundTasks", exc
+            )
             background_tasks.add_task(
                 _run_evaluation_background,
                 request.task_id,
@@ -653,6 +657,8 @@ async def batch_evaluation(
     - **task_ids**: 任务 ID 列表
     """
     require_role(ctx, WorkspaceRole.EVALUATOR)
+    if len(task_ids) > 50:
+        raise HTTPException(status_code=400, detail="Batch size cannot exceed 50 task IDs")
     ws_filter = ctx.filter_workspace_id()
 
     from app.services.quota import QuotaExceeded, enforce_workspace_quotas
@@ -678,7 +684,11 @@ async def batch_evaluation(
                 from app.celery_app import run_evaluation_task
 
                 run_evaluation_task.delay(task_id, evaluation.id, workspace_id=ws_filter)
-            except Exception:
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Celery dispatch failed (%s), falling back to BackgroundTasks", exc
+                )
                 background_tasks.add_task(
                     _run_evaluation_background,
                     task_id,

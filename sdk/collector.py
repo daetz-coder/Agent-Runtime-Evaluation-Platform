@@ -170,18 +170,22 @@ class TrajectoryCollector:
     def __init__(self):
         if self._initialized:
             return
-        self._initialized = True
+        # Protect against concurrent __init__ calls (TOCTOU on _initialized).
+        with self._instance_lock:
+            if self._initialized:
+                return
+            self._initialized = True
 
-        self._buffer_lock = threading.Lock()
-        self._flush_lock = threading.Lock()
+            self._buffer_lock = threading.Lock()
+            self._flush_lock = threading.Lock()
 
-        self._enabled = _env_bool("EVAL_ENABLED", True)
-        self._api_base = _env_str("EVAL_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
-        self._api_key = _env_str("EVAL_API_KEY", "")
-        self._batch_size = _env_int("EVAL_BATCH_SIZE", 10)
-        self._inprocess = _env_bool("EVAL_INPROCESS", True)
+            self._enabled = _env_bool("EVAL_ENABLED", True)
+            self._api_base = _env_str("EVAL_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+            self._api_key = _env_str("EVAL_API_KEY", "")
+            self._batch_size = _env_int("EVAL_BATCH_SIZE", 10)
+            self._inprocess = _env_bool("EVAL_INPROCESS", True)
 
-        import httpx
+            import httpx
 
         self._client: Optional[httpx.Client] = None
 
@@ -283,7 +287,8 @@ class TrajectoryCollector:
     async def start_async(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
         """Async start — uses in-process DB when embedded (no HTTP loopback)."""
         if not self.use_inprocess():
-            return self.start(goal, context)
+            import asyncio
+            return await asyncio.to_thread(self.start, goal, context)
 
         session = self._new_session()
         session.task_id = str(uuid.uuid4())
@@ -313,9 +318,20 @@ class TrajectoryCollector:
         self.record(ActionType.THINK, {"thought": "Run finished"})
         self._flush(block=True)
 
-        # 更新状态为 completed
-        if session.remote_task_created:
+        # Only mark completed if all steps were flushed successfully.
+        # After _flush, remaining steps indicate a failed upload.
+        with self._buffer_lock:
+            flush_succeeded = len(session.steps) == 0
+
+        if session.remote_task_created and flush_succeeded:
             self.update_task(status="completed")
+        elif session.remote_task_created and not flush_succeeded:
+            logger.warning(
+                "Task %s has %d un-flushed steps; marking as 'failed' instead of 'completed'",
+                session.task_id,
+                len(session.steps),
+            )
+            self.update_task(status="failed")
 
         if auto_run and session.remote_task_created and not session.eval_triggered:
             try:
@@ -358,7 +374,8 @@ class TrajectoryCollector:
                 session.eval_triggered = True
             return session.task_id
 
-        return self.finish(auto_run=auto_run)
+        import asyncio
+        return await asyncio.to_thread(self.finish, auto_run=auto_run)
 
     def attach(self, task_id: str) -> None:
         """Bind to an existing remote task without POST /tasks (reuse for confirm/resume)."""
@@ -439,11 +456,22 @@ class TrajectoryCollector:
                 session.steps = []
                 task_id = session.task_id
                 remote = session.remote_task_created
+                # Capture re-buffer target outside the thread to avoid
+                # ContextVar isolation issues (threading.Thread does not
+                # inherit parent context on Python < 3.12).
+                failed_steps: List[Dict[str, Any]] = []
                 threading.Thread(
                     target=self._flush_steps,
-                    args=(task_id, remote, steps_snapshot),
+                    args=(task_id, remote, steps_snapshot, failed_steps),
                     daemon=True,
                 ).start()
+                # If the thread already finished (unlikely) and failed,
+                # re-buffer now; otherwise the next record() call will
+                # pick up failed_steps via _rebuffer_failed_steps().
+                if failed_steps:
+                    with self._buffer_lock:
+                        if session.task_id == task_id:
+                            session.steps = failed_steps + session.steps
 
             return step
 
@@ -734,8 +762,15 @@ class TrajectoryCollector:
         task_id: Optional[str],
         remote_created: bool,
         steps_to_send: List[Dict[str, Any]],
+        failed_steps: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        """Upload trajectory steps (may run in a background thread)."""
+        """Upload trajectory steps (may run in a background thread).
+
+        On failure, steps are appended to *failed_steps* (if provided)
+        so the caller can re-buffer them in the correct ContextVar session.
+        This avoids the ``threading.Thread`` ContextVar isolation bug where
+        a new thread cannot see the parent's session.
+        """
         if not steps_to_send or not remote_created or not task_id:
             return
 
@@ -748,10 +783,8 @@ class TrajectoryCollector:
         )
         if r is None:
             logger.warning("Trajectory flush failed, %d steps re-buffered", len(steps_to_send))
-            with self._buffer_lock:
-                session = self._session()
-                if session.task_id == task_id:
-                    session.steps = steps_to_send + session.steps
+            if failed_steps is not None:
+                failed_steps.extend(steps_to_send)
 
     def _flush(self, block: bool = False) -> None:
         if self.use_inprocess():
@@ -773,15 +806,21 @@ class TrajectoryCollector:
                     session.steps = steps_to_send + session.steps
                 return
 
-            self._flush_steps(task_id, remote, steps_to_send)
+            failed: List[Dict[str, Any]] = []
+            self._flush_steps(task_id, remote, steps_to_send, failed_steps=failed)
+            if failed:
+                with self._buffer_lock:
+                    session.steps = failed + session.steps
         finally:
             self._flush_lock.release()
 
     def _http(self):
         if self._client is None:
-            import httpx
+            with self._instance_lock:
+                if self._client is None:
+                    import httpx
 
-            self._client = httpx.Client(timeout=10.0)
+                    self._client = httpx.Client(timeout=10.0)
         return self._client
 
 

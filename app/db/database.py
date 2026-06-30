@@ -95,9 +95,14 @@ async def _run_alembic_upgrade() -> None:
         command.upgrade(alembic_cfg, "head")
         logger.info("Alembic migrations applied successfully (head: %s)", head)
     except Exception as e:
-        logger.warning("Alembic migration failed, falling back to create_all: %s", e)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        logger.error(
+            "Alembic migration failed: %s. "
+            "Database may be in an inconsistent state. "
+            "Fix the migration issue and restart, or manually run: alembic upgrade head",
+            e,
+            exc_info=True,
+        )
+        raise
 
 
 async def close_db() -> None:

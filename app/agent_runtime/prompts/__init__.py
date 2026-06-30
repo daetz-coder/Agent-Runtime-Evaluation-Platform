@@ -79,6 +79,12 @@ class PromptManager:
         self._context_cache: Dict[str, str] = {}  # version → context_template
         self._mtime: Dict[str, float] = {}  # version → last mtime
 
+    @staticmethod
+    def _validate_version(version: str) -> None:
+        """Reject version strings that could escape the templates directory."""
+        if "/" in version or "\\" in version or ".." in version:
+            raise ValueError(f"Invalid prompt version: {version!r}")
+
     # ── Public API ────────────────────────────────────────────
 
     def get_prompt(self, version: str = "") -> str:
@@ -131,13 +137,22 @@ class PromptManager:
 
         Returns:
             The file path where the prompt was saved.
+
+        Raises:
+            ValueError: If the version string contains path traversal characters.
         """
+        self._validate_version(version)
+
         data = {
             "version": version,
             "description": description,
             "prompt": content,
         }
         path = self._templates_dir / f"{version}.yaml"
+        # Double-check resolved path is still inside _templates_dir.
+        resolved = path.resolve()
+        if not str(resolved).startswith(str(self._templates_dir.resolve())):
+            raise ValueError(f"Invalid prompt version: {version!r}")
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
         # Clear cache for this version
@@ -150,6 +165,7 @@ class PromptManager:
 
     def _refresh_if_needed(self, version: str) -> None:
         """Reload a prompt template from disk if the file has changed."""
+        self._validate_version(version)
         path = self._templates_dir / f"{version}.yaml"
         if not path.exists():
             # Fall back to built-in default

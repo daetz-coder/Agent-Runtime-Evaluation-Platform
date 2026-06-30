@@ -636,6 +636,9 @@ class EvaluationService:
 
                     logging.getLogger(__name__).error("Evaluation failed: %s", e, exc_info=True)
                     evaluation.status = EvaluationStatus.FAILED
+                    if task_model:
+                        task_model.status = TaskStatus.FAILED
+                        task_model.completed_at = datetime.now(timezone.utc)
                     await self.db.flush()
             else:
                 # No trajectory or agent failed — mark evaluation as failed

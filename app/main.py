@@ -47,6 +47,12 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
     logger.info("Starting %s...", settings.APP_NAME)
+    if not settings.AUTH_ENABLED:
+        logger.warning(
+            "⚠️  Authentication is DISABLED (AUTH_ENABLED=false). "
+            "All endpoints are accessible without credentials. "
+            "Enable authentication before deploying to production."
+        )
     await init_db()
     logger.info("Database initialized")
     await init_redis()

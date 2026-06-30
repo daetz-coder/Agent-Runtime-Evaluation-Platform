@@ -6,9 +6,13 @@ from typing import Any, Mapping, Optional
 
 
 def is_applicable(dimension_result: Any) -> bool:
-    """Return whether a dimension should participate in overall scoring."""
+    """Return whether a dimension should participate in overall scoring.
+
+    Non-Mapping results (None, int, str, etc.) indicate the dimension was
+    not evaluated or failed, so they are NOT applicable.
+    """
     if not isinstance(dimension_result, Mapping):
-        return True
+        return False
     return dimension_result.get("applicable", True) is not False
 
 
@@ -18,7 +22,9 @@ def dimension_score(dimension_result: Any) -> Optional[float]:
         return None
     if isinstance(dimension_result, Mapping):
         score = dimension_result.get("overall")
-        return float(score or 0)
+        if score is None:
+            return None
+        return float(score)
     return None
 
 

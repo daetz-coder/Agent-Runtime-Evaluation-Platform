@@ -257,9 +257,14 @@ class WorkspaceManager:
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w") as tar:
             for path, content in files.items():
+                # Sanitize path — reject traversal components
+                clean = path.lstrip("/")
+                if ".." in clean.split("/"):
+                    logger.warning("Skipping tar entry with path traversal: %s", path)
+                    continue
                 data = content.encode("utf-8")
                 # Create parent directories if needed
-                parts = path.split("/")
+                parts = clean.split("/")
                 if len(parts) > 1:
                     for i in range(1, len(parts)):
                         dir_name = "/".join(parts[:i]) + "/"
@@ -269,7 +274,7 @@ class WorkspaceManager:
                             dir_info = tarfile.TarInfo(name=dir_name)
                             dir_info.type = tarfile.DIRTYPE
                             tar.addfile(dir_info)
-                info = tarfile.TarInfo(name=path)
+                info = tarfile.TarInfo(name=clean)
                 info.size = len(data)
                 tar.addfile(info, io.BytesIO(data))
         return buf.getvalue()

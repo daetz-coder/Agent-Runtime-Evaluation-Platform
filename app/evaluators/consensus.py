@@ -208,6 +208,7 @@ class ConsensusEvaluator:
             MemoryEvaluator,
             PlanningEvaluator,
             ReplanEvaluator,
+            RetrievalEvaluator,
             TacticalEvaluator,
             ToolUseEvaluator,
         )
@@ -218,6 +219,7 @@ class ConsensusEvaluator:
             "tool_use": ToolUseEvaluator,
             "memory": MemoryEvaluator,
             "replan": ReplanEvaluator,
+            "retrieval": RetrievalEvaluator,
         }.get(dimension, PlanningEvaluator)
 
         async def score_with_provider(name: str, llm) -> float:

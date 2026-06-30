@@ -165,12 +165,9 @@ class RetrievalEvaluator(BaseEvaluator):
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
         """解析 LLM 返回的 JSON。"""
-        try:
-            import re
-
-            match = re.search(r"\{.*\}", content, re.DOTALL)
-            if match:
-                data = json.loads(match.group())
+        data = self._parse_json_from_llm(content)
+        if data is not None:
+            try:
                 overall = round(
                     data.get("relevance", 0) * self.WEIGHTS["relevance"]
                     + data.get("evidence_accuracy", 0) * self.WEIGHTS["evidence_accuracy"]
@@ -186,8 +183,8 @@ class RetrievalEvaluator(BaseEvaluator):
                     "hallucination_detected": data.get("hallucination_detected", False),
                     "missing_info": data.get("missing_info", []),
                 }
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.warning("Failed to parse retrieval eval: %s", e)
+            except (KeyError, TypeError) as e:
+                logger.warning("Failed to process retrieval eval scores: %s", e)
         return {
             "relevance": 50,
             "evidence_accuracy": 50,

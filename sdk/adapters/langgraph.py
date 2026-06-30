@@ -139,6 +139,7 @@ class InstrumentedStateGraph:
                 duration_ms = (time.time() - start_time) * 1000
 
                 state_after = self._extract_result_summary(result)
+                state_after["duration_ms"] = round(duration_ms, 1)
 
                 self._collector.record_node_execute(
                     node_name=f"{node_name}_complete",
@@ -189,6 +190,7 @@ class InstrumentedStateGraph:
                 duration_ms = (time.time() - start_time) * 1000
 
                 state_after = self._extract_result_summary(result)
+                state_after["duration_ms"] = round(duration_ms, 1)
 
                 self._collector.record_node_execute(
                     node_name=f"{node_name}_complete",
@@ -304,9 +306,10 @@ class InstrumentedStateGraph:
         """转发所有其他属性到原始图"""
         return getattr(self._original, name)
 
-    def compile(self, **kwargs: Any) -> CompiledStateGraph:
-        """编译图"""
-        return self._original.compile(**kwargs)
+    def compile(self, **kwargs: Any) -> "InstrumentedCompiledGraph":
+        """编译图 — 返回带 instrumentation 的包装器"""
+        compiled = self._original.compile(**kwargs)
+        return InstrumentedCompiledGraph(compiled)
 
 
 class InstrumentedCompiledGraph:

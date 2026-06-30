@@ -27,6 +27,7 @@ IMPORTANT_TYPES = {
     ActionType.EVIDENCE,
     ActionType.FAILURE,
     ActionType.REPLAN,
+    ActionType.THINK,  # kept so stage 2 can truncate long observations
 }
 
 # Recent Window 外也必须保留的锚点类型

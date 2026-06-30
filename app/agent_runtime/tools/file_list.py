@@ -53,5 +53,11 @@ class FileListTool(SandboxTool):
 
     @staticmethod
     def _resolve_path(path: str) -> str:
-        clean = path.lstrip("/").replace("..", "")
-        return posixpath.join(WORKSPACE_ROOT, clean)
+        clean = path.lstrip("/")
+        # Strip leading "workspace/" prefix to avoid /workspace/workspace/...
+        if clean.startswith("workspace/"):
+            clean = clean[len("workspace/"):]
+        resolved = posixpath.normpath(posixpath.join(WORKSPACE_ROOT, clean))
+        if not resolved.startswith(WORKSPACE_ROOT):
+            resolved = WORKSPACE_ROOT
+        return resolved

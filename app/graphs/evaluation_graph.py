@@ -8,6 +8,7 @@ This module defines the evaluation workflow using LangGraph:
 4. Generate final report
 """
 
+import functools
 import logging
 from typing import Any, Dict, List, Optional, TypedDict
 
@@ -110,10 +111,10 @@ async def validate_input(state: EvaluationState) -> EvaluationState:
     return state
 
 
-async def evaluate_planning(state: EvaluationState) -> EvaluationState:
+async def evaluate_planning(state: EvaluationState, llm=None) -> EvaluationState:
     """Evaluate planning quality."""
     try:
-        evaluator = PlanningEvaluator()
+        evaluator = PlanningEvaluator(llm=llm)
         trajectory = _convert_trajectory_steps(state["trajectory"])
 
         score = await evaluator.evaluate(
@@ -128,10 +129,10 @@ async def evaluate_planning(state: EvaluationState) -> EvaluationState:
         return {**state, "planning_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
-async def evaluate_tactical(state: EvaluationState) -> EvaluationState:
+async def evaluate_tactical(state: EvaluationState, llm=None) -> EvaluationState:
     """Evaluate tactical decisions."""
     try:
-        evaluator = TacticalEvaluator()
+        evaluator = TacticalEvaluator(llm=llm)
         trajectory = _convert_trajectory_steps(state["trajectory"])
 
         score = await evaluator.evaluate(
@@ -146,10 +147,10 @@ async def evaluate_tactical(state: EvaluationState) -> EvaluationState:
         return {**state, "tactical_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
-async def evaluate_tool_use(state: EvaluationState) -> EvaluationState:
+async def evaluate_tool_use(state: EvaluationState, llm=None) -> EvaluationState:
     """Evaluate tool usage."""
     try:
-        evaluator = ToolUseEvaluator()
+        evaluator = ToolUseEvaluator(llm=llm)
         trajectory = _convert_trajectory_steps(state["trajectory"])
 
         score = await evaluator.evaluate(
@@ -164,10 +165,10 @@ async def evaluate_tool_use(state: EvaluationState) -> EvaluationState:
         return {**state, "tool_use_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
-async def evaluate_memory(state: EvaluationState) -> EvaluationState:
+async def evaluate_memory(state: EvaluationState, llm=None) -> EvaluationState:
     """Evaluate memory quality."""
     try:
-        evaluator = MemoryEvaluator()
+        evaluator = MemoryEvaluator(llm=llm)
         trajectory = _convert_trajectory_steps(state["trajectory"])
 
         score = await evaluator.evaluate(
@@ -182,10 +183,10 @@ async def evaluate_memory(state: EvaluationState) -> EvaluationState:
         return {**state, "memory_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
-async def evaluate_replan(state: EvaluationState) -> EvaluationState:
+async def evaluate_replan(state: EvaluationState, llm=None) -> EvaluationState:
     """Evaluate replanning quality."""
     try:
-        evaluator = ReplanEvaluator()
+        evaluator = ReplanEvaluator(llm=llm)
         trajectory = _convert_trajectory_steps(state["trajectory"])
 
         score = await evaluator.evaluate(
@@ -200,10 +201,10 @@ async def evaluate_replan(state: EvaluationState) -> EvaluationState:
         return {**state, "replan_score": {"overall": 0, "feedback": f"Error: {str(e)}"}}
 
 
-async def evaluate_retrieval(state: EvaluationState) -> EvaluationState:
+async def evaluate_retrieval(state: EvaluationState, llm=None) -> EvaluationState:
     """Evaluate retrieval / RAG quality."""
     try:
-        evaluator = RetrievalEvaluator()
+        evaluator = RetrievalEvaluator(llm=llm)
         trajectory = _convert_trajectory_steps(state["trajectory"])
 
         score = await evaluator.evaluate(
@@ -390,14 +391,14 @@ def create_evaluation_graph(llm: Optional[BaseChatModel] = None) -> StateGraph:
     # Create graph
     workflow = StateGraph(EvaluationState)
 
-    # Add nodes
+    # Add nodes — bind llm to each evaluator via partial
     workflow.add_node("validate_input", validate_input)
-    workflow.add_node("evaluate_planning", evaluate_planning)
-    workflow.add_node("evaluate_tactical", evaluate_tactical)
-    workflow.add_node("evaluate_tool_use", evaluate_tool_use)
-    workflow.add_node("evaluate_memory", evaluate_memory)
-    workflow.add_node("evaluate_replan", evaluate_replan)
-    workflow.add_node("evaluate_retrieval", evaluate_retrieval)
+    workflow.add_node("evaluate_planning", functools.partial(evaluate_planning, llm=llm))
+    workflow.add_node("evaluate_tactical", functools.partial(evaluate_tactical, llm=llm))
+    workflow.add_node("evaluate_tool_use", functools.partial(evaluate_tool_use, llm=llm))
+    workflow.add_node("evaluate_memory", functools.partial(evaluate_memory, llm=llm))
+    workflow.add_node("evaluate_replan", functools.partial(evaluate_replan, llm=llm))
+    workflow.add_node("evaluate_retrieval", functools.partial(evaluate_retrieval, llm=llm))
     workflow.add_node("aggregate_results", aggregate_results)
 
     # Define edges

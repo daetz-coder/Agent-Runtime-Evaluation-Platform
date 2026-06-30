@@ -24,9 +24,10 @@ class Settings(BaseSettings):
             if self.APP_ENV == "development":
                 self.SECRET_KEY = "dev-insecure-secret-change-in-production"
             else:
-                import secrets
-
-                self.SECRET_KEY = secrets.token_hex(32)
+                raise ValueError(
+                    "SECRET_KEY must be explicitly set in non-development environments. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                )
         return self
 
     # Server

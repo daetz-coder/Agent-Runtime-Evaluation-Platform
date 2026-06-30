@@ -220,16 +220,9 @@ class MemoryEvaluator(BaseEvaluator):
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
         """Parse LLM response into scores dictionary."""
-        import json
-
-        try:
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            if start != -1 and end != -1:
-                json_str = content[start:end]
-                return json.loads(json_str)
-        except json.JSONDecodeError:
-            pass
+        parsed = self._parse_json_from_llm(content)
+        if parsed is not None:
+            return parsed
 
         return {
             "retention": 50,

@@ -13,6 +13,7 @@ Base evaluator class for all evaluation dimensions.
 
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -106,6 +107,53 @@ class BaseEvaluator(ABC):
             Dictionary containing scores and feedback
         """
         pass
+
+    @staticmethod
+    def _parse_json_from_llm(content: str) -> Optional[Dict[str, Any]]:
+        """Robustly extract a JSON object from an LLM response.
+
+        Tries three strategies in order:
+        1. Extract from ``json ... `` fenced code block.
+        2. Balanced-brace extraction from the first ``{``.
+        3. Greedy first-``{`` to last-``}`` (legacy fallback).
+
+        Returns None if no valid JSON can be parsed.
+        """
+        import json as _json
+
+        # Strategy 1: fenced code block
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
+        if match:
+            try:
+                return _json.loads(match.group(1))
+            except _json.JSONDecodeError:
+                pass
+
+        # Strategy 2: balanced braces
+        start = content.find("{")
+        if start != -1:
+            depth = 0
+            for i in range(start, len(content)):
+                if content[i] == "{":
+                    depth += 1
+                elif content[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return _json.loads(content[start : i + 1])
+                        except _json.JSONDecodeError:
+                            break
+
+        # Strategy 3: greedy fallback (legacy)
+        start = content.find("{")
+        end = content.rfind("}") + 1
+        if start != -1 and end > start:
+            try:
+                return _json.loads(content[start:end])
+            except _json.JSONDecodeError:
+                pass
+
+        return None
 
     def _format_trajectory(
         self,

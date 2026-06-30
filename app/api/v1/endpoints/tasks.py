@@ -4,7 +4,7 @@ Task management endpoints.
 
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,8 +98,8 @@ async def get_tasks_dashboard(
 
 @router.get("/", response_model=List[TaskResponse])
 async def list_tasks(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     ctx: WorkspaceContext = Depends(get_workspace_context),
 ):

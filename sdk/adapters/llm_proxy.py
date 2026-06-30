@@ -71,13 +71,19 @@ class ProxyChatModel(BaseChatModel):
         """同步生成 - 代理到原始 LLM"""
         start_time = time.time()
 
-        # 调用原始 LLM
-        result = self._original_llm._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        try:
+            result = self._original_llm._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        except Exception as e:
+            self._collector.record_failure(
+                error_type=type(e).__name__,
+                error_message=str(e),
+                context="LLM _generate failed",
+                recoverable=True,
+            )
+            raise
 
-        # 记录调用
         duration_ms = (time.time() - start_time) * 1000
         self._record_call(messages, result, duration_ms)
-
         return result
 
     async def _agenerate(
@@ -94,18 +100,25 @@ class ProxyChatModel(BaseChatModel):
         """
         start_time = time.time()
 
-        # 强制非流式 — 流式走 _astream 路径
         kwargs.pop("streaming", None)
         kwargs.pop("stream", None)
         kwargs["stream"] = False
-        result = await self._original_llm._agenerate(
-            messages, stop=stop, run_manager=run_manager, **kwargs
-        )
 
-        # 记录调用
+        try:
+            result = await self._original_llm._agenerate(
+                messages, stop=stop, run_manager=run_manager, **kwargs
+            )
+        except Exception as e:
+            self._collector.record_failure(
+                error_type=type(e).__name__,
+                error_message=str(e),
+                context="LLM _agenerate failed",
+                recoverable=True,
+            )
+            raise
+
         duration_ms = (time.time() - start_time) * 1000
         self._record_call(messages, result, duration_ms)
-
         return result
 
     async def _astream(
@@ -119,17 +132,30 @@ class ProxyChatModel(BaseChatModel):
         start_time = time.time()
         collected: list[str] = []
 
-        async for chunk in self._original_llm._astream(
-            messages, stop=stop, run_manager=run_manager, **kwargs
-        ):
-            text = ""
-            if hasattr(chunk, "message") and chunk.message is not None:
-                text = str(getattr(chunk.message, "content", "") or "")
-            elif hasattr(chunk, "text"):
-                text = str(chunk.text or "")
-            if text:
-                collected.append(text)
-            yield chunk
+        try:
+            async for chunk in self._original_llm._astream(
+                messages, stop=stop, run_manager=run_manager, **kwargs
+            ):
+                text = ""
+                if hasattr(chunk, "message") and chunk.message is not None:
+                    text = str(getattr(chunk.message, "content", "") or "")
+                elif hasattr(chunk, "text"):
+                    text = str(chunk.text or "")
+                if text:
+                    collected.append(text)
+                yield chunk
+        except Exception as e:
+            # Record partial response even on stream interruption
+            if collected:
+                duration_ms = (time.time() - start_time) * 1000
+                self._record_stream_call(messages, "".join(collected), duration_ms)
+            self._collector.record_failure(
+                error_type=type(e).__name__,
+                error_message=str(e),
+                context="LLM _astream failed",
+                recoverable=True,
+            )
+            raise
 
         if collected:
             duration_ms = (time.time() - start_time) * 1000
@@ -227,8 +253,11 @@ class ProxyChatModel(BaseChatModel):
             logger.warning(f"Failed to record LLM call: {e}")
 
     def bind_tools(self, tools: List[Any], **kwargs: Any) -> Any:
-        """绑定工具 - 代理到原始 LLM"""
-        return self._original_llm.bind_tools(tools, **kwargs)
+        """绑定工具 - 代理到原始 LLM，保持 ProxyChatModel 包装"""
+        bound = self._original_llm.bind_tools(tools, **kwargs)
+        if isinstance(bound, ProxyChatModel):
+            return bound
+        return ProxyChatModel(original_llm=bound)
 
     def __getattr__(self, name: str) -> Any:
         """转发所有其他属性到原始 LLM，避免递归"""
