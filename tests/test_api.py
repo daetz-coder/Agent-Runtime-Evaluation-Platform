@@ -67,7 +67,7 @@ async def test_create_task_idempotent(client):
     assert first.json()["id"] == task_id
     assert second.json()["id"] == task_id
 
-    listed = await client.get("/api/v1/tasks/")
+    listed = await client.get("/api/v1/tasks/", params={"limit": 500})
     matches = [t for t in listed.json() if t["id"] == task_id]
     assert len(matches) == 1
 

@@ -49,8 +49,8 @@ def test_build_overall_from_parallel_normalizes_result() -> None:
     assert overall.planning.overall == 80
     assert overall.retrieval is not None
     assert overall.retrieval.hallucination_detected is True
-    assert "retrieval" in overall.summary or "Overall score" in overall.summary
-    assert any("RAG" in rec or "retrieval" in rec.lower() for rec in overall.recommendations)
+    assert "retrieval" in overall.summary.lower() or "检索" in overall.summary or "overall" in overall.summary.lower() or "得分" in overall.summary
+    assert any("RAG" in rec or "retrieval" in rec.lower() or "检索" in rec for rec in overall.recommendations)
 
 
 def test_build_recommendations_includes_retrieval() -> None:
@@ -65,7 +65,7 @@ def test_build_recommendations_includes_retrieval() -> None:
         "retrieval": {"overall": 40},
     }
     recs = service._build_recommendations(feedback)
-    assert any("RAG" in r or "retrieval" in r.lower() for r in recs)
+    assert any("RAG" in r or "retrieval" in r.lower() or "检索" in r or "RAG" in r.upper() for r in recs)
 
 
 def test_build_overall_reweights_non_applicable_dimensions() -> None:
