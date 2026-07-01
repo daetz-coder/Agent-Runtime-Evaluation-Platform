@@ -50,6 +50,7 @@ class WikiCommit(BaseModel):
     message: str
     date: str
     files: list[str] = Field(default_factory=list)
+    parent_hash: str | None = None
 
 
 class WikiSearchResult(BaseModel):
@@ -75,3 +76,38 @@ class WikiExtractConfirm(BaseModel):
 
     session_id: str
     items: list[WikiPageCreate]
+
+
+class WikiBacklink(BaseModel):
+    """反向链接：哪些页面引用了当前页"""
+
+    path: str
+    title: str
+    snippet: str = ""
+
+
+class WikiDiffLine(BaseModel):
+    """Diff 中的一行"""
+
+    type: str  # "add" | "remove" | "context"
+    content: str
+    old_line: int | None = None
+    new_line: int | None = None
+
+
+class WikiDiffHunk(BaseModel):
+    """Diff 中的一个 hunk"""
+
+    header: str = ""
+    lines: list[WikiDiffLine] = Field(default_factory=list)
+
+
+class WikiDiff(BaseModel):
+    """两个版本之间的结构化 diff"""
+
+    path: str
+    old_hash: str
+    new_hash: str
+    old_content: str = ""
+    new_content: str = ""
+    hunks: list[WikiDiffHunk] = Field(default_factory=list)

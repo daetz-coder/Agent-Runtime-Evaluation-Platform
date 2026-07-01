@@ -8,7 +8,9 @@ from pydantic import BaseModel
 from app.wiki_agent.agent.tools.sync_manager import sync_manager
 from app.wiki_agent.wiki import git_service, service
 from app.wiki_agent.wiki.schemas import (
+    WikiBacklink,
     WikiCommit,
+    WikiDiff,
     WikiImportRequest,
     WikiNode,
     WikiPage,
@@ -71,6 +73,19 @@ def rollback(path: str, commit_hash: str):
     result = sync_manager.rollback(path, commit_hash)
     _raise_on_sync_error(result)
     return {"status": "ok", "message": f"已回滚到 {commit_hash}"}
+
+
+@router.get("/page/{path:path}/diff", response_model=WikiDiff)
+def get_diff(path: str, old: str = Query(...), new: str = Query("HEAD")):
+    """获取两个版本之间的结构化 diff"""
+    diff = git_service.get_structured_diff(path, old, new)
+    return diff
+
+
+@router.get("/page/{path:path}/backlinks", response_model=list[WikiBacklink])
+def get_backlinks(path: str):
+    """获取引用了当前页面的所有反向链接"""
+    return service.get_backlinks(path)
 
 
 # ── CRUD（经 WikiSyncManager 三端同步）──────────────────────

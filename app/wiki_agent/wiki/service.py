@@ -14,6 +14,7 @@ import yaml
 
 from app.wiki_agent.config import settings
 from app.wiki_agent.wiki.schemas import (
+    WikiBacklink,
     WikiNode,
     WikiPage,
     WikiPageCreate,
@@ -23,6 +24,7 @@ from app.wiki_agent.wiki.schemas import (
 
 KNOWLEDGE_DIR = Path(settings.KNOWLEDGE_DIR)
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
 
 def _ensure_dir(path: Path) -> None:
@@ -234,6 +236,103 @@ def search_pages(query: str) -> list[WikiSearchResult]:
 
     results.sort(key=lambda r: r.score, reverse=True)
     return results[:20]
+
+
+# ── Wiki Links ─────────────────────────────────────────────
+
+
+def extract_wikilinks(content: str) -> list[str]:
+    """从 Markdown 内容中提取所有 [[...]] 链接目标"""
+    return WIKILINK_RE.findall(content)
+
+
+def resolve_link(target: str) -> str | None:
+    """将 [[target]] 解析为相对路径。
+
+    匹配优先级：
+    1. 精确匹配文件路径（去掉 .md 后缀）
+    2. 匹配 frontmatter 中的 title 字段
+    3. 匹配文件名（stem）
+    """
+    target_lower = target.lower().strip()
+
+    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
+        if ".git" in md_file.parts:
+            continue
+        rel = _rel_path(md_file)
+        stem = md_file.stem.lower()
+        rel_lower = rel.lower()
+
+        # 精确路径匹配（忽略 .md 后缀）
+        if rel_lower == target_lower or rel_lower == target_lower + ".md":
+            return rel
+        # stem 匹配
+        if stem == target_lower:
+            return rel
+
+    # 按 title 匹配
+    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
+        if ".git" in md_file.parts:
+            continue
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            meta, _ = _parse_frontmatter(content)
+            title = meta.get("title", md_file.stem)
+            if title.lower() == target_lower:
+                return _rel_path(md_file)
+        except Exception:
+            continue
+
+    return None
+
+
+def get_backlinks(rel_path: str) -> list[WikiBacklink]:
+    """获取所有引用了指定页面的反向链接"""
+    backlinks: list[WikiBacklink] = []
+    target_stem = Path(rel_path).stem.lower()
+    target_rel_lower = rel_path.lower()
+
+    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
+        if ".git" in md_file.parts:
+            continue
+        file_rel = _rel_path(md_file)
+        # 跳过自身
+        if file_rel.lower() == target_rel_lower:
+            continue
+        try:
+            content = md_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        meta, body = _parse_frontmatter(content)
+        title = meta.get("title", md_file.stem)
+
+        # 检查是否包含指向目标的 [[wikilink]]
+        links = extract_wikilinks(body)
+        matched = False
+        for link in links:
+            link_lower = link.lower().strip()
+            if (
+                link_lower == target_stem
+                or link_lower == target_rel_lower
+                or link_lower == target_rel_lower.replace(".md", "")
+            ):
+                matched = True
+                break
+
+        if matched:
+            # 提取包含链接的行作为 snippet
+            snippet = ""
+            for line in body.split("\n"):
+                if f"[[{target_stem}]]" in line.lower() or f"[[{rel_path}]]" in line.lower():
+                    snippet = line.strip()[:120]
+                    break
+            if not snippet:
+                snippet = body[:100].replace("\n", " ").strip()
+
+            backlinks.append(WikiBacklink(path=file_rel, title=title, snippet=snippet))
+
+    return backlinks
 
 
 # ── 批量操作 ────────────────────────────────────────────────

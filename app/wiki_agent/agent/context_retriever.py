@@ -57,6 +57,18 @@ async def retrieve_context(
                 wiki_results.append(r)
     wiki_results = wiki_results[:5]  # 最终取 top 5
 
+    # ②b 兜底：如果改写查询全部无结果，用原始查询再搜一次
+    if not wiki_results and user_message:
+        fallback_results = search_tools.hybrid_search(user_message, limit=3)
+        for r in fallback_results:
+            path = r.get("path", "")
+            if path and path not in seen_paths:
+                seen_paths.add(path)
+                wiki_results.append(r)
+        wiki_results = wiki_results[:5]
+        if wiki_results:
+            print(f"[Context] 改写查询无结果，原始查询兜底命中 {len(wiki_results)} 条")
+
     # ③ Long-term Memory — session key_facts
     key_facts: list[str] = []
     if session_id:
