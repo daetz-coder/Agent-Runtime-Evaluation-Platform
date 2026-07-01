@@ -24,6 +24,17 @@
       />
     </nav>
 
+    <!-- 标签区域 -->
+    <div class="sidebar-tags">
+      <div class="tags-toggle" @click="showTags = !showTags">
+        <span>🏷️ 标签</span>
+        <span class="toggle-arrow" :class="{ expanded: showTags }">▶</span>
+      </div>
+      <div v-if="showTags" class="tags-content">
+        <TagPanel @select="$emit('select', $event)" @filter="$emit('tagFilter', $event)" />
+      </div>
+    </div>
+
     <div class="sidebar-footer">
       <button class="btn-new" @click="$emit('create')">+ 新建条目</button>
     </div>
@@ -33,15 +44,17 @@
 <script setup>
 import { ref, computed } from "vue";
 import CategoryNode from "./CategoryNode.vue";
+import TagPanel from "./TagPanel.vue";
 
 const props = defineProps({
   categories: Array,
   currentPath: String,
 });
 
-defineEmits(["select", "create"]);
+defineEmits(["select", "create", "tagFilter"]);
 
 const filter = ref("");
+const showTags = ref(false);
 
 const filteredCategories = computed(() => {
   if (!filter.value.trim()) return props.categories;
@@ -72,9 +85,7 @@ const filteredCategories = computed(() => {
   border-bottom: 1px solid #f0f0f0;
 }
 
-.logo {
-  font-size: 20px;
-}
+.logo { font-size: 20px; }
 
 .logo-text {
   font-size: 15px;
@@ -106,6 +117,43 @@ const filteredCategories = computed(() => {
   flex: 1;
   overflow-y: auto;
   padding: 8px 0;
+}
+
+/* ── 标签区域 ── */
+.sidebar-tags {
+  border-top: 1px solid #f0f0f0;
+  flex-shrink: 0;
+}
+
+.tags-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  transition: background 0.15s;
+}
+
+.tags-toggle:hover {
+  background: #f8f9fa;
+}
+
+.toggle-arrow {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.toggle-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.tags-content {
+  padding: 0 14px 10px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .sidebar-footer {

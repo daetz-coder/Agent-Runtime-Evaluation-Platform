@@ -72,6 +72,45 @@ export const wikiApi = {
     return request(`${BASE}/page/${path}/backlinks`);
   },
 
+  // Tags
+  getTags() {
+    return request(`${BASE}/tags`);
+  },
+
+  // Graph
+  getGraph() {
+    return request(`${BASE}/graph`);
+  },
+
+  // Categories
+  getCategories() {
+    return request(`${BASE}/categories`);
+  },
+
+  getEntriesByCategory(category) {
+    return request(`${BASE}/category/${encodeURIComponent(category)}/entries`);
+  },
+
+  // Entry Index
+  getEntryIndex() {
+    return request(`${BASE}/index`);
+  },
+
+  // Upload
+  async uploadFile(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${BASE}/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "上传失败");
+    }
+    return res.json();
+  },
+
   // 导入
   importMarkdown(data) {
     return request(`${BASE}/import`, {

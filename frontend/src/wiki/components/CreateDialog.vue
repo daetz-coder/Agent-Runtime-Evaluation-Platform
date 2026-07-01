@@ -1,39 +1,36 @@
 <template>
   <div class="modal-overlay" @click.self="$emit('close')">
     <div class="modal">
-      <h3>新建知识条目</h3>
+      <h3>新建词条</h3>
 
       <div class="form-group">
-        <label>知识分类</label>
-        <select v-model="selectedCategory">
-          <option value="">选择分类...</option>
-          <option
-            v-for="cat in categories"
-            :key="cat.path"
-            :value="cat.path"
-          >
-            {{ cat.name }}
-          </option>
-        </select>
+        <label>词条标题 <span class="required">*</span></label>
+        <input v-model="title" placeholder="输入词条名称" @keyup.enter="handleCreate" />
       </div>
 
       <div class="form-group">
-        <label>标题</label>
-        <input v-model="title" placeholder="知识条目标题" @keyup.enter="handleCreate" />
+        <label>摘要/定义 <span class="required">*</span></label>
+        <input v-model="summary" placeholder="一句话定义这个词条" />
       </div>
 
-      <div class="form-group">
-        <label>标签</label>
-        <div class="tags-input">
-          <span v-for="(tag, i) in tags" :key="i" class="tag-chip">
-            {{ tag }}
-            <button class="tag-remove" @click="tags.splice(i, 1)">×</button>
-          </span>
-          <input
-            v-model="newTag"
-            placeholder="添加标签..."
-            @keyup.enter="addTag"
-          />
+      <div class="form-row">
+        <div class="form-group form-group-half">
+          <label>分类</label>
+          <input v-model="category" placeholder="如：技术/编程语言" />
+        </div>
+        <div class="form-group form-group-half">
+          <label>标签</label>
+          <div class="tags-input">
+            <span v-for="(tag, i) in tags" :key="i" class="tag-chip">
+              {{ tag }}
+              <button class="tag-remove" @click="tags.splice(i, 1)">×</button>
+            </span>
+            <input
+              v-model="newTag"
+              placeholder="添加..."
+              @keyup.enter="addTag"
+            />
+          </div>
         </div>
       </div>
 
@@ -49,15 +46,20 @@
 import { ref, computed } from "vue";
 import { wikiApi } from "../api/index.js";
 
-const props = defineProps({ categories: Array });
+const props = defineProps({
+  categories: Array,
+  template: { type: Object, default: null },
+});
 const emit = defineEmits(["close", "created"]);
 
-const selectedCategory = ref("");
-const title = ref("");
+const title = ref(props.template?.title || "");
+const summary = ref(props.template?.summary || "");
+const category = ref(props.template?.category || "");
 const tags = ref([]);
 const newTag = ref("");
+const templateContent = ref(props.template?.content || "");
 
-const canCreate = computed(() => title.value.trim());
+const canCreate = computed(() => title.value.trim() && summary.value.trim());
 
 function addTag() {
   const tag = newTag.value.trim();
@@ -76,13 +78,16 @@ async function handleCreate() {
     .replace(/\s+/g, "-")
     .replace(/[^\w一-龥-]/g, "");
 
-  const prefix = selectedCategory.value || "notes";
-  const path = `${prefix}/${safeTitle}.md`;
+  const cat = category.value.trim() || "未分类";
+  const path = `${cat}/${safeTitle}.md`;
 
   try {
+    const content = templateContent.value || `# ${title.value.trim()}\n\n`;
     await wikiApi.createPage(path, {
       title: title.value.trim(),
-      content: `# ${title.value.trim()}\n\n`,
+      content,
+      summary: summary.value.trim(),
+      category: cat,
       tags: tags.value,
       source: "manual",
     });
@@ -108,7 +113,7 @@ async function handleCreate() {
   background: #fff;
   border-radius: 12px;
   padding: 28px;
-  width: 440px;
+  width: 500px;
   max-width: 90vw;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
 }
@@ -123,6 +128,15 @@ async function handleCreate() {
   margin-bottom: 16px;
 }
 
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-group-half {
+  flex: 1;
+}
+
 .form-group label {
   display: block;
   font-size: 13px;
@@ -131,8 +145,11 @@ async function handleCreate() {
   margin-bottom: 6px;
 }
 
-.form-group input,
-.form-group select {
+.required {
+  color: #d93025;
+}
+
+.form-group input {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid #d9d9d9;
@@ -141,19 +158,19 @@ async function handleCreate() {
   outline: none;
 }
 
-.form-group input:focus,
-.form-group select:focus {
+.form-group input:focus {
   border-color: #4a90d9;
 }
 
 .tags-input {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
   padding: 6px 10px;
   border: 1px solid #d9d9d9;
   border-radius: 6px;
+  min-height: 36px;
 }
 
 .tags-input:focus-within {
@@ -164,7 +181,7 @@ async function handleCreate() {
   border: none;
   outline: none;
   flex: 1;
-  min-width: 80px;
+  min-width: 60px;
   padding: 2px;
   font-size: 13px;
 }
@@ -172,12 +189,12 @@ async function handleCreate() {
 .tag-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 10px;
+  gap: 3px;
+  padding: 2px 8px;
   background: #e8f0fe;
   color: #1a73e8;
-  border-radius: 12px;
-  font-size: 12px;
+  border-radius: 10px;
+  font-size: 11px;
 }
 
 .tag-remove {
@@ -185,7 +202,7 @@ async function handleCreate() {
   border: none;
   cursor: pointer;
   color: #1a73e8;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
   padding: 0;
 }

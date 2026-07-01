@@ -35,10 +35,28 @@
           v-if="mode === 'wiki'"
           class="nav-action"
           :class="{ active: showHistory }"
-          @click="showHistory = !showHistory; if (showHistory) { currentPage = null; searchResults = []; }"
+          @click="showHistory = !showHistory; if (showHistory) { currentPage = null; searchResults = []; showGraph = false; }"
           title="变更流"
         >
           🕐 变更流
+        </button>
+        <button
+          v-if="mode === 'wiki'"
+          class="nav-action"
+          :class="{ active: showGraph }"
+          @click="showGraph = !showGraph; if (showGraph) { currentPage = null; searchResults = []; showHistory = false; showIndex = false; }"
+          title="知识图谱"
+        >
+          🔗 图谱
+        </button>
+        <button
+          v-if="mode === 'wiki'"
+          class="nav-action"
+          :class="{ active: showIndex }"
+          @click="showIndex = !showIndex; if (showIndex) { currentPage = null; searchResults = []; showHistory = false; showGraph = false; }"
+          title="词条索引"
+        >
+          📖 索引
         </button>
         <input
           v-if="mode === 'wiki'"
@@ -57,6 +75,7 @@
         :currentPath="currentPath"
         @select="handleSelect"
         @create="handleCreate"
+        @tagFilter="handleTagFilter"
       />
 
       <main class="wiki-main">
@@ -82,6 +101,18 @@
           v-else-if="showHistory"
           @select="handleSelectFromHistory"
           @rolled-back="handleRolledBack"
+        />
+
+        <!-- 知识图谱 -->
+        <LinkGraph
+          v-else-if="showGraph"
+          @navigate="handleSelect"
+        />
+
+        <!-- 词条索引 -->
+        <EntryIndex
+          v-else-if="showIndex"
+          @navigate="handleSelect"
         />
 
         <!-- Wiki 页面 -->
@@ -124,8 +155,14 @@
     <CreateDialog
       v-if="showCreate"
       :categories="flatCategories"
-      @close="showCreate = false"
+      :template="selectedTemplate"
+      @close="showCreate = false; selectedTemplate = null"
       @created="handleCreated"
+    />
+    <TemplateDialog
+      v-if="showTemplate"
+      @close="showTemplate = false"
+      @select="handleTemplateSelect"
     />
   </div>
 </template>
@@ -136,8 +173,11 @@ import { wikiApi } from "./api/index.js";
 import Sidebar from "./components/Sidebar.vue";
 import WikiPage from "./components/WikiPage.vue";
 import HistoryPanel from "./components/HistoryPanel.vue";
+import LinkGraph from "./components/LinkGraph.vue";
+import EntryIndex from "./components/EntryIndex.vue";
 import ImportDialog from "./components/ImportDialog.vue";
 import CreateDialog from "./components/CreateDialog.vue";
+import TemplateDialog from "./components/TemplateDialog.vue";
 import ChatView from "./components/ChatView.vue";
 
 const mode = ref("wiki");
@@ -149,6 +189,10 @@ const searchResults = ref([]);
 const showImport = ref(false);
 const showCreate = ref(false);
 const showHistory = ref(false);
+const showGraph = ref(false);
+const showIndex = ref(false);
+const showTemplate = ref(false);
+const selectedTemplate = ref(null);
 
 function openVectorAdmin() {
   window.open("/vector-admin", "_blank");
@@ -242,6 +286,8 @@ async function handleSelect(path) {
     currentPath.value = path;
     currentPage.value = await wikiApi.getPage(path);
     showHistory.value = false;
+    showGraph.value = false;
+    showIndex.value = false;
     searchResults.value = [];
   } catch (e) {
     console.error("加载条目失败:", e);
@@ -285,7 +331,23 @@ async function handleDelete(path) {
 }
 
 function handleCreate() {
+  showTemplate.value = true;
+}
+
+function handleTemplateSelect(tpl) {
+  selectedTemplate.value = tpl;
+  showTemplate.value = false;
   showCreate.value = true;
+}
+
+function handleTagFilter(tag) {
+  if (!tag) {
+    searchResults.value = [];
+    return;
+  }
+  // 用标签筛选：搜索标签关键词
+  searchQuery.value = tag;
+  handleSearch();
 }
 
 async function handleCreated(path) {
