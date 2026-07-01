@@ -14,7 +14,13 @@ import yaml
 
 from app.wiki_agent.config import settings
 from app.wiki_agent.wiki.schemas import (
+    CategoryInfo,
+    EntryIndexItem,
+    GraphLink,
+    GraphNode,
+    TagInfo,
     WikiBacklink,
+    WikiGraph,
     WikiNode,
     WikiPage,
     WikiPageCreate,
@@ -74,6 +80,9 @@ def _page_from_file(file_path: Path) -> WikiPage:
         path=_rel_path(file_path),
         title=meta.get("title", file_path.stem),
         content=body.strip(),
+        summary=meta.get("summary", ""),
+        category=meta.get("category", ""),
+        aliases=meta.get("aliases", []),
         tags=meta.get("tags", []),
         links=meta.get("links", []),
         source=meta.get("source", "manual"),
@@ -86,6 +95,9 @@ def _file_from_page(page: WikiPage) -> str:
     """将 WikiPage 序列化为 Markdown 字符串（含 frontmatter）"""
     meta = {
         "title": page.title,
+        "summary": page.summary,
+        "category": page.category,
+        "aliases": page.aliases,
         "tags": page.tags,
         "links": page.links,
         "source": page.source,
@@ -141,6 +153,9 @@ def create_page(rel_path: str, data: WikiPageCreate) -> WikiPage:
         path=rel_path,
         title=data.title,
         content=data.content,
+        summary=data.summary,
+        category=data.category,
+        aliases=data.aliases,
         tags=data.tags,
         source=data.source,
         created=now,
@@ -156,6 +171,12 @@ def update_page(rel_path: str, data: WikiPageUpdate) -> WikiPage:
         page.title = data.title
     if data.content is not None:
         page.content = data.content
+    if data.summary is not None:
+        page.summary = data.summary
+    if data.category is not None:
+        page.category = data.category
+    if data.aliases is not None:
+        page.aliases = data.aliases
     if data.tags is not None:
         page.tags = data.tags
     if data.links is not None:
@@ -345,3 +366,218 @@ def list_all_pages() -> list[str]:
         if ".git" not in md_file.parts:
             pages.append(_rel_path(md_file))
     return pages
+
+
+# ── 标签 ────────────────────────────────────────────────────
+
+
+def get_all_tags() -> list[TagInfo]:
+    """获取所有标签及其关联页面，按 count 降序"""
+    tag_map: dict[str, list[str]] = {}
+    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
+        if ".git" in md_file.parts:
+            continue
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            meta, _ = _parse_frontmatter(content)
+            rel = _rel_path(md_file)
+            for tag in meta.get("tags", []):
+                tag_map.setdefault(tag, []).append(rel)
+        except Exception:
+            continue
+
+    tags = [TagInfo(tag=t, count=len(ps), pages=ps) for t, ps in tag_map.items()]
+    tags.sort(key=lambda t: t.count, reverse=True)
+    return tags
+
+
+# ── 知识图谱 ────────────────────────────────────────────────
+
+
+def get_link_graph() -> WikiGraph:
+    """构建知识图谱数据（节点 + 链接）"""
+    nodes: list[GraphNode] = []
+    links: list[GraphLink] = []
+    seen_targets: set[str] = set()
+
+    # 先收集所有页面信息
+    page_map: dict[str, dict] = {}  # path -> {title, tags, category, content}
+    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
+        if ".git" in md_file.parts:
+            continue
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            meta, body = _parse_frontmatter(content)
+            rel = _rel_path(md_file)
+            parts = rel.replace("\\", "/").split("/")
+            category = parts[0] if len(parts) > 1 else ""
+            page_map[rel] = {
+                "title": meta.get("title", md_file.stem),
+                "tags": meta.get("tags", []),
+                "category": category,
+                "body": body,
+            }
+        except Exception:
+            continue
+
+    # 构建节点
+    for path, info in page_map.items():
+        nodes.append(GraphNode(
+            id=path,
+            title=info["title"],
+            path=path,
+            category=info["category"],
+            tags=info["tags"],
+        ))
+
+    # 构建链接（从 wikilinks 提取）
+    for path, info in page_map.items():
+        wikilinks = extract_wikilinks(info["body"])
+        for target in wikilinks:
+            resolved = resolve_link(target)
+            if resolved and resolved in page_map:
+                link_key = f"{path}->{resolved}"
+                if link_key not in seen_targets:
+                    seen_targets.add(link_key)
+                    links.append(GraphLink(source=path, target=resolved))
+
+    return WikiGraph(nodes=nodes, links=links)
+
+
+# ── 分类体系 ────────────────────────────────────────────────
+
+
+def get_categories() -> list[CategoryInfo]:
+    """从所有页面的 frontmatter category 字段构建分类树"""
+    cat_map: dict[str, dict] = {}  # full_path -> {name, count, children_paths}
+
+    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
+        if ".git" in md_file.parts:
+            continue
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            meta, _ = _parse_frontmatter(content)
+            category = meta.get("category", "")
+            if not category:
+                # 从路径推断分类
+                rel = _rel_path(md_file)
+                parts = rel.replace("\\", "/").split("/")
+                category = parts[0] if len(parts) > 1 else "未分类"
+        except Exception:
+            continue
+
+        # 支持层级分类如 "技术/编程语言"
+        parts = category.split("/")
+        current_path = ""
+        for i, part in enumerate(parts):
+            parent_path = current_path
+            current_path = f"{current_path}/{part}" if current_path else part
+            if current_path not in cat_map:
+                cat_map[current_path] = {"name": part, "count": 0, "children": set()}
+            cat_map[current_path]["count"] += 1
+            if parent_path and parent_path in cat_map:
+                cat_map[parent_path]["children"].add(current_path)
+
+    # 构建顶层分类列表
+    def build_tree(path: str) -> CategoryInfo:
+        info = cat_map[path]
+        children = [build_tree(c) for c in sorted(info["children"])]
+        return CategoryInfo(
+            name=info["name"],
+            path=path,
+            count=info["count"],
+            children=children,
+        )
+
+    # 找出顶层分类（没有父分类的）
+    all_paths = set(cat_map.keys())
+    child_paths = set()
+    for info in cat_map.values():
+        child_paths.update(info["children"])
+    top_paths = all_paths - child_paths
+
+    return [build_tree(p) for p in sorted(top_paths)]
+
+
+# ── 词条索引 ────────────────────────────────────────────────
+
+
+def get_entry_index() -> dict[str, list[EntryIndexItem]]:
+    """按首字母分组返回词条索引"""
+    import unicodedata
+
+    index: dict[str, list[EntryIndexItem]] = {}
+
+    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
+        if ".git" in md_file.parts:
+            continue
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            meta, _ = _parse_frontmatter(content)
+            rel = _rel_path(md_file)
+            title = meta.get("title", md_file.stem)
+            summary = meta.get("summary", "")
+            category = meta.get("category", "")
+        except Exception:
+            continue
+
+        # 确定首字母分组
+        first_char = title[0] if title else "#"
+        if "一" <= first_char <= "鿿":
+            # 中文字符 -> 拼音首字母
+            try:
+                from pypinyin import lazy_pinyin
+                letter = lazy_pinyin(first_char)[0][0].upper()
+            except ImportError:
+                letter = "#"
+        elif first_char.isalpha():
+            letter = first_char.upper()
+        elif first_char.isdigit():
+            letter = "0-9"
+        else:
+            letter = "#"
+
+        if letter not in index:
+            index[letter] = []
+        index[letter].append(EntryIndexItem(
+            title=title,
+            path=rel,
+            summary=summary,
+            category=category,
+        ))
+
+    # 每组内按标题排序
+    for letter in index:
+        index[letter].sort(key=lambda x: x.title)
+
+    return dict(sorted(index.items()))
+
+
+def get_entries_by_category(category: str) -> list[WikiSearchResult]:
+    """获取指定分类下的所有词条"""
+    results: list[WikiSearchResult] = []
+
+    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
+        if ".git" in md_file.parts:
+            continue
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            meta, body = _parse_frontmatter(content)
+            page_cat = meta.get("category", "")
+            # 从路径推断分类（如果没有 frontmatter category）
+            if not page_cat:
+                rel = _rel_path(md_file)
+                parts = rel.replace("\\", "/").split("/")
+                page_cat = parts[0] if len(parts) > 1 else "未分类"
+        except Exception:
+            continue
+
+        if page_cat == category or page_cat.startswith(category + "/"):
+            rel = _rel_path(md_file)
+            title = meta.get("title", md_file.stem)
+            summary = meta.get("summary", "")
+            snippet = summary or body[:100].replace("\n", " ").strip()
+            results.append(WikiSearchResult(path=rel, title=title, snippet=snippet, score=0))
+
+    results.sort(key=lambda r: r.title)
+    return results

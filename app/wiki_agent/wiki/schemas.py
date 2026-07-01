@@ -18,6 +18,9 @@ class WikiPage(BaseModel):
     path: str
     title: str
     content: str
+    summary: str = ""
+    category: str = ""
+    aliases: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     links: list[str] = Field(default_factory=list)
     source: str = "manual"
@@ -30,6 +33,9 @@ class WikiPageCreate(BaseModel):
 
     title: str
     content: str = ""
+    summary: str = ""
+    category: str = ""
+    aliases: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     source: str = "manual"
 
@@ -39,6 +45,9 @@ class WikiPageUpdate(BaseModel):
 
     title: str | None = None
     content: str | None = None
+    summary: str | None = None
+    category: str | None = None
+    aliases: list[str] | None = None
     tags: list[str] | None = None
     links: list[str] | None = None
 
@@ -111,3 +120,53 @@ class WikiDiff(BaseModel):
     old_content: str = ""
     new_content: str = ""
     hunks: list[WikiDiffHunk] = Field(default_factory=list)
+
+
+class GraphNode(BaseModel):
+    """知识图谱节点"""
+
+    id: str
+    title: str
+    path: str
+    category: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+
+class GraphLink(BaseModel):
+    """知识图谱边"""
+
+    source: str
+    target: str
+
+
+class WikiGraph(BaseModel):
+    """知识图谱数据"""
+
+    nodes: list[GraphNode] = Field(default_factory=list)
+    links: list[GraphLink] = Field(default_factory=list)
+
+
+class TagInfo(BaseModel):
+    """标签信息"""
+
+    tag: str
+    count: int
+    pages: list[str] = Field(default_factory=list)
+
+
+class CategoryInfo(BaseModel):
+    """分类信息"""
+
+    name: str
+    path: str
+    count: int
+    children: list[CategoryInfo] = Field(default_factory=list)
+
+
+class EntryIndexItem(BaseModel):
+    """词条索引项"""
+
+    title: str
+    path: str
+    summary: str = ""
+    category: str = ""
