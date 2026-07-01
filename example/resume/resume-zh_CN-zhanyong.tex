@@ -15,7 +15,7 @@
 \contactInfo{(+86) 188-5660-3434}{3446914219@qq.com}{GitHub | CSDN @daetz-coder}{浙江-杭州}
 
 \section{个人简介}
-计算机技术硕士在读，聚焦 \textbf{AI Agent 系统设计、RAG 与 LLM 应用工程化}。独立完成 Agent 运行时评估平台（六维 17 指标 + 多模型共识 + 零侵入 SDK）和 RAG 知识库系统（Query 改写 Pipeline + Milvus/BM25 混合检索 + RRF 融合 + Cross-Encoder 重排），深入掌握 LangGraph 工作流编排、LLM-as-Judge 评估方法与 Docker 容器化部署。
+计算机技术硕士在读，聚焦 \textbf{AI Agent 系统设计与 LLM 应用工程化}。独立完成 Agent 运行时评估平台（六维评估 + 多模型共识）和 RAG 知识库系统（四级混合检索 + Query 改写 Pipeline），深入掌握 LangGraph 编排、LLM-as-Judge 评估与容器化部署。
 
 \section{教育背景}
 \datedsubsection{\textbf{浙江理工大学}, 计算机技术硕士（在读）}{2024.9 - 至今}
@@ -31,23 +31,30 @@
 
 \section{技术能力}
 \begin{itemize}[parsep=0.1ex,topsep=0ex]
-  \item \textbf{Agent / RAG}: LangGraph、StateGraph、Human-in-the-Loop、Checkpoint、LLM-as-Judge、Milvus、BM25、RRF、Cross-Encoder Rerank、Query Rewrite Pipeline、RecursiveCharacterTextSplitter、PydanticOutputParser
-  \item \textbf{LLM 应用}: DeepSeek / GLM-4 / Qwen-Plus 多模型共识对比、Prompt/Context Engineering、SSE 流式输出、Token 成本优化
-  \item \textbf{全栈工程}: Python / FastAPI / Async SQLAlchemy / Pydantic / Vue3 / TypeScript / ElementPlus / ECharts / Milvus / Docker / Git / Alembic
+  \item \textbf{AI / Agent}: LangGraph、StateGraph、Human-in-the-Loop、LLM-as-Judge、Multi-Model Consensus（DeepSeek / GLM-4 / Qwen-Plus）、Prompt \& Context Engineering
+  \item \textbf{RAG}: Milvus、BM25、RRF 融合、Cross-Encoder Rerank、Query Rewrite Pipeline、bge-small-zh-v1.5 Embedding
+  \item \textbf{工程化}: Python / FastAPI / Pydantic / Async I/O / Vue3 / TypeScript / ElementPlus / ECharts / Docker / Git
 \end{itemize}
 
 \section{项目经历}
 \datedsubsection{\textbf{Agent Runtime Evaluation Platform：AI Agent 运行时质量评估平台} \quad \textit{Python / FastAPI / LangGraph / Vue3}}{2025.3 - 至今}
 \begin{itemize}[parsep=0.15ex,topsep=0ex]
-  \item \textbf{六维评估体系（17 项子指标 + 幻觉检测）：}Planning / Tactical / Tool Use / Memory / Replan / Retrieval（relevance / evidence\_accuracy / coverage + hallucination\_detected），加权聚合（20/20/15/15/15/15）+ 四档标定，6 评估器并行（asyncio.gather，$\sim$\textbf{15s}），综合分单调递减 \textbf{93.1 $\rightarrow$ 92.0 $\rightarrow$ 81.0 $\rightarrow$ 54.4 $\rightarrow$ 27.8 $\rightarrow$ 20.0}，成本 \textbf{¥0.012}（DeepSeek vs GPT-4o 低 27x）
-  \item \textbf{多模型共识 + 零侵入 SDK + 全链路可观测：}DeepSeek / GLM-4 / Qwen-Plus 三厂商独立评分（mean $\pm$ std），前端多模型对比柱状图；三种 SDK 接入模式（Instrument / Proxy / Callback），一行代码接入；ECharts 雷达图/热力图可视化 + Monotonicity Benchmark 产品化，Dashboard 真实数据驱动
+  \item \textbf{定义六维评估体系，解决 Agent 质量无法量化的问题。}设计 17 项子指标（含幻觉检测），覆盖 Planning / Tactical / Tool Use / Memory / Replan / Retrieval；加权聚合（20/20/15/15/15/15）+ 四档标定，6 评估器并行执行（\textbf{15-30s}，串行需 60-70s），综合分单调递减 \textbf{93.1 $\rightarrow$ 20.0}
+  \item \textbf{多模型共识 + 零侵入 SDK，实现全链路可观测。}DeepSeek / GLM-4 / Qwen-Plus 三厂商独立评分（mean $\pm$ std），前端多模型对比柱状图；三种 SDK 接入模式（Instrument / Proxy / Callback），一行代码接入；ECharts 雷达图/热力图可视化 + Monotonicity Benchmark 产品化，Dashboard 真实数据驱动
 \end{itemize}
 
 \datedsubsection{\textbf{Wiki-Agent：AI 驱动的智能知识库系统} \quad \textit{LangGraph / FastAPI / Vue3 / Milvus}}{2025.5 - 至今}
 \begin{itemize}[parsep=0.15ex,topsep=0ex]
-  \item \textbf{Query 改写 Pipeline：}前置路由分类器（LLM 轻量 4 分类：direct/simple/complex/ambiguous），多轮对话指代消解（代词检测 + LLM 上下文补齐），按类型路由到不同改写策略（Multi-Query / HyDE / Decompose），改写后 cosine 相似度校验（BGE-M3 embedding，阈值 0.7），低于阈值回退原始 query，防止语义漂移
-  \item \textbf{四级混合检索（20 条查询基准）：}Milvus 语义搜索（BGE-M3 + cosine）+ BM25 关键词搜索（jieba 分词）→ RRF 倒数秩融合（k=60）→ Cross-Encoder 重排（bge-reranker-base），Top-1=\textbf{85\%} / MRR=\textbf{0.91}；多 query 并行检索 + 文档级去重合并
-  \item \textbf{4-Node StateGraph + 四路同步：}search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，条件路由 + LangGraph interrupt 实现 Human-in-the-Loop CRUD，AsyncSqliteSaver Checkpoint 恢复；Milvus + BM25 + Git 实时同步，commit 级回滚 + 一键全量重建，Vue3 向量管理后台
+  \item \textbf{设计 Query 改写 Pipeline，解决用户意图模糊导致检索命中率低的问题。}前置路由分类器（LLM 轻量 4 分类），多轮对话指代消解（代词检测 + 上下文补齐），按类型路由到不同改写策略（Multi-Query / HyDE / Decompose）；改写后 cosine 相似度校验（阈值 0.7），低于阈值回退原始 query，防止语义漂移
+  \item \textbf{四级混合检索，单路检索召回率不足的瓶颈。}Milvus 语义搜索（bge-small-zh-v1.5 + cosine）+ BM25 关键词搜索（jieba 分词）→ RRF 倒数秩融合（k=60）→ Cross-Encoder 重排（bge-reranker-base），Top-1=\textbf{75\%} / MRR=\textbf{0.825}（20 条查询基准）；多 query 并行检索 + 文档级去重合并
+  \item \textbf{4-Node StateGraph 编排检索全流程，实现可控的人机协作。}search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute，条件路由 + LangGraph interrupt 实现 Human-in-the-Loop CRUD，Checkpoint 恢复；Milvus + BM25 + Git 实时同步，commit 级回滚 + 一键全量重建，Vue3 向量管理后台
+\end{itemize}
+
+\section{个人特质}
+\begin{itemize}[parsep=0.1ex,topsep=0ex]
+  \item 具备独立交付完整产品的能力，两个项目均从零搭建，覆盖前后端开发、测试与部署全流程
+  \item 习惯用数据驱动决策，项目中构建基准测试与回归验证机制保障迭代质量
+  \item 学习能力强，硕士阶段自主掌握 AI 工程栈并在短期内完成两个完整项目落地
 \end{itemize}
 
 \end{document}

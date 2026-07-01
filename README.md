@@ -114,8 +114,7 @@ cd frontend && npm run dev
 | 轨迹动作类型 | 14 种（plan / tool_call / replan / retrieval / think / memory_write / failure 等） |
 | 接入模式 | 3 种（LangGraph Instrument / LLM Proxy / Callback） |
 | 单次全评估耗时 | 15~30s（6 评估器并行 asyncio.gather） |
-| 单次成本（DeepSeek） | ¥0.012（GPT-4o 的 1/27） |
-| 检索基准（Wiki Agent） | Semantic Top-1: 85%, MRR: 0.91 |
+| 检索基准（Wiki Agent） | Hybrid Top-1: 75%, MRR: 0.825（20 条查询） |
 
 > 以上数据来源 `scripts/benchmark_*.py` 和 `scripts/eval_*.py`，基于真实 LLM 调用。
 
