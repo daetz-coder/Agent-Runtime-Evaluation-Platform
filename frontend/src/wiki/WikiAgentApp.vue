@@ -90,6 +90,7 @@
           :page="currentPage"
           @save="handleSave"
           @delete="handleDelete"
+          @navigate="handleWikiNavigate"
         />
 
         <!-- 空状态 -->
@@ -321,6 +322,34 @@ async function handleNavigateFromChat(path) {
   // 从对话页面跳转到 Wiki 页面
   mode.value = "wiki";
   await handleSelect(path);
+}
+
+async function handleWikiNavigate(target) {
+  // 处理 [[wikilink]] 点击：先尝试直接按路径加载，失败则搜索
+  try {
+    const page = await wikiApi.getPage(target);
+    if (page) {
+      currentPath.value = target;
+      currentPage.value = page;
+      showHistory.value = false;
+      searchResults.value = [];
+      return;
+    }
+  } catch {
+    // 路径不存在，继续搜索
+  }
+
+  // 用搜索找到匹配的页面
+  try {
+    const results = await wikiApi.search(target);
+    if (results.length > 0) {
+      await handleSelect(results[0].path);
+    } else {
+      alert(`未找到页面: ${target}`);
+    }
+  } catch (e) {
+    alert("导航失败: " + e.message);
+  }
 }
 
 onMounted(loadCategories);

@@ -20,7 +20,26 @@
 
     <!-- 阅读模式 -->
     <div v-if="!isEditing" class="page-content">
-      <div class="page-body markdown-body" v-html="renderedContent"></div>
+      <div class="page-body markdown-body" v-html="renderedContent" @click="handleContentClick"></div>
+
+      <!-- 反向链接 -->
+      <div v-if="backlinks.length" class="backlinks-panel">
+        <h3 class="backlinks-title">
+          <span class="backlinks-icon">🔗</span>
+          反向链接 ({{ backlinks.length }})
+        </h3>
+        <div class="backlinks-list">
+          <div
+            v-for="bl in backlinks"
+            :key="bl.path"
+            class="backlink-item"
+            @click="$emit('navigate', bl.path)"
+          >
+            <div class="backlink-title">{{ bl.title }}</div>
+            <div class="backlink-snippet">{{ bl.snippet }}</div>
+          </div>
+        </div>
+      </div>
 
       <!-- 关联条目 -->
       <div v-if="page.links.length" class="page-links">
@@ -30,7 +49,7 @@
             v-for="link in page.links"
             :key="link"
             class="link-item"
-            @click.prevent="$emit('select', link)"
+            @click.prevent="$emit('navigate', link)"
           >
             {{ formatLinkName(link) }}
           </a>
@@ -60,11 +79,11 @@
         </div>
       </div>
       <div class="edit-field edit-field-grow">
-        <label>内容 <span class="label-hint">（Markdown 格式）</span></label>
+        <label>内容 <span class="label-hint">（Markdown 格式，支持 [[页面名称]] 语法创建链接）</span></label>
         <textarea
           v-model="editContent"
           class="edit-textarea"
-          placeholder="输入知识内容..."
+          placeholder="输入知识内容... 使用 [[页面名称]] 创建指向其他页面的链接"
         />
       </div>
     </div>
@@ -72,16 +91,65 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, onMounted } from "vue";
+import { marked } from "marked";
+import { wikiApi } from "../api/index.js";
 
 const props = defineProps({ page: Object });
-const emit = defineEmits(["save", "delete", "edit"]);
+const emit = defineEmits(["save", "delete", "navigate"]);
 
 const isEditing = ref(false);
 const editTitle = ref("");
 const editContent = ref("");
 const editTags = ref([]);
 const newTag = ref("");
+const backlinks = ref([]);
+
+// ── Marked 配置 + WikiLink 扩展 ──
+
+const wikilinkExt = {
+  name: "wikilink",
+  level: "inline",
+  start(src) {
+    return src.match(/\[\[/)?.index;
+  },
+  tokenizer(src) {
+    const match = src.match(/^\[\[([^\]]+)\]\]/);
+    if (match) {
+      return {
+        type: "wikilink",
+        raw: match[0],
+        text: match[1].trim(),
+      };
+    }
+  },
+  renderer(token) {
+    return `<a class="wikilink" data-target="${token.text}" href="javascript:void(0)">${token.text}</a>`;
+  },
+};
+
+marked.use({ extensions: [wikilinkExt] });
+
+const renderedContent = computed(() => {
+  return marked.parse(props.page.content || "");
+});
+
+// ── 加载反向链接 ──
+
+async function loadBacklinks() {
+  if (!props.page?.path) {
+    backlinks.value = [];
+    return;
+  }
+  try {
+    backlinks.value = await wikiApi.getBacklinks(props.page.path);
+  } catch (e) {
+    console.error("加载反向链接失败:", e);
+    backlinks.value = [];
+  }
+}
+
+// ── 监听页面变化 ──
 
 watch(
   () => props.page,
@@ -90,9 +158,14 @@ watch(
     editContent.value = p.content;
     editTags.value = [...p.tags];
     isEditing.value = false;
+    loadBacklinks();
   },
   { immediate: true }
 );
+
+onMounted(loadBacklinks);
+
+// ── 编辑逻辑 ──
 
 function toggleEdit() {
   isEditing.value = !isEditing.value;
@@ -122,6 +195,21 @@ function handleSave() {
   });
 }
 
+// ── WikiLink 点击处理 ──
+
+function handleContentClick(e) {
+  const link = e.target.closest("a.wikilink");
+  if (link) {
+    e.preventDefault();
+    const target = link.dataset.target;
+    if (target) {
+      emit("navigate", target);
+    }
+  }
+}
+
+// ── 工具函数 ──
+
 function formatDate(dateStr) {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -136,31 +224,6 @@ function formatDate(dateStr) {
 function formatLinkName(path) {
   return path.replace(".md", "").replace(/\//g, " > ").replace(/-/g, " ");
 }
-
-// 简单 Markdown 渲染
-const renderedContent = computed(() => {
-  let html = props.page.content
-    // 代码块
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="lang-$1">$2</code></pre>')
-    // 标题
-    .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    // 粗体/斜体
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    // 行内代码
-    .replace(/`(.+?)`/g, "<code>$1</code>")
-    // 链接
-    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>')
-    // 列表
-    .replace(/^- (.+)$/gm, "<li>$1</li>")
-    // 换行
-    .replace(/\n\n/g, "</p><p>")
-    .replace(/\n/g, "<br>");
-  return "<p>" + html + "</p>";
-});
 </script>
 
 <style scoped>
@@ -323,6 +386,78 @@ const renderedContent = computed(() => {
 
 .page-body :deep(a:hover) {
   text-decoration: underline;
+}
+
+/* WikiLink 样式 */
+.page-body :deep(a.wikilink) {
+  color: #6366f1;
+  background: #eef2ff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.page-body :deep(a.wikilink:hover) {
+  background: #c7d2fe;
+  color: #4338ca;
+  text-decoration: none;
+}
+
+/* ── 反向链接面板 ── */
+.backlinks-panel {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid #e8e8e8;
+}
+
+.backlinks-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.backlinks-icon {
+  font-size: 16px;
+}
+
+.backlinks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backlink-item {
+  padding: 10px 14px;
+  background: #fafbff;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.backlink-item:hover {
+  border-color: #818cf8;
+  background: #eef2ff;
+}
+
+.backlink-title {
+  font-weight: 500;
+  font-size: 14px;
+  color: #4338ca;
+  margin-bottom: 4px;
+}
+
+.backlink-snippet {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.5;
 }
 
 /* ── 关联条目 ── */

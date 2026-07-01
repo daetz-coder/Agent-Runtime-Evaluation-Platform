@@ -62,6 +62,16 @@ export const wikiApi = {
     });
   },
 
+  // Diff
+  getDiff(path, oldHash, newHash = "HEAD") {
+    return request(`${BASE}/page/${path}/diff?old=${oldHash}&new=${newHash}`);
+  },
+
+  // Backlinks
+  getBacklinks(path) {
+    return request(`${BASE}/page/${path}/backlinks`);
+  },
+
   // 导入
   importMarkdown(data) {
     return request(`${BASE}/import`, {
