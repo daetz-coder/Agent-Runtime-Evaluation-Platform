@@ -40,6 +40,9 @@ class WikiAgentSettings(BaseSettings):
     RERANK_CANDIDATE_MULTIPLIER: int = 3
     RERANK_MAX_LENGTH: int = 512
 
+    # Cache
+    CACHE_SESSION_TTL: int = 3600
+
     # Git
     GIT_ENABLED: bool = True
 

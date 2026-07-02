@@ -2,6 +2,8 @@
 
 wiki-agent 的业务代码（graph.py）不直接 import SDK，
 所有评估相关的生命周期管理和事件记录都通过这个中间件完成。
+
+SDK 不可用时（独立运行模式），所有函数变为 no-op。
 """
 
 from __future__ import annotations
@@ -14,11 +16,19 @@ from typing import Any
 from langchain_core.language_models import BaseChatModel
 
 from app.wiki_agent.config import settings
-from app.wiki_agent.session import store as session_store
-from sdk import create_proxy_llm, get_collector, instrument_langgraph
-from sdk.collector import ActionType
 
 logger = logging.getLogger(__name__)
+
+# ── SDK 可选导入 ──────────────────────────────────────────────
+
+try:
+    from sdk import create_proxy_llm, get_collector, instrument_langgraph
+    from sdk.collector import ActionType
+
+    _SDK_AVAILABLE = True
+except ImportError:
+    _SDK_AVAILABLE = False
+    logger.info("[Wiki Agent] SDK not available — evaluation features disabled")
 
 _plan_llm: BaseChatModel | None = None
 
@@ -28,11 +38,15 @@ _plan_llm: BaseChatModel | None = None
 
 def instrument_graph(graph):
     """用 SDK 包裹 graph，自动采集节点执行/状态变化/工具调用/失败。"""
+    if not _SDK_AVAILABLE:
+        return graph
     return instrument_langgraph(graph)
 
 
 def wrap_llm(llm: BaseChatModel) -> BaseChatModel:
     """用 SDK 包裹 LLM，自动采集 LLM 调用和工具决策。"""
+    if not _SDK_AVAILABLE:
+        return llm
     return create_proxy_llm(llm)
 
 
@@ -135,8 +149,11 @@ async def start_session(
     session_id: str | None = None,
     mode: str = "stream",
     **extra_context: Any,
-) -> str:
-    """启动评估会话，创建 task，返回 task_id。"""
+) -> str | None:
+    """启动评估会话，创建 task，返回 task_id。SDK 不可用时返回 None。"""
+    if not _SDK_AVAILABLE:
+        return None
+
     collector = get_collector()
 
     context = {
@@ -176,13 +193,16 @@ async def start_session(
         )
 
     if session_id and task_id:
+        from app.wiki_agent.session import store as session_store
         await session_store.set_active_eval_task_id(session_id, task_id)
 
     return task_id
 
 
 async def finish_session(auto_run: bool = True) -> str | None:
-    """结束评估会话，flush 轨迹，可选触发评估。"""
+    """结束评估会话，flush 轨迹，可选触发评估。SDK 不可用时返回 None。"""
+    if not _SDK_AVAILABLE:
+        return None
     collector = get_collector()
     if collector.use_inprocess():
         return await collector.finish_async(auto_run=auto_run)
@@ -197,7 +217,9 @@ def record_retrieval(
     results: list[dict],
     duration_ms: float | None = None,
 ) -> None:
-    """记录检索事件（hybrid_search 结果）。"""
+    """记录检索事件（hybrid_search 结果）。SDK 不可用时 no-op。"""
+    if not _SDK_AVAILABLE:
+        return
     collector = get_collector()
     retrieved_docs = [
         {"title": r.get("title", ""), "path": r.get("path", ""), "snippet": r.get("snippet", "")} for r in results
@@ -212,7 +234,9 @@ def record_retrieval(
 
 
 def record_key_facts(facts: list[str]) -> None:
-    """将 key_facts 记录为 memory_write 事件。"""
+    """将 key_facts 记录为 memory_write 事件。SDK 不可用时 no-op。"""
+    if not _SDK_AVAILABLE:
+        return
     collector = get_collector()
     for fact in facts:
         collector.record_memory_write(
@@ -224,7 +248,7 @@ def record_key_facts(facts: list[str]) -> None:
 
 
 def update_context(context_dict: dict[str, Any]) -> None:
-    """更新评估上下文（通过 record 语义事件实现）。"""
+    """更新评估上下文（通过 record 语义事件实现）。SDK 不可用时 no-op。"""
     key_facts = context_dict.get("key_facts", [])
     if key_facts:
         record_key_facts(key_facts)

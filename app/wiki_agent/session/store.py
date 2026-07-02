@@ -5,8 +5,15 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from app.core.cache import cache_delete, cache_get, cache_set
-from app.core.config import settings
+try:
+    from app.core.cache import cache_delete, cache_get, cache_set
+    from app.core.config import settings as _platform_settings
+    _CACHE_SESSION_TTL = _platform_settings.CACHE_SESSION_TTL
+except ImportError:
+    from app.wiki_agent.cache import cache_delete, cache_get, cache_set
+    from app.wiki_agent.config import settings as _platform_settings
+    _CACHE_SESSION_TTL = _platform_settings.CACHE_SESSION_TTL
+
 from app.wiki_agent.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -73,7 +80,7 @@ async def get_session(session_id: str) -> Optional[dict]:
         }
 
         # Cache the session
-        await cache_set(cache_key, result, ttl=settings.CACHE_SESSION_TTL)
+        await cache_set(cache_key, result, ttl=_CACHE_SESSION_TTL)
         return result
     finally:
         await db.close()
@@ -271,7 +278,7 @@ async def get_session_key_facts(session_id: str) -> list[str]:
             facts = []
 
         # Cache the facts
-        await cache_set(cache_key, facts, ttl=settings.CACHE_SESSION_TTL)
+        await cache_set(cache_key, facts, ttl=_CACHE_SESSION_TTL)
         return facts
     except (json.JSONDecodeError, TypeError):
         return []

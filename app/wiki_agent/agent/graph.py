@@ -578,18 +578,21 @@ async def resume_and_execute(
             confirm=confirm,
         )
     else:
-        from sdk import get_collector
-        from sdk.collector import ActionType
+        try:
+            from sdk import get_collector
+            from sdk.collector import ActionType
 
-        collector = get_collector()
-        collector.attach(eval_task_id)
-        collector.record(
-            ActionType.THINK,
-            {
-                "thought": f"{'Confirm' if confirm else 'Cancel'} pending wiki knowledge-base action",
-                "thread_id": thread_id,
-            },
-        )
+            collector = get_collector()
+            collector.attach(eval_task_id)
+            collector.record(
+                ActionType.THINK,
+                {
+                    "thought": f"{'Confirm' if confirm else 'Cancel'} pending wiki knowledge-base action",
+                    "thread_id": thread_id,
+                },
+            )
+        except ImportError:
+            pass  # SDK not available — skip eval recording
 
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
