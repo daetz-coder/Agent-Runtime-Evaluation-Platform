@@ -138,6 +138,7 @@ async def startup() -> None:
     seed_knowledge_if_empty()
     await init_db()
     sync_indexes_if_needed()
+    preload_embedding_model()
     preload_reranker_if_enabled()
     start_env_monitor()
 
@@ -155,6 +156,20 @@ def start_env_monitor() -> None:
         print("[Wiki Agent] Environment monitor started (poll interval: 5s)")
     except RuntimeError:
         print("[Wiki Agent] Environment monitor skipped (no event loop)")
+
+
+def preload_embedding_model() -> None:
+    """Eager-load embedding model at startup so load errors surface in logs early."""
+    from app.wiki_agent.agent.tools.embeddings import get_embedding_model, get_embedding_status
+
+    get_embedding_model()
+    status = get_embedding_status()
+    if status["loaded"]:
+        print(f"[Wiki Agent] Embedding ready: {status['model_id']} ({status['dim']}d)")
+    elif status.get("error"):
+        print(f"[Wiki Agent] Embedding unavailable: {status['error']}")
+    else:
+        print("[Wiki Agent] Embedding not loaded")
 
 
 def preload_reranker_if_enabled() -> None:

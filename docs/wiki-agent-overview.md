@@ -68,7 +68,7 @@ Agent Runtime（运行 Agent） → 评估引擎（评估质量） → Wiki Agen
 
 ## 三、目录结构与文件功能
 
-```
+```bash
 app/wiki_agent/
 ├── __init__.py                    # 包初始化（空）
 ├── config.py                      # 全局配置（路径、模型、参数）
