@@ -272,9 +272,6 @@ async def get_session_key_facts(session_id: str) -> list[dict]:
         row = await cursor.fetchone()
         if row and row[0]:
             facts = json.loads(row[0])
-            # 兼容旧格式：list[str] → list[dict]
-            if facts and isinstance(facts[0], str):
-                facts = [{"content": f, "type": "unknown", "confidence": 0.8} for f in facts]
         else:
             facts = []
 
