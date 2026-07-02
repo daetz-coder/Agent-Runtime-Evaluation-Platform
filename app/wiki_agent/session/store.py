@@ -251,9 +251,8 @@ async def session_exists(session_id: str) -> bool:
         await db.close()
 
 
-async def get_session_key_facts(session_id: str) -> list[str]:
-    """获取会话累积的 key_facts"""
-    # Check cache first
+async def get_session_key_facts(session_id: str) -> list[dict]:
+    """获取会话累积的 key_facts（结构化）"""
     cache_key = f"wiki:session:{session_id}:facts"
     cached = await cache_get(cache_key)
     if cached is not None:
@@ -261,7 +260,6 @@ async def get_session_key_facts(session_id: str) -> list[str]:
 
     db = await get_db()
     try:
-        # 检测列是否存在（兼容旧 schema）
         cursor = await db.execute("PRAGMA table_info(sessions)")
         cols = {row[1] for row in await cursor.fetchall()}
         if "key_facts" not in cols:
@@ -274,10 +272,12 @@ async def get_session_key_facts(session_id: str) -> list[str]:
         row = await cursor.fetchone()
         if row and row[0]:
             facts = json.loads(row[0])
+            # 兼容旧格式：list[str] → list[dict]
+            if facts and isinstance(facts[0], str):
+                facts = [{"content": f, "type": "unknown", "confidence": 0.8} for f in facts]
         else:
             facts = []
 
-        # Cache the facts
         await cache_set(cache_key, facts, ttl=_CACHE_SESSION_TTL)
         return facts
     except (json.JSONDecodeError, TypeError):
@@ -286,20 +286,39 @@ async def get_session_key_facts(session_id: str) -> list[str]:
         await db.close()
 
 
-async def merge_session_key_facts(session_id: str, new_facts: list[str]) -> list[str]:
-    """将新 facts 合并到会话的 key_facts 中（去重），返回合并后的完整列表"""
+async def merge_session_key_facts(session_id: str, new_facts: list[dict]) -> list[dict]:
+    """将新 facts 合并到会话的 key_facts 中（去重），返回合并后的完整列表
+
+    Args:
+        new_facts: 结构化事实列表，每项格式：
+            {"content": "...", "type": "project_context", "confidence": 0.9}
+    """
     existing = await get_session_key_facts(session_id)
 
-    seen = {f.strip().lower() for f in existing}
+    existing_contents = {f["content"].strip().lower() for f in existing}
     merged = list(existing)
-    for fact in new_facts:
-        normalized = fact.strip().lower()
-        if normalized and normalized not in seen:
-            merged.append(fact.strip())
-            seen.add(normalized)
 
+    for fact in new_facts:
+        content = fact.get("content", "").strip() if isinstance(fact, dict) else str(fact).strip()
+        if not content:
+            continue
+        normalized = content.lower()
+        if normalized in existing_contents:
+            continue
+
+        structured = {
+            "content": content,
+            "type": fact.get("type", "unknown") if isinstance(fact, dict) else "unknown",
+            "confidence": fact.get("confidence", 0.8) if isinstance(fact, dict) else 0.8,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        merged.append(structured)
+        existing_contents.add(normalized)
+
+    # 上限 20 条，按置信度排序保留最重要的
     if len(merged) > 20:
-        merged = merged[-20:]
+        merged.sort(key=lambda f: f.get("confidence", 0), reverse=True)
+        merged = merged[:20]
 
     db = await get_db()
     try:
@@ -311,8 +330,6 @@ async def merge_session_key_facts(session_id: str, new_facts: list[str]) -> list
                 (json.dumps(merged, ensure_ascii=False), session_id),
             )
             await db.commit()
-
-            # Invalidate key_facts cache
             await cache_delete(f"wiki:session:{session_id}:facts")
     finally:
         await db.close()

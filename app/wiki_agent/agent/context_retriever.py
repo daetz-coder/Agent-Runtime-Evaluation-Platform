@@ -29,8 +29,8 @@ class RetrievedContext:
     """统一检索结果"""
 
     wiki_results: list[dict] = field(default_factory=list)
-    user_facts: list[dict] = field(default_factory=list)      # 用户级持久事实
-    session_facts: list[str] = field(default_factory=list)     # 会话级事实
+    user_facts: list[dict] = field(default_factory=list)      # 用户级持久事实 [{"content", "type", "confidence"}]
+    session_facts: list[dict] = field(default_factory=list)    # 会话级事实 [{"content", "type", "confidence"}]
     history_summary: str = ""
 
     @property
@@ -39,11 +39,11 @@ class RetrievedContext:
 
     # 向后兼容：key_facts 映射到 session_facts
     @property
-    def key_facts(self) -> list[str]:
+    def key_facts(self) -> list[dict]:
         return self.session_facts
 
     @key_facts.setter
-    def key_facts(self, value: list[str]):
+    def key_facts(self, value):
         self.session_facts = value
 
 
@@ -86,7 +86,7 @@ async def retrieve_context(
     user_facts = await session_store.get_user_memory()
 
     # ④ Session Memory — 会话级事实（当前 session）
-    session_facts: list[str] = []
+    session_facts: list[dict] = []
     if session_id:
         session_facts = await session_store.get_session_key_facts(session_id)
 
@@ -120,7 +120,7 @@ def build_context_block(ctx: RetrievedContext) -> str:
 
     # ── 优先级 2: Session Memory（会话级事实）──
     if ctx.session_facts:
-        lines = [f"{i}. {f}" for i, f in enumerate(ctx.session_facts, 1)]
+        lines = [f"- [{f.get('type', '')}] {f['content']}" for f in ctx.session_facts[:10]]
         session_text = "\n".join(lines)
         if len(session_text) > MAX_SESSION_FACTS_CHARS:
             session_text = session_text[:MAX_SESSION_FACTS_CHARS] + "..."

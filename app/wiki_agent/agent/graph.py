@@ -178,7 +178,8 @@ def _build_llm_messages(state: WikiState, chat_history: list[BaseMessage]) -> li
     if ctx_data:
         ctx = RetrievedContext(
             wiki_results=ctx_data.get("wiki_results", []),
-            key_facts=ctx_data.get("key_facts", []),
+            user_facts=ctx_data.get("user_facts", []),
+            session_facts=ctx_data.get("key_facts", []),
             history_summary=ctx_data.get("history_summary", ""),
         )
         context_block = build_context_block(ctx)
@@ -217,12 +218,12 @@ async def _extract_key_facts(
     search_results: list[dict],
     chat_history: list[BaseMessage],
     session_id: str | None = None,
-) -> tuple[list[str], list[dict]]:
+) -> tuple[list[dict], list[dict]]:
     """用 LLM 从对话上下文中提取结构化 key_facts。
 
     Returns:
         (session_facts, user_facts)
-        - session_facts: list[str]，存入当前 session 的 key_facts
+        - session_facts: list[dict]，存入当前 session 的 key_facts
         - user_facts: list[dict]，存入 User Memory（跨 session）
     """
     import json as _json
@@ -285,10 +286,16 @@ async def _extract_key_facts(
                 for f in facts:
                     if not isinstance(f, dict) or not f.get("content"):
                         continue
+                    # 统一结构化格式
+                    structured = {
+                        "content": f["content"],
+                        "type": f.get("type", "unknown"),
+                        "confidence": f.get("confidence", 0.8),
+                    }
                     if f.get("scope") == "user":
-                        user_facts.append(f)
+                        user_facts.append(structured)
                     else:
-                        session_facts.append(f["content"])
+                        session_facts.append(structured)
                 return session_facts[:5], user_facts[:5]
     except Exception as exc:
         print(f"[key_facts] 提取失败: {exc}")
