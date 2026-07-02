@@ -38,6 +38,14 @@ CREATE_MESSAGES_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)
 """
 
+CREATE_USER_MEMORY_TABLE = """
+CREATE TABLE IF NOT EXISTS user_memory (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    facts TEXT DEFAULT '[]',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 
 async def init_db():
     """初始化数据库，创建表"""
@@ -45,6 +53,7 @@ async def init_db():
         await db.execute(CREATE_SESSIONS_TABLE)
         await db.execute(CREATE_MESSAGES_TABLE)
         await db.execute(CREATE_MESSAGES_INDEX)
+        await db.execute(CREATE_USER_MEMORY_TABLE)
         # 迁移：sessions 表增加 key_facts 列
         try:
             await db.execute("ALTER TABLE sessions ADD COLUMN key_facts TEXT DEFAULT '[]'")

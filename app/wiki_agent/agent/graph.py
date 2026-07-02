@@ -51,12 +51,7 @@ SYSTEM_PROMPT = """你是一个智能知识助手。请用中文回答。
 - 引用知识库条目时，使用 [[条目标题]] 格式创建链接，例如：详见 [[向量索引]]
 """
 
-KEY_FACTS_PROMPT = """从以下对话上下文提取 Agent 必须记住的关键事实（key_facts）。
-要求：
-- 每条事实简洁明确，一句话
-- 最多 5 条，只保留真正重要的
-- 包括：用户偏好、项目技术栈、重要约束、已确认的事实
-- 如果没有明确的关键事实，返回空数组
+KEY_FACTS_PROMPT = """从以下对话上下文提取关键事实，并判断每个事实的作用域。
 
 ## 用户消息
 {user_message}
@@ -67,9 +62,48 @@ KEY_FACTS_PROMPT = """从以下对话上下文提取 Agent 必须记住的关键
 ## 知识库搜索结果
 {search_results}
 
+## 现有 User Memory（跨 session 持久生效）
+{user_memory}
+
+## 现有 Session Memory（当前会话）
+{session_memory}
+
+## 事实类型与作用域规则
+
+1. **user_preference** (scope: user) — 用户明确表达的个人偏好
+   - "我喜欢 Python" / "我习惯用 vim" / "我偏好简洁的回答"
+   - 特征：主语是"我"，表达的是个人喜好
+
+2. **user_habit** (scope: user) — 用户的行为习惯
+   - "我习惯先写测试" / "我喜欢详细解释"
+   - 特征：描述的是行为模式，不是项目约束
+
+3. **project_context** (scope: session) — 当前项目的上下文
+   - "这个项目使用 Java" / "我们用的是 MongoDB"
+   - 特征：主语是"项目"或"我们"，描述的是技术选型
+
+4. **tech_constraint** (scope: session) — 当前的技术约束
+   - "必须兼容 Python 3.9" / "不能用外部依赖"
+   - 特征：描述的是限制条件
+
+5. **task_goal** (scope: session) — 当前任务目标
+   - "正在实现登录功能" / "需要优化查询性能"
+   - 特征：描述的是正在做的事
+
+## 冲突处理
+
+如果新事实与现有 User Memory 矛盾：
+- 如果是用户偏好变化（"以前喜欢 Java，现在喜欢 Python"）→ scope=user，新事实替代旧事实
+- 如果是不同上下文（"公司用 Java，个人用 Python"）→ 两条都保留，补充上下文
+- 如果不确定 → scope=session，存入 Session Memory
+
 ## 输出格式
 仅返回 JSON 数组，不要其他内容：
-["事实1", "事实2", ...]
+[
+    {{"content": "事实内容", "type": "事实类型", "scope": "user 或 session", "confidence": 0.0-1.0}}
+]
+
+如果没有明确的关键事实，返回空数组：[]
 """
 
 # 创建 LLM 并用 SDK 包裹（自动采集 LLM 调用）
@@ -182,8 +216,15 @@ async def _extract_key_facts(
     user_message: str,
     search_results: list[dict],
     chat_history: list[BaseMessage],
-) -> list[str]:
-    """用 LLM 从对话上下文中提取 key_facts（轻量调用）。"""
+    session_id: str | None = None,
+) -> tuple[list[str], list[dict]]:
+    """用 LLM 从对话上下文中提取结构化 key_facts。
+
+    Returns:
+        (session_facts, user_facts)
+        - session_facts: list[str]，存入当前 session 的 key_facts
+        - user_facts: list[dict]，存入 User Memory（跨 session）
+    """
     import json as _json
 
     history_summary = ""
@@ -200,10 +241,24 @@ async def _extract_key_facts(
     if search_results:
         search_text = "\n".join(f"- {r.get('title', '')}: {r.get('snippet', '')[:150]}" for r in search_results[:5])
 
+    # 获取现有记忆用于冲突检测
+    existing_user = []
+    existing_session = []
+    try:
+        existing_user = await session_store.get_user_memory()
+        existing_session = await session_store.get_session_key_facts(session_id) if session_id else []
+    except Exception:
+        pass
+
+    user_memory_text = "\n".join(f"- {f['content']}" for f in existing_user[:10]) if existing_user else "无"
+    session_memory_text = "\n".join(f"- {f}" for f in existing_session[:10]) if existing_session else "无"
+
     prompt = KEY_FACTS_PROMPT.format(
         user_message=user_message,
         history_summary=history_summary or "无",
         search_results=search_text or "无",
+        user_memory=user_memory_text,
+        session_memory=session_memory_text,
     )
 
     try:
@@ -215,7 +270,7 @@ async def _extract_key_facts(
             api_key=_chat_llm_key,
             base_url=_chat_llm_base,
             temperature=0,
-            max_tokens=200,
+            max_tokens=300,
         )
         response = await llm.ainvoke([HM(content=prompt)])
         content = response.content or ""
@@ -225,18 +280,27 @@ async def _extract_key_facts(
         if start != -1 and end > start:
             facts = _json.loads(content[start:end])
             if isinstance(facts, list):
-                return [str(f) for f in facts if f][:5]
+                session_facts = []
+                user_facts = []
+                for f in facts:
+                    if not isinstance(f, dict) or not f.get("content"):
+                        continue
+                    if f.get("scope") == "user":
+                        user_facts.append(f)
+                    else:
+                        session_facts.append(f["content"])
+                return session_facts[:5], user_facts[:5]
     except Exception as exc:
         print(f"[key_facts] 提取失败: {exc}")
 
-    return []
+    return [], []
 
 
 # ── 节点（纯业务逻辑） ──────────────────────────────────────
 
 
 async def search(state: WikiState, config: RunnableConfig) -> WikiState:
-    """统一检索三路记忆（KB + key_facts + history）"""
+    """统一检索四路记忆（KB + user_memory + session_memory + history）"""
     print("[Wiki Agent] 检索上下文...")
     user_message = state["user_message"]
     configurable = _get_configurable(config)
@@ -257,19 +321,31 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         lines = [f"- {r['title']} ({r['path']}): {r['snippet']}" for r in ctx.wiki_results[:3]]
         wiki_text = "\n".join(lines)
 
-    # 提取新 key_facts 并累积到 session
-    new_facts = await _extract_key_facts(user_message, ctx.wiki_results, chat_history)
-    if session_id:
-        all_facts = await session_store.merge_session_key_facts(session_id, new_facts)
-        ctx.key_facts = all_facts
-        update_context({"key_facts": all_facts})
-        if new_facts:
-            print(f"[key_facts] 新增 {len(new_facts)} 条，累积 {len(all_facts)} 条")
+    # 提取结构化 key_facts，按 scope 分流
+    session_facts_raw, user_facts_raw = await _extract_key_facts(
+        user_message, ctx.wiki_results, chat_history, session_id
+    )
+
+    # Session Memory: 合并到当前 session
+    if session_id and session_facts_raw:
+        all_session_facts = await session_store.merge_session_key_facts(session_id, session_facts_raw)
+        ctx.session_facts = all_session_facts
+        print(f"[Session Memory] 新增 {len(session_facts_raw)} 条，累积 {len(all_session_facts)} 条")
+
+    # User Memory: 合并到用户级持久记忆
+    if user_facts_raw:
+        all_user_facts = await session_store.merge_user_memory(user_facts_raw)
+        ctx.user_facts = all_user_facts
+        print(f"[User Memory] 新增 {len(user_facts_raw)} 条，累积 {len(all_user_facts)} 条")
+
+    update_context({"key_facts": ctx.session_facts, "user_facts": ctx.user_facts})
 
     # 日志
     context_block = build_context_block(ctx)
     print(
-        f"[Context] wiki: {len(ctx.wiki_results)} docs, facts: {len(ctx.key_facts)}, "
+        f"[Context] wiki: {len(ctx.wiki_results)} docs, "
+        f"user: {len(ctx.user_facts)} facts, "
+        f"session: {len(ctx.session_facts)} facts, "
         f"history: {len(ctx.history_summary)} chars → {len(context_block)} chars"
     )
 
@@ -279,7 +355,8 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         "wiki_text": wiki_text,
         "retrieved_context": {
             "wiki_results": ctx.wiki_results,
-            "key_facts": ctx.key_facts,
+            "user_facts": ctx.user_facts,
+            "key_facts": ctx.session_facts,
             "history_summary": ctx.history_summary,
         },
         "stage": "search",

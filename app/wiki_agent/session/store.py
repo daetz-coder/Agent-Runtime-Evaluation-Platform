@@ -320,6 +320,97 @@ async def merge_session_key_facts(session_id: str, new_facts: list[str]) -> list
     return merged
 
 
+# ── User Memory（跨 session 持久记忆）────────────────────────
+
+
+async def get_user_memory(user_id: str = "default") -> list[dict]:
+    """获取用户级持久事实（跨 session 共享）"""
+    cache_key = f"wiki:user:{user_id}:memory"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT facts FROM user_memory WHERE id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+        if row and row[0]:
+            facts = json.loads(row[0])
+        else:
+            facts = []
+
+        await cache_set(cache_key, facts, ttl=_CACHE_SESSION_TTL)
+        return facts
+    except (json.JSONDecodeError, TypeError):
+        return []
+    finally:
+        await db.close()
+
+
+async def merge_user_memory(new_facts: list[dict], user_id: str = "default") -> list[dict]:
+    """将新 facts 合并到 User Memory。
+
+    Args:
+        new_facts: 结构化事实列表，每项格式：
+            {"content": "...", "type": "user_preference", "confidence": 0.9}
+        user_id: 用户标识
+
+    Returns:
+        合并后的完整 facts 列表
+    """
+    existing = await get_user_memory(user_id)
+
+    # 去重：基于 content 的小写比较
+    existing_contents = {f["content"].strip().lower() for f in existing}
+    merged = list(existing)
+
+    for fact in new_facts:
+        content = fact.get("content", "").strip()
+        if not content:
+            continue
+        normalized = content.lower()
+
+        # 跳过已存在的事实
+        if normalized in existing_contents:
+            continue
+
+        # 结构化 fact
+        structured = {
+            "content": content,
+            "type": fact.get("type", "unknown"),
+            "confidence": fact.get("confidence", 0.8),
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        merged.append(structured)
+        existing_contents.add(normalized)
+
+    # 上限 30 条，按置信度排序保留最重要的
+    if len(merged) > 30:
+        merged.sort(key=lambda f: f.get("confidence", 0), reverse=True)
+        merged = merged[:30]
+
+    # 持久化
+    db = await get_db()
+    try:
+        now = datetime.now().isoformat(timespec="seconds")
+        await db.execute(
+            "INSERT INTO user_memory (id, facts, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET facts = ?, updated_at = ?",
+            (user_id, json.dumps(merged, ensure_ascii=False), now,
+             json.dumps(merged, ensure_ascii=False), now),
+        )
+        await db.commit()
+
+        await cache_delete(f"wiki:user:{user_id}:memory")
+    finally:
+        await db.close()
+
+    return merged
+
+
 async def get_active_eval_task_id(session_id: str) -> str | None:
     """获取会话当前活跃的评估 task_id"""
     db = await get_db()

@@ -1,8 +1,9 @@
-"""统一上下文检索 — 合并三路记忆源
+"""统一上下文检索 — 合并四路记忆源
 
-Short-term Memory  → chat_history（最近 N 条消息）
-Long-term Memory   → session.key_facts（累积关键事实）
-External KB (RAG)  → hybrid_search（知识库检索）
+Working Memory   → chat_history（最近 N 条消息）
+Session Memory   → session.key_facts（会话级事实，当前 session 生效）
+User Memory      → user_memory.facts（用户级事实，跨 session 永久生效）
+External KB      → hybrid_search（知识库检索）
 """
 
 from __future__ import annotations
@@ -16,9 +17,10 @@ from app.wiki_agent.agent.tools.query_rewriter import rewrite_query
 from app.wiki_agent.session import store as session_store
 
 # 预算常量（字符数，约 1 token ≈ 2.5 中文字符）
-MAX_HISTORY_CHARS = 1000
-MAX_WIKI_CHARS = 1500
-MAX_FACTS_CHARS = 500
+MAX_HISTORY_CHARS = 800
+MAX_WIKI_CHARS = 1200
+MAX_SESSION_FACTS_CHARS = 400
+MAX_USER_FACTS_CHARS = 600
 HISTORY_RECENT_COUNT = 10
 
 
@@ -27,12 +29,22 @@ class RetrievedContext:
     """统一检索结果"""
 
     wiki_results: list[dict] = field(default_factory=list)
-    key_facts: list[str] = field(default_factory=list)
+    user_facts: list[dict] = field(default_factory=list)      # 用户级持久事实
+    session_facts: list[str] = field(default_factory=list)     # 会话级事实
     history_summary: str = ""
 
     @property
     def has_content(self) -> bool:
-        return bool(self.wiki_results or self.key_facts or self.history_summary)
+        return bool(self.wiki_results or self.user_facts or self.session_facts or self.history_summary)
+
+    # 向后兼容：key_facts 映射到 session_facts
+    @property
+    def key_facts(self) -> list[str]:
+        return self.session_facts
+
+    @key_facts.setter
+    def key_facts(self, value: list[str]):
+        self.session_facts = value
 
 
 async def retrieve_context(
@@ -40,7 +52,7 @@ async def retrieve_context(
     chat_history: list[BaseMessage],
     session_id: str | None = None,
 ) -> RetrievedContext:
-    """统一检索三路记忆，返回 RetrievedContext。"""
+    """统一检索四路记忆，返回 RetrievedContext。"""
 
     # ① Query 改写 Pipeline（上下文补齐 + 路由分类 + 多策略改写 + 相似度校验）
     rewritten_queries = await rewrite_query(user_message, chat_history)
@@ -69,17 +81,22 @@ async def retrieve_context(
         if wiki_results:
             print(f"[Context] 改写查询无结果，原始查询兜底命中 {len(wiki_results)} 条")
 
-    # ③ Long-term Memory — session key_facts
-    key_facts: list[str] = []
-    if session_id:
-        key_facts = await session_store.get_session_key_facts(session_id)
+    # ③ User Memory — 用户级持久事实（跨 session）
+    user_facts: list[dict] = []
+    user_facts = await session_store.get_user_memory()
 
-    # ④ Short-term Memory — recent chat history
+    # ④ Session Memory — 会话级事实（当前 session）
+    session_facts: list[str] = []
+    if session_id:
+        session_facts = await session_store.get_session_key_facts(session_id)
+
+    # ⑤ Working Memory — 最近对话历史
     history_summary = _summarize_history(chat_history, HISTORY_RECENT_COUNT)
 
     return RetrievedContext(
         wiki_results=wiki_results,
-        key_facts=key_facts,
+        user_facts=user_facts,
+        session_facts=session_facts,
         history_summary=history_summary,
     )
 
@@ -90,18 +107,27 @@ def build_context_block(ctx: RetrievedContext) -> str:
         return ""
 
     blocks: list[str] = []
-    budget = MAX_HISTORY_CHARS + MAX_WIKI_CHARS + MAX_FACTS_CHARS  # ~3000
+    budget = MAX_HISTORY_CHARS + MAX_WIKI_CHARS + MAX_SESSION_FACTS_CHARS + MAX_USER_FACTS_CHARS
 
-    # ── 优先级 1: key_facts（固定保留）──
-    if ctx.key_facts:
-        lines = [f"{i}. {f}" for i, f in enumerate(ctx.key_facts, 1)]
-        facts_text = "\n".join(lines)
-        if len(facts_text) > MAX_FACTS_CHARS:
-            facts_text = facts_text[:MAX_FACTS_CHARS] + "..."
-        blocks.append(f"[长期记忆]\n{facts_text}")
-        budget -= len(facts_text)
+    # ── 优先级 1: User Memory（用户级持久事实，最重要）──
+    if ctx.user_facts:
+        lines = [f"- {f['content']}" for f in ctx.user_facts[:10]]
+        user_text = "\n".join(lines)
+        if len(user_text) > MAX_USER_FACTS_CHARS:
+            user_text = user_text[:MAX_USER_FACTS_CHARS] + "..."
+        blocks.append(f"[用户记忆]\n{user_text}")
+        budget -= len(user_text)
 
-    # ── 优先级 2: wiki_results ──
+    # ── 优先级 2: Session Memory（会话级事实）──
+    if ctx.session_facts:
+        lines = [f"{i}. {f}" for i, f in enumerate(ctx.session_facts, 1)]
+        session_text = "\n".join(lines)
+        if len(session_text) > MAX_SESSION_FACTS_CHARS:
+            session_text = session_text[:MAX_SESSION_FACTS_CHARS] + "..."
+        blocks.append(f"[会话记忆]\n{session_text}")
+        budget -= len(session_text)
+
+    # ── 优先级 3: wiki_results ──
     if ctx.wiki_results:
         wiki_lines = []
         used = 0
@@ -115,7 +141,7 @@ def build_context_block(ctx: RetrievedContext) -> str:
             blocks.append("[知识库搜索结果]\n" + "\n".join(wiki_lines))
             budget -= used
 
-    # ── 优先级 3: history_summary ──
+    # ── 优先级 4: history_summary ──
     if ctx.history_summary:
         remaining = min(MAX_HISTORY_CHARS, budget - 100)
         if remaining > 50:
