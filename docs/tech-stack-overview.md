@@ -49,6 +49,8 @@
 | 关键优势 | 原生 async/await、Pydantic v2 集成减少 60% 手写校验代码、依赖注入适配多 LLM 厂商切换 |
 | 文件引用 | `app/main.py:108`、`pyproject.toml:20` |
 
+async/await 是基于事件循环（Event Loop）的协作式并发模型，通过 await 主动让出执行权，实现单线程下的高并发 IO 调度。
+
 ### Pydantic v2
 
 | 项目 | 说明 |
@@ -57,6 +59,10 @@
 | 角色 | 数据校验、序列化、JSON Schema 生成，Rust 核心比 v1 快 5-50x |
 | 选型理由 | Pydantic v1 性能瓶颈；dataclasses 无运行时校验；attrs 无 JSON Schema 自动生成 |
 | 文件引用 | `app/core/config.py:8`、`app/models/schemas.py` |
+
+在 Agent 系统中，JSON 只是数据交换格式，而 Pydantic 的序列化/校验过程本质是将不可信的结构化文本转换为类型安全的运行时对象，从而保证 Agent 多步调用链中的数据一致性与安全性。Rust core 的加速主要优化的是解析与校验的 CPU 密集型过程，而不是 JSON 本身。
+
+
 
 ### SQLAlchemy 2.0 + Alembic
 
