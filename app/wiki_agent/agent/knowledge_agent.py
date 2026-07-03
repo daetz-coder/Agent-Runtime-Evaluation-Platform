@@ -7,7 +7,7 @@ from typing import Literal
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.wiki_agent.agent.tools import search_tools
 from app.wiki_agent.config import settings
@@ -38,6 +38,26 @@ class KnowledgeDecision(BaseModel):
     category: str = Field(default="", description="分类路径如 programming/python，create 时填写")
     content: str = Field(default="", description="Markdown 内容，create/update 时必填")
     tags: list[str] | None = Field(default=None, description="标签列表")
+
+    @model_validator(mode="after")
+    def validate_action_fields(self) -> "KnowledgeDecision":
+        """根据 action 类型校验必填字段"""
+        missing: dict[str, dict[str, str]] = {
+            "create": {
+                "title": self.title,
+                "category": self.category,
+                "content": self.content,
+            },
+            "update": {"path": self.path, "content": self.content},
+            "delete": {"path": self.path},
+        }
+        required = missing.get(self.action, {})
+        empty = [k for k, v in required.items() if not v.strip()]
+        if empty:
+            raise ValueError(
+                f"action='{self.action}' 时以下字段必填但为空: {', '.join(empty)}"
+            )
+        return self
 
     def to_dict(self) -> dict:
         return self.model_dump()
@@ -96,21 +116,39 @@ def _build_prompt(user_message: str, ai_response: str, existing_knowledge: str) 
     )
 
 
-async def decide_action(user_message: str, ai_response: str) -> KnowledgeDecision:
-    """分析对话，决定是否需要对知识库进行操作"""
+async def decide_action(
+    user_message: str, ai_response: str, max_retries: int = 2
+) -> KnowledgeDecision:
+    """分析对话，决定是否需要对知识库进行操作。
+
+    解析失败时将错误反馈给 LLM 重试，最多重试 max_retries 次。
+    """
     existing_knowledge = _get_related_knowledge(user_message)
-    prompt = _build_prompt(user_message, ai_response, existing_knowledge)
+    base_prompt = _build_prompt(user_message, ai_response, existing_knowledge)
 
     # DeepSeek 不支持 LangChain with_structured_output 的 json_schema response_format，
     # 统一用 PydanticOutputParser 从文本中解析 JSON。
-    try:
-        response = await _get_llm().ainvoke([HumanMessage(content=prompt)])
-        raw_text = (response.content or "").strip()
-        if not raw_text:
-            return KnowledgeDecision(action="none", reason="LLM 返回空内容")
-        decision = _parser.parse(raw_text)
-        print(f"[Knowledge Agent] PydanticOutputParser 成功: action={decision.action}")
-        return decision
-    except Exception as e:
-        print(f"[Knowledge Agent] 决策失败: {e}")
-        return KnowledgeDecision(action="none", reason=f"决策失败: {str(e)}")
+    llm = _get_llm()
+    messages = [HumanMessage(content=base_prompt)]
+
+    for attempt in range(max_retries + 1):
+        try:
+            response = await llm.ainvoke(messages)
+            raw_text = (response.content or "").strip()
+            if not raw_text:
+                return KnowledgeDecision(action="none", reason="LLM 返回空内容")
+            decision = _parser.parse(raw_text)
+            print(f"[Knowledge Agent] 第 {attempt + 1} 次解析成功: action={decision.action}")
+            return decision
+        except Exception as e:
+            print(f"[Knowledge Agent] 第 {attempt + 1} 次解析失败: {e}")
+            if attempt < max_retries:
+                # 将校验错误反馈给 LLM，引导它修正输出
+                messages.append(HumanMessage(content=(
+                    f"你的回复校验失败，错误如下：\n\n{e}\n\n"
+                    "请严格按照 JSON schema 重新输出，确保必填字段不为空。"
+                )))
+                continue
+
+    print(f"[Knowledge Agent] 重试 {max_retries} 次后仍失败，返回 none")
+    return KnowledgeDecision(action="none", reason=f"重试 {max_retries} 次后仍失败")
