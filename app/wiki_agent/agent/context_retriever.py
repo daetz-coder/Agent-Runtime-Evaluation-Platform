@@ -53,16 +53,21 @@ async def retrieve_context(
     session_id: str | None = None,
 ) -> RetrievedContext:
     """统一检索四路记忆，返回 RetrievedContext。"""
+    import asyncio
+    loop = asyncio.get_running_loop()
 
     # ① Query 改写 Pipeline（上下文补齐 + 路由分类 + 多策略改写 + 相似度校验）
+    t0 = loop.time()
     rewritten_queries = await rewrite_query(user_message, chat_history)
+    t1 = loop.time()
+    print(f"[Timing] rewrite_query: {(t1-t0)*1000:.0f}ms")
 
     # ② External KB — 对每个改写 query 并行做 hybrid_search，合并去重
-    import asyncio
     seen_paths: set[str] = set()
     wiki_results: list[dict] = []
 
     # 并行执行所有搜索
+    t2 = loop.time()
     search_tasks = [asyncio.to_thread(search_tools.hybrid_search, q, 3) for q in rewritten_queries]
     search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
@@ -75,6 +80,8 @@ async def retrieve_context(
                 seen_paths.add(path)
                 wiki_results.append(r)
     wiki_results = wiki_results[:5]  # 最终取 top 5
+    t3 = loop.time()
+    print(f"[Timing] hybrid_search: {(t3-t2)*1000:.0f}ms")
 
     # ②b 兜底：如果改写查询全部无结果，用原始查询再搜一次
     if not wiki_results and user_message:
@@ -89,6 +96,7 @@ async def retrieve_context(
             print(f"[Context] 改写查询无结果，原始查询兜底命中 {len(wiki_results)} 条")
 
     # ③ User Memory — 用户级持久事实（跨 session）
+    t4 = loop.time()
     user_facts: list[dict] = []
     user_facts = await session_store.get_user_memory()
 
@@ -96,6 +104,8 @@ async def retrieve_context(
     session_facts: list[dict] = []
     if session_id:
         session_facts = await session_store.get_session_key_facts(session_id)
+    t5 = loop.time()
+    print(f"[Timing] memory_load: {(t5-t4)*1000:.0f}ms")
 
     # ⑤ Working Memory — 最近对话历史
     history_summary = _summarize_history(chat_history, HISTORY_RECENT_COUNT)

@@ -75,6 +75,9 @@ async def stream_response(session_id: str, user_message: str) -> AsyncGenerator[
     :param user_message: The user message.
     :return: The stream response.
     """
+    import asyncio
+    total_start = asyncio.get_event_loop().time()
+
     await _ensure_session(session_id)
 
     # 只加载最近 N 轮消息构建 history，避免全量加载
@@ -95,9 +98,14 @@ async def stream_response(session_id: str, user_message: str) -> AsyncGenerator[
     eval_task_id = None
 
     try:
+        first_content = True
         async for event in run_chat_stream(user_message, history, session_id=session_id):
             event_type = event.get("type")
             if event_type == "content":
+                if first_content:
+                    first_content = False
+                    elapsed = asyncio.get_event_loop().time() - total_start
+                    print(f"[Timing] Total time to first content: {elapsed*1000:.0f}ms")
                 collected += event.get("text", "")
             elif event_type == "wiki_results":
                 wiki_text = event.get("results")

@@ -382,8 +382,12 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     started = asyncio.get_running_loop().time()
 
     # 统一检索
+    t0 = asyncio.get_running_loop().time()
     ctx = await retrieve_context(user_message, chat_history, session_id)
-    duration_ms = round((asyncio.get_running_loop().time() - started) * 1000, 2)
+    t1 = asyncio.get_running_loop().time()
+    print(f"[Timing] retrieve_context: {(t1-t0)*1000:.0f}ms")
+
+    duration_ms = round((t1 - started) * 1000, 2)
 
     # 记录检索事件（SDK 无法自动采集检索细节）
     record_retrieval(user_message, ctx.wiki_results, duration_ms)
@@ -395,9 +399,12 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         wiki_text = "\n".join(lines)
 
     # 提取结构化 key_facts，按 scope 分流
+    t2 = asyncio.get_running_loop().time()
     session_facts_raw, user_facts_raw = await _extract_key_facts(
         user_message, ctx.wiki_results, chat_history, session_id
     )
+    t3 = asyncio.get_running_loop().time()
+    print(f"[Timing] _extract_key_facts: {(t3-t2)*1000:.0f}ms")
 
     # 异步存储记忆（不阻塞主流程）
     async def _store_memories():
@@ -446,6 +453,7 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
 async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     """流式或非流式生成回复"""
     print("[Wiki Agent] 生成回复...")
+    t0 = asyncio.get_running_loop().time()
     configurable = _get_configurable(config)
     queue: asyncio.Queue | None = configurable.get("event_queue")
     chat_history: list[BaseMessage] = configurable.get("chat_history") or []
@@ -456,12 +464,16 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
 
     messages = _build_llm_messages(state, chat_history)
     collected = ""
+    first_token_time = None
 
     # 始终走 astream — 有 event_queue 时逐 token 推 SSE，无 queue 时在本地聚合
     async for chunk in chat_llm.astream(messages):
         text = _chunk_text(chunk)
         if not text:
             continue
+        if first_token_time is None:
+            first_token_time = asyncio.get_running_loop().time()
+            print(f"[Timing] LLM first token: {(first_token_time-t0)*1000:.0f}ms")
         collected += text
         if queue is not None:
             await _emit(queue, {"type": "content", "text": text})
@@ -606,10 +618,12 @@ async def run_chat_stream(
     session_id: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """经 LangGraph 运行完整对话流，产出 SSE 事件 dict"""
+    total_start = asyncio.get_running_loop().time()
     graph = await get_wiki_graph()
     thread_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
 
+    t0 = asyncio.get_running_loop().time()
     eval_task_id = await start_session(
         user_message,
         session_id,
@@ -617,6 +631,8 @@ async def run_chat_stream(
         thread_id=thread_id,
         history_count=len(chat_history),
     )
+    t1 = asyncio.get_running_loop().time()
+    print(f"[Timing] start_session: {(t1-t0)*1000:.0f}ms")
 
     config: RunnableConfig = {
         "configurable": {
