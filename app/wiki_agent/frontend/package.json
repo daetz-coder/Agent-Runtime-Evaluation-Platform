@@ -1,6 +1,6 @@
 {
   "name": "wiki-agent-frontend",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Wiki Agent — 独立前端",
   "type": "module",
   "scripts": {

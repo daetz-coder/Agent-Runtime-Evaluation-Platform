@@ -1,6 +1,6 @@
 {
   "name": "agent-eval-frontend",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Agent Runtime Evaluation Platform - Frontend",
   "type": "module",
   "scripts": {

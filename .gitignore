@@ -66,6 +66,4 @@ frontend/.vite/
 # Personal files
 cv_docs/
 output/
-example/resume/*.aux
-example/resume/*.log
-example/resume/*.synctex.gz
+example/resume/
