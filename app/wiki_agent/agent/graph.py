@@ -22,7 +22,7 @@ from langgraph.types import Command, interrupt
 from pydantic import BaseModel, Field
 
 from app.wiki_agent.agent import knowledge_agent
-from app.wiki_agent.agent.context_retriever import RetrievedContext, build_context_block, retrieve_context
+from app.wiki_agent.agent.context_retriever import RetrievedContext, build_context_block, build_context_block_from_dict, retrieve_context
 from app.wiki_agent.agent.eval_middleware import (
     finish_session,
     instrument_graph,
@@ -137,9 +137,9 @@ chat_llm = wrap_llm(
         api_key=_chat_llm_key,
         base_url=_chat_llm_base,
         temperature=0.7,
-        # 模型级保持非流式，避免 ainvoke 误走 AsyncStream。
-        # 回复生成统一在 respond 节点显式调用 astream()。
-        streaming=False,
+        # streaming=True 让 astream() 真正逐 token 流式输出。
+        # ainvoke() 不受影响，始终走非流式路径。
+        streaming=True,
     )
 )
 
@@ -271,17 +271,21 @@ async def _extract_key_facts(
     if search_results:
         search_text = "\n".join(f"- {r.get('title', '')}: {r.get('snippet', '')[:150]}" for r in search_results[:5])
 
-    # 获取现有记忆用于冲突检测
+    # 获取现有记忆用于冲突检测（并行读取）
     existing_user = []
     existing_session = []
     try:
-        existing_user = await session_store.get_user_memory()
-        existing_session = await session_store.get_session_key_facts(session_id) if session_id else []
+        # 并行读取用户记忆和会话记忆
+        user_task = asyncio.create_task(session_store.get_user_memory())
+        session_task = asyncio.create_task(session_store.get_session_key_facts(session_id)) if session_id else None
+
+        existing_user = await user_task
+        existing_session = await session_task if session_task else []
     except Exception:
         pass
 
-    user_memory_text = "\n".join(f"- {f['content']}" for f in existing_user[:10]) if existing_user else "无"
-    session_memory_text = "\n".join(f"- {f['content']}" for f in existing_session[:10]) if existing_session else "无"
+    user_memory_text = "\n".join(f"- {f['content']}" for f in existing_user[:10] if isinstance(f, dict)) if existing_user else "无"
+    session_memory_text = "\n".join(f"- {f['content']}" for f in existing_session[:10] if isinstance(f, dict)) if existing_session else "无"
 
     prompt = KEY_FACTS_PROMPT.format(
         user_message=user_message,
@@ -294,25 +298,25 @@ async def _extract_key_facts(
 
     try:
         from langchain_core.messages import HumanMessage as HM
-        from langchain_openai import ChatOpenAI as _RawLLM
 
-        llm = _RawLLM(
+        # 复用模块级 LLM 实例，避免每次创建新连接
+        _fact_llm = chat_llm.__class__(
             model=_chat_llm_model,
             api_key=_chat_llm_key,
             base_url=_chat_llm_base,
             temperature=0,
             max_tokens=400,
         )
-        response = await llm.ainvoke([HM(content=prompt)])
-        content = response.content or ""
 
         # 先尝试 with_structured_output（支持 Function Calling 的 LLM）
-        # 再降级到 PydanticOutputParser（DeepSeek 等返回 code fence 的 LLM）
+        # 失败则降级到 PydanticOutputParser（DeepSeek 等返回 code fence 的 LLM）
         try:
-            structured_llm = llm.with_structured_output(FactExtractionResult)
+            structured_llm = _fact_llm.with_structured_output(FactExtractionResult)
             result: FactExtractionResult = await structured_llm.ainvoke([HM(content=prompt)])
         except Exception:
-            # 降级：从 code fence 中提取 JSON，用 PydanticOutputParser 校验
+            # 降级：调用普通 LLM，从 code fence 中提取 JSON
+            response = await _fact_llm.ainvoke([HM(content=prompt)])
+            content = response.content or ""
             import re
             json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
             json_text = json_match.group(1) if json_match else content
@@ -371,17 +375,24 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         user_message, ctx.wiki_results, chat_history, session_id
     )
 
-    # Session Memory: 合并到当前 session
-    if session_id and session_facts_raw:
-        all_session_facts = await session_store.merge_session_key_facts(session_id, session_facts_raw)
-        ctx.session_facts = all_session_facts
-        print(f"[Session Memory] 新增 {len(session_facts_raw)} 条，累积 {len(all_session_facts)} 条")
+    # 异步存储记忆（不阻塞主流程）
+    async def _store_memories():
+        try:
+            # Session Memory: 合并到当前 session
+            if session_id and session_facts_raw:
+                all_session_facts = await session_store.merge_session_key_facts(session_id, session_facts_raw)
+                ctx.session_facts = all_session_facts
+                print(f"[Session Memory] 新增 {len(session_facts_raw)} 条，累积 {len(all_session_facts)} 条")
 
-    # User Memory: 合并到用户级持久记忆
-    if user_facts_raw:
-        all_user_facts = await session_store.merge_user_memory(user_facts_raw)
-        ctx.user_facts = all_user_facts
-        print(f"[User Memory] 新增 {len(user_facts_raw)} 条，累积 {len(all_user_facts)} 条")
+            # User Memory: 合并到用户级持久记忆
+            if user_facts_raw:
+                all_user_facts = await session_store.merge_user_memory(user_facts_raw)
+                ctx.user_facts = all_user_facts
+                print(f"[User Memory] 新增 {len(user_facts_raw)} 条，累积 {len(all_user_facts)} 条")
+        except Exception as e:
+            print(f"[Memory] 异步存储失败: {e}")
+
+    asyncio.create_task(_store_memories())
 
     update_context({"key_facts": ctx.session_facts, "user_facts": ctx.user_facts})
 
@@ -454,8 +465,14 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
 
     chat_history: list[BaseMessage] = configurable.get("chat_history") or []
     session_id: str | None = configurable.get("session_id")
+
+    # 复用 search 阶段已检索的上下文，避免重复检索
+    retrieved_context = state.get("retrieved_context", {})
+    context_block = build_context_block_from_dict(retrieved_context) or "（无已有上下文）"
+
     decision = await knowledge_agent.decide_action(
-        user_message, ai_response, chat_history, session_id
+        user_message, ai_response, chat_history, session_id,
+        existing_context=context_block
     )
     decision_dict = decision.to_dict()
 

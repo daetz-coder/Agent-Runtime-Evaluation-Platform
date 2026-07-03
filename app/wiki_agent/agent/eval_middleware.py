@@ -8,6 +8,7 @@ SDK 不可用时（独立运行模式），所有函数变为 no-op。
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -199,34 +200,31 @@ async def start_session(
         **extra_context,
     }
 
-    # Generate structured plan from goal before recording
-    plan_data = await _generate_plan(goal)
-
-    # Record plan with structured steps at top level so evaluator can find them
-    plan_record = {"goal": goal, "context": context}
-    if plan_data.get("plan"):
-        plan_record["plan"] = plan_data["plan"]
-    if plan_data.get("steps"):
-        plan_record["steps"] = plan_data["steps"]
-    if plan_data.get("estimated_complexity"):
-        plan_record["estimated_complexity"] = plan_data["estimated_complexity"]
-
+    # 先启动会话，获取 task_id（不阻塞）
     if collector.use_inprocess():
         task_id = await collector.start_async(goal, context)
     else:
         task_id = collector.start(goal, context)
 
-    # Record structured plan (LLM-generated decomposition of the goal)
-    if plan_data.get("steps") and len(plan_data["steps"]) > 0:
-        collector.record(
-            ActionType.PLAN,
-            {
-                "goal": goal,
-                "plan": plan_data.get("plan", goal),
-                "steps": plan_data["steps"],
-                "estimated_complexity": plan_data.get("estimated_complexity", ""),
-            },
-        )
+    # 异步生成计划（不阻塞主流程）
+    async def _deferred_plan():
+        try:
+            plan_data = await _generate_plan(goal)
+            # Record structured plan (LLM-generated decomposition of the goal)
+            if plan_data.get("steps") and len(plan_data["steps"]) > 0:
+                collector.record(
+                    ActionType.PLAN,
+                    {
+                        "goal": goal,
+                        "plan": plan_data.get("plan", goal),
+                        "steps": plan_data["steps"],
+                        "estimated_complexity": plan_data.get("estimated_complexity", ""),
+                    },
+                )
+        except Exception:
+            pass  # 计划生成失败不影响主流程
+
+    asyncio.create_task(_deferred_plan())
 
     if session_id and task_id:
         from app.wiki_agent.session import store as session_store

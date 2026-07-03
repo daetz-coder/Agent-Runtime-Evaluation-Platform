@@ -2,6 +2,17 @@
 
 from __future__ import annotations
 
+import os
+
+# Fix gRPC "too_many_pings" GOAWAY — 必须在导入任何 gRPC 库之前设置
+# Milvus Lite 默认 keepalive (10s) 对嵌入式 gRPC 服务器太激进
+os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIME_MS", "120000")
+os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIMEOUT_MS", "20000")
+os.environ.setdefault("GRPC_HTTP2_MAX_PINGS_WITHOUT_DATA", "0")
+os.environ.setdefault("GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS", "5000")
+os.environ.setdefault("GRPC_KEEPALIVE_TIME_MS", "120000")
+os.environ.setdefault("GRPC_KEEPALIVE_TIMEOUT_MS", "20000")
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -50,8 +61,8 @@ class MilvusVectorStore:
         except Exception:
             return 0
 
-    def insert_chunks(self, records: list[ChunkRecord]) -> None:
-        """Insert wiki chunk records into Milvus."""
+    def insert_chunks(self, records: list[ChunkRecord], _retry: int = 0) -> None:
+        """Insert wiki chunk records into Milvus (with gRPC retry)."""
         if not records:
             return
 
@@ -73,7 +84,15 @@ class MilvusVectorStore:
             }
             for record in records
         ]
-        client.insert(collection_name=COLLECTION_NAME, data=data)
+        try:
+            client.insert(collection_name=COLLECTION_NAME, data=data)
+        except Exception as exc:
+            # gRPC GOAWAY 错误可重试
+            if _retry < 2 and ("GOAWAY" in str(exc) or "ENHANCE_YOUR_CALM" in str(exc)):
+                print(f"[Milvus] gRPC GOAWAY during insert, retrying ({_retry + 1}/2)...")
+                self._client = None  # 重置连接
+                return self.insert_chunks(records, _retry + 1)
+            raise
 
     def delete_by_path(self, path: str) -> int:
         """Delete all chunks belonging to a wiki page path."""
@@ -91,11 +110,15 @@ class MilvusVectorStore:
                 return 0
             client.delete(collection_name=COLLECTION_NAME, filter=_path_filter(path))
             return len(existing)
-        except Exception:
+        except Exception as exc:
+            # gRPC GOAWAY 错误可重试
+            if "GOAWAY" in str(exc) or "ENHANCE_YOUR_CALM" in str(exc):
+                print(f"[Milvus] gRPC GOAWAY during delete, resetting connection...")
+                self._client = None
             return 0
 
-    def search(self, query_vector: list[float], limit: int) -> list[dict[str, Any]]:
-        """Search chunks by vector similarity."""
+    def search(self, query_vector: list[float], limit: int, _retry: int = 0) -> list[dict[str, Any]]:
+        """Search chunks by vector similarity (with gRPC retry)."""
         client = self._get_client()
         if client is None:
             return []
@@ -108,6 +131,11 @@ class MilvusVectorStore:
                 output_fields=["path", "title", "document", "tags", "chunk_index"],
             )
         except Exception as exc:
+            # gRPC GOAWAY 错误可重试
+            if _retry < 2 and ("GOAWAY" in str(exc) or "ENHANCE_YOUR_CALM" in str(exc)):
+                print(f"[Milvus] gRPC GOAWAY, retrying ({_retry + 1}/2)...")
+                self._client = None  # 重置连接
+                return self.search(query_vector, limit, _retry + 1)
             print(f"[Milvus] Search failed: {exc}")
             return []
 
@@ -271,15 +299,6 @@ class MilvusVectorStore:
             return None
 
         try:
-            import os
-
-            # Fix gRPC "too_many_pings" GOAWAY — Milvus Lite default keepalive
-            # (10s) is too aggressive for the embedded gRPC server.
-            os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIME_MS", "120000")
-            os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIMEOUT_MS", "20000")
-            os.environ.setdefault("GRPC_HTTP2_MAX_PINGS_WITHOUT_DATA", "0")
-            os.environ.setdefault("GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS", "5000")
-
             from pymilvus import MilvusClient
 
             uri = settings.MILVUS_URI

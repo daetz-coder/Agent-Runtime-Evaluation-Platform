@@ -104,17 +104,19 @@ async def decide_action(
     chat_history: list[BaseMessage] | None = None,
     session_id: str | None = None,
     max_retries: int = 2,
+    existing_context: str | None = None,
 ) -> KnowledgeDecision:
     """分析对话，决定是否需要对知识库进行操作。
 
     使用四层上下文（Working Memory / Session Memory / User Memory / External KB）
     检索已有知识，解析失败时将错误反馈给 LLM 重试。
     """
-    # 四层上下文检索（query rewrite + 混合检索 + 用户/会话记忆 + 对话历史）
-    ctx = await retrieve_context(
-        user_message, chat_history or [], session_id
-    )
-    existing_context = build_context_block(ctx) or "（无已有上下文）"
+    # 如果没有传入已有的上下文，则重新检索（兼容旧调用）
+    if existing_context is None:
+        ctx = await retrieve_context(
+            user_message, chat_history or [], session_id
+        )
+        existing_context = build_context_block(ctx) or "（无已有上下文）"
 
     base_prompt = _build_prompt(user_message, ai_response, existing_context)
 

@@ -57,11 +57,18 @@ async def retrieve_context(
     # ① Query 改写 Pipeline（上下文补齐 + 路由分类 + 多策略改写 + 相似度校验）
     rewritten_queries = await rewrite_query(user_message, chat_history)
 
-    # ② External KB — 对每个改写 query 做 hybrid_search，合并去重
+    # ② External KB — 对每个改写 query 并行做 hybrid_search，合并去重
+    import asyncio
     seen_paths: set[str] = set()
     wiki_results: list[dict] = []
-    for q in rewritten_queries:
-        results = search_tools.hybrid_search(q, limit=3)
+
+    # 并行执行所有搜索
+    search_tasks = [asyncio.to_thread(search_tools.hybrid_search, q, 3) for q in rewritten_queries]
+    search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+    for results in search_results:
+        if isinstance(results, Exception):
+            continue
         for r in results:
             path = r.get("path", "")
             if path and path not in seen_paths:
@@ -151,6 +158,17 @@ def build_context_block(ctx: RetrievedContext) -> str:
             blocks.append(f"[对话历史]\n{hist}")
 
     return "\n\n".join(blocks)
+
+
+def build_context_block_from_dict(data: dict) -> str:
+    """从字典构建上下文块（用于复用已检索的上下文）。"""
+    # 创建一个临时的 RetrievedContext 对象
+    ctx = RetrievedContext()
+    ctx.wiki_results = data.get("wiki_results", [])
+    ctx.user_facts = data.get("user_facts", [])
+    ctx.session_facts = data.get("key_facts", [])
+    ctx.history_summary = data.get("history_summary", "")
+    return build_context_block(ctx)
 
 
 def _summarize_history(

@@ -108,7 +108,7 @@ def hybrid_search(query: str, limit: int = 5) -> list[dict]:
     """混合搜索 — RRF 融合语义 + BM25，再经 Cross-Encoder 重排
 
     Pipeline:
-        1. semantic_search / keyword_search 召回候选
+        1. semantic_search / keyword_search 并行召回候选
         2. RRF 倒数秩融合
         3. Cross-Encoder rerank（可通过 RERANK_ENABLED 关闭）
 
@@ -119,10 +119,17 @@ def hybrid_search(query: str, limit: int = 5) -> list[dict]:
     Returns:
         list[dict]: 重排后的搜索结果
     """
+    import concurrent.futures
+
     recall_limit = max(limit * settings.RERANK_CANDIDATE_MULTIPLIER, limit * 2)
 
-    semantic_results = semantic_search(query, recall_limit)
-    keyword_results = keyword_search(query, recall_limit)
+    # 并行执行语义搜索和关键词搜索
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        semantic_future = executor.submit(semantic_search, query, recall_limit)
+        keyword_future = executor.submit(keyword_search, query, recall_limit)
+        semantic_results = semantic_future.result()
+        keyword_results = keyword_future.result()
+
     merged = _rrf_merge(semantic_results, keyword_results)
 
     return rerank_results(query, merged, top_k=limit)

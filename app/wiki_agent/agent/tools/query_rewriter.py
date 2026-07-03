@@ -286,7 +286,78 @@ class SimilarityValidator:
         return validated if validated else [original]
 
 
-# ── 5. 主入口 ────────────────────────────────────────────────
+# ── 5. 合并分类+改写 ──────────────────────────────────────────
+
+_CLASSIFY_AND_REWRITE_PROMPT = """你是一个查询分析专家。请完成两个任务：
+
+## 任务 1: 分类
+将查询分为以下类型之一：
+- direct: 简单直接查询，不需要改写
+- simple: 简单事实性查询，需要多角度改写
+- complex: 复杂查询，需要拆解为子问题
+- ambiguous: 歧义查询，需要生成假设性文档
+
+## 任务 2: 改写
+根据分类结果生成改写查询：
+- direct: 只返回原始查询
+- simple: 生成 2-3 个不同角度的改写（同义词替换、更具体描述、更抽象概括）
+- complex: 拆解为 2-3 个子问题
+- ambiguous: 生成一段假设性知识库文档（100-150字）
+
+## 输出格式
+返回 JSON 对象：
+{{
+    "type": "分类结果",
+    "rewrites": ["改写查询1", "改写查询2", ...]
+}}
+
+## 查询
+{query}
+"""
+
+
+async def _classify_and_rewrite(query: str) -> tuple[list[str], QueryType]:
+    """单次 LLM 调用同时完成分类和改写"""
+    try:
+        llm = _get_rewrite_llm(max_tokens=300)
+        resp = await llm.ainvoke([
+            HumanMessage(content=_CLASSIFY_AND_REWRITE_PROMPT.format(query=query))
+        ])
+
+        # 解析 JSON 响应
+        content = resp.content.strip()
+        # 尝试从 code fence 中提取 JSON
+        import re
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
+        json_text = json_match.group(1) if json_match else content
+
+        data = _json.loads(json_text)
+        query_type_str = data.get("type", "simple").lower()
+        rewrites = data.get("rewrites", [])
+
+        # 映射到 QueryType 枚举
+        type_map = {
+            "direct": QueryType.DIRECT,
+            "simple": QueryType.SIMPLE_FACTUAL,
+            "complex": QueryType.COMPLEX,
+            "ambiguous": QueryType.AMBIGUOUS,
+        }
+        query_type = type_map.get(query_type_str, QueryType.SIMPLE_FACTUAL)
+
+        # 过滤有效改写
+        valid_rewrites = [q for q in rewrites if isinstance(q, str) and 2 < len(q) < 100]
+
+        # 确保原始查询在结果中
+        result = [query] + [q for q in valid_rewrites if q != query]
+
+        return result[:4], query_type  # 最多返回 4 个查询
+
+    except Exception as exc:
+        print(f"[QueryRewrite] 合并分类改写失败: {exc}")
+        return [query], QueryType.DIRECT
+
+
+# ── 6. 主入口 ────────────────────────────────────────────────
 
 
 async def rewrite_query(
@@ -296,13 +367,12 @@ async def rewrite_query(
     similarity_threshold: float | None = None,
     max_queries: int | None = None,
 ) -> list[str]:
-    """完整 Query 改写 Pipeline
+    """完整 Query 改写 Pipeline（优化版：分类+改写合并为单次 LLM 调用）
 
     Pipeline:
         1. Contextualizer — 检测代词，有则做指代消解
-        2. QueryClassifier — LLM 分类路由
-        3. QueryRewriter — 按分类执行改写策略
-        4. SimilarityValidator — 过滤低相似度改写
+        2. Classifier+Rewriter — 单次 LLM 调用同时完成分类和改写
+        3. SimilarityValidator — 过滤低相似度改写
 
     Args:
         query: 用户原始查询
@@ -326,23 +396,11 @@ async def rewrite_query(
         if working_query != query:
             print(f"[QueryRewrite] 上下文补齐: {query} → {working_query}")
 
-    # Step 2: 路由分类
-    query_type = await QueryClassifier.classify(working_query)
+    # Step 2: 分类 + 改写（合并为单次 LLM 调用）
+    rewritten, query_type = await _classify_and_rewrite(working_query)
     print(f"[QueryRewrite] 分类: {query_type.value} (query: {working_query})")
 
-    # Step 3: 按分类执行改写策略
-    if query_type == QueryType.DIRECT:
-        rewritten = await QueryRewriter.direct(working_query)
-    elif query_type == QueryType.SIMPLE_FACTUAL:
-        rewritten = await QueryRewriter.multi_query(working_query)
-    elif query_type == QueryType.COMPLEX:
-        rewritten = await QueryRewriter.decompose(working_query)
-    elif query_type == QueryType.AMBIGUOUS:
-        rewritten = await QueryRewriter.hyde(working_query)
-    else:
-        rewritten = [working_query]
-
-    # Step 4: 相似度校验
+    # Step 3: 相似度校验
     validated = SimilarityValidator.validate(working_query, rewritten, threshold)
 
     # 去重 + 限制数量

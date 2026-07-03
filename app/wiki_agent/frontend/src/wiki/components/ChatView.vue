@@ -407,6 +407,11 @@ async function sendMessage(text) {
       }),
     });
 
+    if (!res.ok) {
+      aiMsg.content = `请求失败: HTTP ${res.status}`;
+      return;
+    }
+
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -465,6 +470,11 @@ async function sendMessage(text) {
   } finally {
     aiMsg.streaming = false;
     loading.value = false;
+    // If the stream ended without producing any visible content, clear the
+    // typing indicator by showing a fallback message.
+    if (!aiMsg.content && !aiMsg.wikiResults && !aiMsg.extraction) {
+      aiMsg.content = "抱歉，未能获取到回复内容。";
+    }
     scrollToBottom();
   }
 }
