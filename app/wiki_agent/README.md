@@ -29,10 +29,14 @@ cp .env.example .env
 ### 2. 启动后端
 
 ```bash
-# 方式 1：作为评估平台子系统启动（推荐）
-cd ../.. && python -m uvicorn app.main:app --reload --port 8000
+# 方式 1：独立启动（推荐）
+python -m app.wiki_agent --port 8000
 
-# 方式 2：独立启动（需要创建启动脚本，见下方）
+# 开发模式（热重载）
+python -m app.wiki_agent --reload --port 8000
+
+# 方式 2：作为评估平台子系统启动
+cd ../.. && python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### 3. 启动前端
