@@ -1,6 +1,19 @@
 # 适配器使用指南 — SDK 集成
 
-> **入口**: [README.md](../README.md) · **API**: [api.md](api.md) · **SDK**: [sdk/README.md](../sdk/README.md)
+> **入口**: [README.md](../README.md) · **API**: [api.md](api.md) · **SDK**: [sdk/README.md](../sdk/README.md) · **Agent Hooks**: [agent-hooks-integration.md](agent-hooks-integration.md)
+
+---
+
+## 接入方式总览
+
+| 方式 | 适用框架 | 代码修改 | 说明 |
+|------|----------|----------|------|
+| LangGraph Instrument | LangGraph | 替换一行 | 推荐 LangGraph 项目 |
+| LLM Proxy | LangChain 系 | 替换 LLM 创建 | 任何 LangChain 项目 |
+| Callback | LangChain 系 | 注入 handler | 需要细粒度控制时 |
+| **Agent Hooks** | **任意框架** | **关键点添加 emit** | **非 LangGraph 项目推荐** |
+
+> **非 LangGraph 项目**请使用 [agent-hooks](agent-hooks-integration.md) 接入，零依赖、零侵入。
 
 ---
 

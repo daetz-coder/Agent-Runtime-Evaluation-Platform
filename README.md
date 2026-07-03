@@ -81,6 +81,7 @@ cd frontend && npm run dev
 | 可观测性 | OpenTelemetry + Prometheus + structlog | 链路追踪、指标监控、结构化日志 |
 | 任务队列 | Celery（可选，优雅降级） | 异步评估任务，指数退避重试 |
 | SDK | Python SDK（httpx + langchain-core） | 零侵入轨迹采集，三种集成模式 |
+| Agent Hooks | agent-hooks（零依赖） | 任意 Agent 项目生命周期钩子接入 |
 
 ---
 
@@ -112,7 +113,7 @@ cd frontend && npm run dev
 |------|------|
 | 评估维度 × 子指标 | 6 × 3~4 = 20 项 |
 | 轨迹动作类型 | 14 种（plan / tool_call / replan / retrieval / think / memory_write / failure 等） |
-| 接入模式 | 3 种（LangGraph Instrument / LLM Proxy / Callback） |
+| 接入模式 | 4 种（LangGraph Instrument / LLM Proxy / Callback / Agent Hooks） |
 | 单次全评估耗时 | 15~30s（6 评估器并行 asyncio.gather） |
 | 检索基准（Wiki Agent） | Hybrid Top-1: 75%, MRR: 0.825（20 条查询） |
 
@@ -167,6 +168,40 @@ Frontend (Vue 3) ──REST/SSE──▶ Backend (FastAPI) ──▶ Docker Sand
 
 ---
 
+## 接入方式
+
+平台提供 4 种接入方式，适配不同类型的 Agent 项目：
+
+| 方式 | 适用场景 | 侵入性 | 推荐度 |
+|------|----------|--------|--------|
+| **LangGraph Instrument** | LangGraph 项目 | 一行代码，零侵入 | ⭐⭐⭐ |
+| **LLM Proxy** | LangChain 系框架 | 替换 LLM 创建，零侵入 | ⭐⭐⭐ |
+| **Callback** | 需要细粒度控制 | 注入 callback handler | ⭐⭐ |
+| **Agent Hooks** | 任意框架（推荐非 LangGraph 项目） | 关键点添加 emit 调用 | ⭐⭐⭐ |
+
+**LangGraph 项目**推荐用 SDK 自动采集（[集成指南](docs/adapters.md)）：
+
+```python
+from sdk import instrument_langgraph
+graph = instrument_langgraph(build_graph())  # 一行接入
+```
+
+**任意 Agent 项目**推荐用 agent-hooks（[集成指南](docs/agent-hooks-integration.md)）：
+
+```bash
+pip install -e agent-hooks/
+```
+
+```python
+from agent_hooks import emit
+await emit.session_start(goal, session_id, context)
+await emit.retrieval(query, results, duration_ms)
+await emit.response(session_id, answer)
+await emit.session_end(session_id)
+```
+
+---
+
 ## API 概览
 
 | 分组 | 前缀 | 主要功能 |
@@ -198,7 +233,8 @@ app/                        # 后端应用
 └── db/                     # SQLAlchemy ORM + Alembic 迁移
 
 frontend/                   # Vue 3 前端（dashboard / evaluations / analytics / wiki）
-sdk/                        # 独立 SDK 包（外部项目零侵入集成）
+sdk/                        # 独立 SDK 包（LangGraph 项目零侵入集成）
+agent-hooks/                # 独立钩子 SDK（任意 Agent 项目零依赖接入）
 scripts/                    # 校准脚本（benchmark / 检索评估 / 面试题生成）
 tests/                      # pytest 单元测试与 Golden Test Suite
 docs/                       # 文档
@@ -216,6 +252,7 @@ docs/                       # 文档
 | [开发者指南](docs/developer_guide.md) | 本地开发、调试工具、CI 门禁、版本追踪 |
 | [API 文档](docs/api.md) | 全部 REST 端点、请求/响应示例、SSE 事件类型 |
 | [SDK 集成指南](docs/adapters.md) | SDK 三种集成方式、配置选项、工作原理 |
+| [Agent Hooks 集成指南](docs/agent-hooks-integration.md) | 任意 Agent 项目接入评估平台（零侵入、零依赖） |
 | [端口配置](docs/ports.md) | 服务端口、常用地址、一键启动 |
 | [项目约定](docs/conventions.md) | 编码规范、Git 流程、开发命令参考 |
 | [前端文档](frontend/README.md) | Vue 3 前端技术栈、页面功能说明 |
