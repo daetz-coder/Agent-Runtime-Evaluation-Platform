@@ -86,6 +86,31 @@ async def get_session(session_id: str) -> Optional[dict]:
         await db.close()
 
 
+async def get_recent_messages(session_id: str, limit: int = 20) -> list[dict]:
+    """获取最近 N 条消息（按时间倒序取，再正序返回）"""
+    db = await get_db()
+    try:
+        db.row_factory = None
+        cursor = await db.execute(
+            "SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+            (session_id, limit),
+        )
+        rows = await cursor.fetchall()
+        # 倒序取的，需要反转回时间正序
+        rows.reverse()
+        return [
+            {
+                "role": row[2],
+                "content": row[3],
+                "wiki_results": json.loads(row[4]) if row[4] else None,
+                "extraction": json.loads(row[5]) if row[5] else None,
+            }
+            for row in rows
+        ]
+    finally:
+        await db.close()
+
+
 async def list_sessions() -> list[dict]:
     """列出所有会话摘要"""
     # Check cache first

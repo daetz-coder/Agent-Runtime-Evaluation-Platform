@@ -193,6 +193,12 @@ def _build_llm_messages(state: WikiState, chat_history: list[BaseMessage]) -> li
     else:
         prior = history
 
+    # 截断到最近 N 轮（chat.py 已截断，这里做二次保护）
+    max_messages = settings.HISTORY_MAX_TURNS * 2
+    truncated = len(prior) > max_messages
+    if truncated:
+        prior = prior[-max_messages:]
+
     ctx_data = state.get("retrieved_context")
     if ctx_data:
         ctx = RetrievedContext(
@@ -209,6 +215,12 @@ def _build_llm_messages(state: WikiState, chat_history: list[BaseMessage]) -> li
             context_block = f"[知识库搜索结果]\n{wiki_text}"
 
     messages = [SystemMessage(content=SYSTEM_PROMPT)]
+
+    if truncated:
+        messages.append(SystemMessage(content=(
+            f"注意：以下对话仅包含最近 {settings.HISTORY_MAX_TURNS} 轮。"
+            "更早的对话上下文已在上方 [对话历史] 和 [会话记忆] 中摘要呈现。"
+        )))
 
     if context_block:
         context_msg = (

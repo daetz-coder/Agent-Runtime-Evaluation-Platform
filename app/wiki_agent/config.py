@@ -33,6 +33,9 @@ class WikiAgentSettings(BaseSettings):
     QUERY_REWRITE_SIMILARITY_THRESHOLD: float = 0.7
     QUERY_REWRITE_MAX_QUERIES: int = 5
 
+    # History window — max turns passed to LLM (each turn = user + assistant)
+    HISTORY_MAX_TURNS: int = 10
+
     # Rerank (cross-encoder after RRF)
     RERANK_ENABLED: bool = True
     RERANK_MODEL: str = "BAAI/bge-reranker-base"

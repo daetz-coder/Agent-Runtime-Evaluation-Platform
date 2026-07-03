@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.wiki_agent.agent.graph import resume_and_execute, run_chat_invoke, run_chat_stream
 from app.wiki_agent.agent.tools import crud_tools
+from app.wiki_agent.config import settings
 from app.wiki_agent.session import store as session_store
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -47,9 +48,19 @@ async def _ensure_session(session_id: str):
         await session_store.create_session(session_id)
 
 
-def _build_history(messages: list[dict]) -> list:
+def _build_history(messages: list[dict], max_turns: int | None = None) -> list:
+    """将消息转为 LangChain 消息列表，最多保留最近 max_turns 轮。
+
+    Args:
+        messages: 原始消息列表（role/content）
+        max_turns: 最大轮数（每轮 = user + assistant），默认取 settings.HISTORY_MAX_TURNS
+    """
+    if max_turns is None:
+        max_turns = settings.HISTORY_MAX_TURNS
+    # 每轮 2 条消息，保留最近 max_turns * 2 条
+    recent = messages[-(max_turns * 2):] if max_turns > 0 else messages
     history = []
-    for msg in messages:
+    for msg in recent:
         if msg["role"] == "user":
             history.append(HumanMessage(content=msg["content"]))
         elif msg["role"] == "assistant" and msg["content"]:
@@ -66,13 +77,15 @@ async def stream_response(session_id: str, user_message: str) -> AsyncGenerator[
     """
     await _ensure_session(session_id)
 
-    session_data = await session_store.get_session(session_id)
-    history = _build_history(session_data["messages"])
+    # 只加载最近 N 轮消息构建 history，避免全量加载
+    max_messages = settings.HISTORY_MAX_TURNS * 2
+    recent_messages = await session_store.get_recent_messages(session_id, max_messages)
+    history = _build_history(recent_messages)
     history.append(HumanMessage(content=user_message))
 
     await session_store.add_message(session_id, "user", user_message)
 
-    if len(session_data["messages"]) == 0:
+    if not recent_messages:
         name = user_message[:30] + ("..." if len(user_message) > 30 else "")
         await session_store.update_session_name(session_id, name)
 
@@ -124,13 +137,15 @@ async def chat_message(req: ChatRequest):
     """非流式对话 — 同样经 LangGraph 编排"""
     await _ensure_session(req.session_id)
 
-    session_data = await session_store.get_session(req.session_id)
-    history = _build_history(session_data["messages"])
+    # 只加载最近 N 轮消息构建 history，避免全量加载
+    max_messages = settings.HISTORY_MAX_TURNS * 2
+    recent_messages = await session_store.get_recent_messages(req.session_id, max_messages)
+    history = _build_history(recent_messages)
     history.append(HumanMessage(content=req.message))
 
     await session_store.add_message(req.session_id, "user", req.message)
 
-    if len(session_data["messages"]) == 0:
+    if not recent_messages:
         name = req.message[:30] + ("..." if len(req.message) > 30 else "")
         await session_store.update_session_name(req.session_id, name)
 
