@@ -36,6 +36,133 @@
 
 ---
 
+## 什么是关键节点
+
+Agent 的执行是一个流程，**关键节点**是这个流程中对评估有意义的事件发生点：
+
+```
+用户输入
+  │
+  ▼
+┌─────────────┐
+│ ① 会话开始    │ ← emit.session_start()    评估平台创建任务
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ ② 检索       │ ← emit.retrieval()        评估"检索质量"维度
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ ③ LLM 推理   │ ← emit.llm_call()         评估"规划质量"+"战术决策"维度
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ ④ 工具调用    │ ← emit.tool_call()        评估"工具使用"维度
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ ⑤ 记忆写入    │ ← emit.key_facts()        评估"记忆保持"维度
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ ⑥ 生成回复    │ ← emit.response()         评估"战术决策"维度
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ ⑦ 会话结束    │ ← emit.session_end()      触发评估、生成报告
+└─────────────┘
+```
+
+### 关键节点与评估维度的映射
+
+| 关键节点 | emit 事件 | 评估平台拿到什么 | 评估什么维度 |
+|----------|-----------|-----------------|-------------|
+| 会话开始 | `session_start` | 任务目标、上下文 | — （创建任务） |
+| 检索完成 | `retrieval` | 查询词、检索结果、耗时 | **检索质量** |
+| LLM 调用 | `llm_call` | 输入消息、输出回复 | **规划质量** + **战术决策** |
+| 工具调用 | `tool_call` | 工具名、参数、返回值 | **工具使用** |
+| 记忆写入 | `key_facts` | 提取的事实 | **记忆保持** |
+| 生成回复 | `response` | 最终回复内容 | **战术决策** |
+| 错误发生 | `error` | 异常信息 | **重规划** |
+| 会话结束 | `session_end` | — | 触发评估、生成报告 |
+
+---
+
+## 你需要提供什么
+
+### 你的 Agent 项目需要做的（你负责）
+
+只需要 **2 件事**：
+
+1. `pip install agent-hooks`
+2. 在关键位置加 `await emit.xxx()`（每个 1 行代码）
+
+```python
+from agent_hooks import emit
+
+async def your_agent(goal: str):
+    session_id = generate_session_id()
+
+    # 你调了 → 评估对应维度
+    # 没调  → 该维度标记 N/A，不影响其他维度
+    await emit.session_start(goal, session_id, {"agent": "your-agent"})
+
+    results = await your_search(query)
+    await emit.retrieval(query, results, duration_ms)      # → 评估"检索质量"
+
+    response = await your_llm.call(messages)
+    await emit.llm_call(model, messages, response)          # → 评估"规划+战术"
+
+    for tool_call in response.tool_calls:
+        result = await your_tool.run(tool_call)
+        await emit.tool_call(tool_call.name, tool_call.args, result)  # → 评估"工具使用"
+
+    await emit.response(session_id, final_answer)
+    await emit.session_end(session_id)                      # 必须调用，触发评估
+```
+
+### 评估平台已经提供的（不需要你写）
+
+| 组件 | 说明 | 谁提供 |
+|------|------|--------|
+| `AgentHooks` 接口 | 标准化的事件协议 | `agent-hooks` SDK |
+| `NoOpHooks` 默认实现 | 独立运行时的空操作 | `agent-hooks` SDK |
+| `Emitter` 事件发射器 | 注册 + 触发 + 异常隔离 | `agent-hooks` SDK |
+| `EvalHooks` 实现 | 把事件转为评估数据 | 评估平台 |
+| `TrajectoryCollector` | 轨迹存储和上报 | 评估平台 |
+| 6 个评估器 | LLM-as-Judge 评分 | 评估平台 |
+| 评估报告 | 可视化展示 | 评估平台前端 |
+
+### 完整数据流
+
+```
+你的 Agent 项目                    agent-hooks SDK              评估平台
+     │                                │                           │
+     │  emit.retrieval()              │                           │
+     │──────────────────────────────▶ │                           │
+     │                                │  _hooks.on_retrieval()    │
+     │                                │──────────────────────────▶│
+     │                                │                           │  EvalHooks 实现
+     │                                │                           │  → TrajectoryCollector
+     │                                │                           │  → 存储到数据库
+     │                                │                           │
+     │  emit.session_end()            │                           │
+     │──────────────────────────────▶ │                           │
+     │                                │  _hooks.on_session_end()  │
+     │                                │──────────────────────────▶│
+     │                                │                           │  触发 6 个评估器
+     │                                │                           │  → 生成评估报告
+     │                                │                           │  → 前端展示
+```
+
+---
+
 ## 快速接入（5 分钟）
 
 ### 第 1 步：安装 agent-hooks
