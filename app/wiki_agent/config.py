@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 WIKI_AGENT_ROOT = PROJECT_ROOT / "example" / "wiki-agent"
+WIKI_AGENT_DIR = Path(__file__).resolve().parent
 WIKI_DATA_DIR = PROJECT_ROOT / "data" / "wiki_agent"
 
 
@@ -57,7 +58,10 @@ class WikiAgentSettings(BaseSettings):
     EVAL_BATCH_SIZE: int = 8
 
     model_config = SettingsConfigDict(
-        env_file=str(PROJECT_ROOT / ".env"),
+        env_file=[
+            str(WIKI_AGENT_DIR / ".env"),      # Wiki Agent 本地配置（优先）
+            str(PROJECT_ROOT / ".env"),          # 项目根目录配置（兜底）
+        ],
         env_file_encoding="utf-8",
         extra="ignore",
     )
