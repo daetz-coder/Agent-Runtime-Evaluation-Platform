@@ -54,21 +54,42 @@ async def retrieve_context(
 ) -> RetrievedContext:
     """统一检索四路记忆，返回 RetrievedContext。"""
     import asyncio
+    from app.wiki_agent.agent.tools.query_rewriter import QueryComplexity, classify_complexity
+
     loop = asyncio.get_running_loop()
 
-    # ① Query 改写 Pipeline（上下文补齐 + 路由分类 + 多策略改写 + 相似度校验）
+    # ① 复杂度分级 + Query 改写 Pipeline
     t0 = loop.time()
-    rewritten_queries = await rewrite_query(user_message, chat_history)
+    rewritten_queries, complexity = await rewrite_query(user_message, chat_history)
     t1 = loop.time()
-    print(f"[Timing] rewrite_query: {(t1-t0)*1000:.0f}ms")
+    print(f"[Timing] rewrite_query: {(t1-t0)*1000:.0f}ms (complexity: {complexity.value})")
 
-    # ② External KB — 对每个改写 query 并行做 hybrid_search，合并去重
+    # TRIVIAL: 跳过 RAG
+    if complexity == QueryComplexity.TRIVIAL:
+        user_facts = await session_store.get_user_memory()
+        session_facts = await session_store.get_session_key_facts(session_id) if session_id else []
+        history_summary = _summarize_history(chat_history, HISTORY_RECENT_COUNT)
+        return RetrievedContext(
+            wiki_results=[],
+            user_facts=user_facts,
+            session_facts=session_facts,
+            history_summary=history_summary,
+        )
+
+    # ② External KB — 根据复杂度决定搜索策略
     seen_paths: set[str] = set()
     wiki_results: list[dict] = []
 
-    # 并行执行所有搜索
     t2 = loop.time()
-    search_tasks = [asyncio.to_thread(search_tools.hybrid_search, q, 3) for q in rewritten_queries]
+
+    # SIMPLE/MEDIUM: 单次搜索，不 rerank
+    if complexity in (QueryComplexity.SIMPLE, QueryComplexity.MEDIUM):
+        search_func = lambda q: search_tools.hybrid_search(q, limit=3, enable_rerank=False)
+    else:
+        search_func = lambda q: search_tools.hybrid_search(q, limit=3, enable_rerank=True)
+
+    # 并行执行所有搜索
+    search_tasks = [asyncio.to_thread(search_func, q) for q in rewritten_queries]
     search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
     for results in search_results:
@@ -85,7 +106,7 @@ async def retrieve_context(
 
     # ②b 兜底：如果改写查询全部无结果，用原始查询再搜一次
     if not wiki_results and user_message:
-        fallback_results = search_tools.hybrid_search(user_message, limit=3)
+        fallback_results = search_tools.hybrid_search(user_message, limit=3, enable_rerank=False)
         for r in fallback_results:
             path = r.get("path", "")
             if path and path not in seen_paths:

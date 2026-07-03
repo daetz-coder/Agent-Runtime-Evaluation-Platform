@@ -286,7 +286,62 @@ class SimilarityValidator:
         return validated if validated else [original]
 
 
-# ── 5. 合并分类+改写 ──────────────────────────────────────────
+# ── 5. 复杂度分级 ─────────────────────────────────────────────
+
+class QueryComplexity(Enum):
+    """查询复杂度分级"""
+    TRIVIAL = "trivial"    # 简单问候/闲聊，不需要 RAG
+    SIMPLE = "simple"      # 简单查询，单次搜索，不改写
+    MEDIUM = "medium"      # 中等查询，1-2 次改写，不 rerank
+    COMPLEX = "complex"    # 复杂查询，完整 pipeline
+
+# 不需要 RAG 的简单模式
+_TRIVIAL_PATTERNS = [
+    r'^(你好|hi|hello|hey|嗨|您好|早上好|下午好|晚上好)',
+    r'^(你是谁|你叫什么|who are you|what are you)',
+    r'^(谢谢|感谢|thanks|thank you)',
+    r'^(再见|bye|拜拜|goodbye)',
+    r'^(好的|ok|明白|了解|知道了)',
+    r'^(嗯|哦|啊|哈)',
+]
+
+# 简单查询模式（只需要单次搜索）
+_SIMPLE_PATTERNS = [
+    r'^(什么是|怎么用|如何|解释|说明|介绍)',
+    r'^(总结|概述|列举|列出|描述)',
+    r'^(有哪些|有什么|包含什么|包括什么)',
+    r'^(查询|搜索|查找|找)',
+]
+
+
+def classify_complexity(query: str) -> QueryComplexity:
+    """基于规则快速判断查询复杂度（不调用 LLM）"""
+    import re
+    query = query.strip()
+
+    # 检查 trivial 模式
+    for pattern in _TRIVIAL_PATTERNS:
+        if re.match(pattern, query, re.IGNORECASE):
+            return QueryComplexity.TRIVIAL
+
+    # 检查 simple 模式
+    for pattern in _SIMPLE_PATTERNS:
+        if re.match(pattern, query, re.IGNORECASE):
+            return QueryComplexity.SIMPLE
+
+    # 长度判断
+    if len(query) < 10:
+        return QueryComplexity.SIMPLE
+
+    # 包含多个问号或复杂结构
+    if query.count('?') > 1 or query.count('？') > 1:
+        return QueryComplexity.COMPLEX
+
+    # 默认 medium
+    return QueryComplexity.MEDIUM
+
+
+# ── 6. 合并分类+改写 ──────────────────────────────────────────
 
 _CLASSIFY_AND_REWRITE_PROMPT = """你是一个查询分析专家。请完成两个任务：
 
@@ -366,13 +421,19 @@ async def rewrite_query(
     *,
     similarity_threshold: float | None = None,
     max_queries: int | None = None,
-) -> list[str]:
-    """完整 Query 改写 Pipeline（优化版：分类+改写合并为单次 LLM 调用）
+) -> tuple[list[str], QueryComplexity]:
+    """完整 Query 改写 Pipeline（优化版：基于复杂度的分层策略）
 
     Pipeline:
-        1. Contextualizer — 检测代词，有则做指代消解
-        2. Classifier+Rewriter — 单次 LLM 调用同时完成分类和改写
-        3. SimilarityValidator — 过滤低相似度改写
+        1. 复杂度分级（规则判断，不调用 LLM）
+        2. 根据复杂度决定策略：
+           - TRIVIAL: 跳过 RAG，直接返回空列表
+           - SIMPLE: 单次搜索，不改写
+           - MEDIUM: 1-2 次改写，不 rerank
+           - COMPLEX: 完整 pipeline
+        3. Contextualizer — 检测代词，有则做指代消解（仅 MEDIUM/COMPLEX）
+        4. Classifier+Rewriter — 单次 LLM 调用同时完成分类和改写（仅 MEDIUM/COMPLEX）
+        5. SimilarityValidator — 过滤低相似度改写
 
     Args:
         query: 用户原始查询
@@ -381,26 +442,43 @@ async def rewrite_query(
         max_queries: 最大返回 query 数（默认从配置读取）
 
     Returns:
-        改写后的 query 列表（至少含原始 query）
+        (queries, complexity) - 改写后的 query 列表和复杂度级别
     """
+    # Step 1: 复杂度分级（规则判断，不调用 LLM）
+    complexity = classify_complexity(query)
+    print(f"[QueryRewrite] 复杂度: {complexity.value} (query: {query})")
+
+    # TRIVIAL: 跳过 RAG
+    if complexity == QueryComplexity.TRIVIAL:
+        return [], complexity
+
+    # SIMPLE: 单次搜索，不改写
+    if complexity == QueryComplexity.SIMPLE:
+        return [query], complexity
+
+    # MEDIUM/COMPLEX: 完整 pipeline
     if not settings.QUERY_REWRITE_ENABLED:
-        return [query]
+        return [query], complexity
 
     threshold = similarity_threshold or settings.QUERY_REWRITE_SIMILARITY_THRESHOLD
     max_q = max_queries or settings.QUERY_REWRITE_MAX_QUERIES
 
-    # Step 1: 上下文补齐（检测到代词才触发）
+    # MEDIUM: 限制改写数量
+    if complexity == QueryComplexity.MEDIUM:
+        max_q = min(max_q, 2)
+
+    # Step 2: 上下文补齐（检测到代词才触发）
     working_query = query
     if chat_history and Contextualizer.needs_contextualize(query):
         working_query = await Contextualizer.contextualize(query, chat_history)
         if working_query != query:
             print(f"[QueryRewrite] 上下文补齐: {query} → {working_query}")
 
-    # Step 2: 分类 + 改写（合并为单次 LLM 调用）
+    # Step 3: 分类 + 改写（合并为单次 LLM 调用）
     rewritten, query_type = await _classify_and_rewrite(working_query)
     print(f"[QueryRewrite] 分类: {query_type.value} (query: {working_query})")
 
-    # Step 3: 相似度校验
+    # Step 4: 相似度校验
     validated = SimilarityValidator.validate(working_query, rewritten, threshold)
 
     # 去重 + 限制数量
@@ -414,4 +492,4 @@ async def rewrite_query(
             break
 
     print(f"[QueryRewrite] 最终 queries ({len(result)}): {result}")
-    return result
+    return result, complexity

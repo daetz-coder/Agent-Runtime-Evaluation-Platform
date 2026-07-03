@@ -106,17 +106,18 @@ def _rrf_merge(
     return merged
 
 
-def hybrid_search(query: str, limit: int = 5) -> list[dict]:
-    """混合搜索 — RRF 融合语义 + BM25，再经 Cross-Encoder 重排
+def hybrid_search(query: str, limit: int = 5, enable_rerank: bool = True) -> list[dict]:
+    """混合搜索 — RRF 融合语义 + BM25，可选 Cross-Encoder 重排
 
     Pipeline:
         1. semantic_search / keyword_search 并行召回候选
         2. RRF 倒数秩融合
-        3. Cross-Encoder rerank（可通过 RERANK_ENABLED 关闭）
+        3. Cross-Encoder rerank（可通过 enable_rerank 参数控制）
 
     Args:
         query: 搜索查询
         limit: 返回结果数量
+        enable_rerank: 是否启用 rerank（默认 True）
 
     Returns:
         list[dict]: 重排后的搜索结果
@@ -137,10 +138,14 @@ def hybrid_search(query: str, limit: int = 5) -> list[dict]:
 
     merged = _rrf_merge(semantic_results, keyword_results)
 
-    t2 = time.time()
-    result = rerank_results(query, merged, top_k=limit)
-    t3 = time.time()
-    print(f"[Timing] rerank: {(t3-t2)*1000:.0f}ms")
+    # 根据参数决定是否 rerank
+    if enable_rerank and settings.RERANK_ENABLED:
+        t2 = time.time()
+        result = rerank_results(query, merged, top_k=limit)
+        t3 = time.time()
+        print(f"[Timing] rerank: {(t3-t2)*1000:.0f}ms")
+    else:
+        result = merged[:limit]
 
     return result
 
