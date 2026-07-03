@@ -27,7 +27,7 @@ class BashExecuteTool(SandboxTool):
         if not command:
             return "Error: No command provided."
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         exit_code, output = await loop.run_in_executor(
             None,

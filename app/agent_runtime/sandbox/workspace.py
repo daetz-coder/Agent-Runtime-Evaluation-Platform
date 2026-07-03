@@ -10,6 +10,7 @@ Handles:
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import os
@@ -74,7 +75,7 @@ class WorkspaceManager:
             span.set_attribute("path", path)
             full_path = self._resolve_path(path)
 
-            loop = __import__("asyncio").get_event_loop()
+            loop = asyncio.get_running_loop()
             try:
                 data, stat = await loop.run_in_executor(None, lambda: container.get_archive(full_path))
             except Exception as e:
@@ -122,7 +123,7 @@ class WorkspaceManager:
         """
         full_path = self._resolve_path(path) if path else WORKSPACE_ROOT
 
-        loop = __import__("asyncio").get_event_loop()
+        loop = asyncio.get_running_loop()
         exit_code, output = await loop.run_in_executor(
             None,
             lambda: container.exec_run(
@@ -196,7 +197,7 @@ class WorkspaceManager:
 
     async def cleanup(self, container: Container) -> None:
         """Remove all files from /workspace."""
-        loop = __import__("asyncio").get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
             lambda: container.exec_run(
@@ -225,13 +226,13 @@ class WorkspaceManager:
     @staticmethod
     async def _put_archive(container: Container, path: str, tar_data: bytes) -> None:
         """Put a tar archive into a container path."""
-        loop = __import__("asyncio").get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: container.put_archive(path, tar_data))
 
     @staticmethod
     async def _ensure_dir(container: Container, path: str) -> None:
         """Create a directory (and parents) inside the container."""
-        loop = __import__("asyncio").get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
             lambda: container.exec_run(

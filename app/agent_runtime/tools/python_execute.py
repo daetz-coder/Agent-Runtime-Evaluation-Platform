@@ -32,7 +32,7 @@ class PythonExecuteTool(SandboxTool):
         if not code:
             return "Error: No code provided."
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # Write code to /workspace/script.py
         tar_data = self._make_tar("script.py", code.encode("utf-8"))

@@ -120,7 +120,7 @@ class SandboxExecutor:
         ``session`` is a ``SandboxSession`` (duck-typed to avoid circular imports
         at the module level — it needs ``container`` and ``container_id`` attrs).
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         container = session.container  # docker.models.containers.Container
 
         # Write code file via put_archive (tar stream)

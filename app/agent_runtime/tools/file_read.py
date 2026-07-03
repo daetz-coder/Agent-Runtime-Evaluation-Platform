@@ -29,7 +29,7 @@ class FileReadTool(SandboxTool):
             return "Error: No file path provided."
 
         full_path = self._resolve_path(path)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         try:
             data, stat = await loop.run_in_executor(None, lambda: container.get_archive(full_path))

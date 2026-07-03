@@ -151,7 +151,7 @@ class SessionPool:
             session = SandboxSession(
                 container_id=container_id,
                 container=container,
-                created_at=asyncio.get_event_loop().time(),
+                created_at=asyncio.get_running_loop().time(),
             )
             self._active_sessions[container_id] = session
             return session
@@ -201,7 +201,7 @@ class SessionPool:
             return None
 
     async def _create_session_container(self) -> Optional[str]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._create_session_container_sync)
 
     def _destroy_container(self, container_id: str) -> None:

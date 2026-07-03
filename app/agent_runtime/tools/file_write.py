@@ -35,7 +35,7 @@ class FileWriteTool(SandboxTool):
         full_path = self._resolve_path(path)
         dir_path = os.path.dirname(full_path)
         filename = os.path.basename(full_path)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # Ensure parent directory exists
         if dir_path and dir_path != WORKSPACE_ROOT:

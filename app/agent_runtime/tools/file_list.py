@@ -26,7 +26,7 @@ class FileListTool(SandboxTool):
 
     async def execute(self, container: Container, *, path: str = "", **kwargs: Any) -> str:
         full_path = self._resolve_path(path) if path else WORKSPACE_ROOT
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         exit_code, output = await loop.run_in_executor(
             None,
