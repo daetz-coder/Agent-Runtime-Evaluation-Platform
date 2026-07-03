@@ -440,7 +440,11 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
 
     await _emit(queue, {"type": "status", "message": "正在分析对话内容..."})
 
-    decision = await knowledge_agent.decide_action(user_message, ai_response)
+    chat_history: list[BaseMessage] = configurable.get("chat_history") or []
+    session_id: str | None = configurable.get("session_id")
+    decision = await knowledge_agent.decide_action(
+        user_message, ai_response, chat_history, session_id
+    )
     decision_dict = decision.to_dict()
 
     if not decision_dict.get("title") and decision_dict.get("path"):
