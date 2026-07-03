@@ -111,12 +111,7 @@ def build_context_block(ctx: RetrievedContext) -> str:
 
     # ── 优先级 1: User Memory（用户级持久事实，最重要）──
     if ctx.user_facts:
-        lines = []
-        for f in ctx.user_facts[:10]:
-            if isinstance(f, dict):
-                lines.append(f"- {f.get('content', '')}")
-            else:
-                lines.append(f"- {f}")
+        lines = [f"- {f['content']}" for f in ctx.user_facts[:10] if isinstance(f, dict)]
         user_text = "\n".join(lines)
         if len(user_text) > MAX_USER_FACTS_CHARS:
             user_text = user_text[:MAX_USER_FACTS_CHARS] + "..."
@@ -125,12 +120,7 @@ def build_context_block(ctx: RetrievedContext) -> str:
 
     # ── 优先级 2: Session Memory（会话级事实）──
     if ctx.session_facts:
-        lines = []
-        for f in ctx.session_facts[:10]:
-            if isinstance(f, dict):
-                lines.append(f"- [{f.get('type', '')}] {f.get('content', '')}")
-            else:
-                lines.append(f"- {f}")
+        lines = [f"- [{f.get('type', '')}] {f['content']}" for f in ctx.session_facts[:10] if isinstance(f, dict)]
         session_text = "\n".join(lines)
         if len(session_text) > MAX_SESSION_FACTS_CHARS:
             session_text = session_text[:MAX_SESSION_FACTS_CHARS] + "..."
