@@ -70,16 +70,7 @@ RETRIEVAL_EVAL_PROMPT = """你必须用中文输出所有内容（包括 feedbac
 """
 
 
-class RetrievalScore(BaseModel):
-    """检索质量评估分。"""
-
-    relevance: float = 0
-    evidence_accuracy: float = 0
-    coverage: float = 0
-    overall: float = 0
-    feedback: str = ""
-    hallucination_detected: bool = False
-    missing_info: List[str] = Field(default_factory=list)
+from app.models.schemas import RetrievalScore
 
 
 class RetrievalEvaluator(BaseEvaluator):

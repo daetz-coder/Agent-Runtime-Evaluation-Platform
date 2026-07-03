@@ -83,8 +83,9 @@ def create_app() -> FastAPI:
 
         @app.get("/", include_in_schema=False)
         async def serve_index():
-            index_path = os.path.join(frontend_dist, "index.html")
-            return HTMLResponse(content=open(index_path, encoding="utf-8").read())
+            from pathlib import Path
+            index_path = Path(frontend_dist) / "index.html"
+            return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
 
         # SPA 路由回退：所有未匹配的路径都返回 index.html
         @app.get("/{path:path}", include_in_schema=False)
@@ -93,8 +94,9 @@ def create_app() -> FastAPI:
             if path.startswith(("api/", "docs", "redoc", "health", "assets/")):
                 from fastapi import HTTPException
                 raise HTTPException(status_code=404, detail="Not found")
-            index_path = os.path.join(frontend_dist, "index.html")
-            return HTMLResponse(content=open(index_path, encoding="utf-8").read())
+            from pathlib import Path
+            index_path = Path(frontend_dist) / "index.html"
+            return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
 
         print(f"[Wiki Agent] Frontend served from {frontend_dist}")
     else:

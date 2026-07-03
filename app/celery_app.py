@@ -81,8 +81,11 @@ def init_worker(**kwargs):
 
     logger.info("Initializing Celery worker...")
     loop = asyncio.new_event_loop()
-    loop.run_until_complete(init_db())
-    loop.run_until_complete(init_redis())
+    try:
+        loop.run_until_complete(init_db())
+        loop.run_until_complete(init_redis())
+    finally:
+        loop.close()
     logger.info("Celery worker ready")
 
 

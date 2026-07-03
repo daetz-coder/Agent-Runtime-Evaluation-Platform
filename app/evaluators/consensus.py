@@ -129,7 +129,9 @@ class ConsensusEvaluator:
                     ),
                 )
             )
-            # DeepSeek Reasoner（同 API key，不同模型）
+
+        # DeepSeek Reasoner
+        if settings.DEEPSEEK_API_KEY:
             providers.append(
                 (
                     "deepseek-reasoner",
@@ -148,7 +150,7 @@ class ConsensusEvaluator:
                 (
                     "openai",
                     ChatOpenAI(
-                        model=settings.DEFAULT_LLM_MODEL,
+                        model="gpt-4o-mini",
                         openai_api_key=settings.OPENAI_API_KEY,
                         temperature=0,
                     ),
@@ -161,7 +163,7 @@ class ConsensusEvaluator:
                 (
                     "anthropic",
                     ChatAnthropic(
-                        model=settings.DEFAULT_LLM_MODEL,
+                        model="claude-sonnet-4-20250514",
                         anthropic_api_key=settings.ANTHROPIC_API_KEY,
                         temperature=0,
                     ),

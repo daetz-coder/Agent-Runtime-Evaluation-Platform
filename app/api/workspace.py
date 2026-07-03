@@ -6,11 +6,10 @@ from __future__ import annotations
 
 import enum
 import logging
-import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -104,11 +103,6 @@ class AuditLog(Base):
 # ── Pydantic Schemas ──
 
 
-class WorkspaceCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
-
-
 class WorkspaceResponse(BaseModel):
     id: str
     name: str
@@ -118,51 +112,6 @@ class WorkspaceResponse(BaseModel):
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class MemberCreate(BaseModel):
-    user_id: str
-    role: WorkspaceRole = WorkspaceRole.EVALUATOR
-
-
-class AuditLogResponse(BaseModel):
-    id: int
-    workspace_id: str
-    user_id: str
-    action: str
-    resource_type: str
-    resource_id: str
-    details: Optional[dict] = None
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-# ── 服务函数 ──
-
-
-async def create_workspace(db, data: WorkspaceCreate) -> WorkspaceResponse:
-    import secrets
-
-    ws = Workspace(
-        id=str(uuid.uuid4()),
-        name=data.name,
-        description=data.description,
-        api_key=f"ws_{secrets.token_hex(16)}",
-    )
-    db.add(ws)
-    db.add(
-        AuditLog(
-            workspace_id=ws.id,
-            user_id="system",
-            action=AuditAction.WORKSPACE_CREATED,
-            resource_type="workspace",
-            resource_id=ws.id,
-            details={"name": ws.name},
-        )
-    )
-    await db.flush()
-    return WorkspaceResponse.model_validate(ws)
 
 
 async def add_audit_log(

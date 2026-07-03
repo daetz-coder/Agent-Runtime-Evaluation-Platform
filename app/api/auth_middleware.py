@@ -73,7 +73,3 @@ def extract_api_key(request: Request) -> Optional[str]:
 
     # Query: ?api_key=<key>
     return request.query_params.get("api_key")
-
-
-# 向后兼容内部引用
-_extract_api_key = extract_api_key

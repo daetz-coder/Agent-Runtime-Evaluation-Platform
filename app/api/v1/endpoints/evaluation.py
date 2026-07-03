@@ -194,8 +194,7 @@ async def run_evaluation(
                 workspace_id=ws_filter,
             )
         except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "Celery dispatch failed (%s), falling back to BackgroundTasks", exc
             )
             background_tasks.add_task(
@@ -685,8 +684,7 @@ async def batch_evaluation(
 
                 run_evaluation_task.delay(task_id, evaluation.id, workspace_id=ws_filter)
             except Exception as exc:
-                import logging
-                logging.getLogger(__name__).warning(
+                logger.warning(
                     "Celery dispatch failed (%s), falling back to BackgroundTasks", exc
                 )
                 background_tasks.add_task(
