@@ -81,12 +81,6 @@
                   <div class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
                 </div>
                 <!-- 评估任务链接 -->
-                <div v-if="msg.evaluationTaskId" class="evaluation-link-card">
-                  <span>📊 运行轨迹已提交评估</span>
-                  <button class="eval-link-btn" @click="goToEvaluationTask(msg.evaluationTaskId)">
-                    查看评估任务 →
-                  </button>
-                </div>
                 <!-- 加载中（还没有内容时） -->
                 <div v-if="!msg.content && !msg.status" class="msg-bubble assistant-bubble">
                   <div class="typing-dots">
@@ -391,7 +385,6 @@ async function sendMessage(text) {
     status: null,
     extraction: null,
     extractionResult: null,
-    evaluationTaskId: null,
     streaming: true,
   });
   session.messages.push(aiMsg);
@@ -448,13 +441,7 @@ async function sendMessage(text) {
             aiMsg.status = null;
             aiMsg.extractionStatus = null; // 待确认状态
             scrollToBottom();
-          } else if (data.type === "evaluation_task") {
-            aiMsg.evaluationTaskId = data.task_id;
-            scrollToBottom();
           } else if (data.type === "done") {
-            if (data.evaluation_task_id) {
-              aiMsg.evaluationTaskId = data.evaluation_task_id;
-            }
             aiMsg.streaming = false;
           } else if (data.type === "error") {
             aiMsg.content = `错误: ${data.message}`;
@@ -516,14 +503,6 @@ async function confirmExtraction(msg) {
   } finally {
     savingExtraction.value = false;
     showExtractionDetail.value = -1;
-  }
-}
-
-function goToEvaluationTask(taskId) {
-  // 独立版：在新窗口打开评估平台（如果配置了）
-  const evalBase = import.meta.env.VITE_EVAL_BASE_URL;
-  if (evalBase) {
-    window.open(`${evalBase}/tasks/${taskId}`, '_blank');
   }
 }
 
@@ -1020,35 +999,6 @@ onMounted(async () => {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.6;
-}
-
-/* ── 评估任务链接 ── */
-.evaluation-link-card {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  background: #f0f9ff;
-  border: 1px solid #b3d8ff;
-  border-radius: 10px;
-  font-size: 13px;
-  color: #409eff;
-}
-
-.eval-link-btn {
-  border: none;
-  background: #409eff;
-  color: #fff;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.eval-link-btn:hover {
-  background: #66b1ff;
 }
 
 /* ── 知识提取卡片 ── */

@@ -41,10 +41,16 @@ htmlcov/
 
 # Database
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
+*.pkl
 data/
 test_milvus.db
-example/wiki-agent/milvus.db/
+
+# Model weights (download separately)
+models/bge-small-zh-v1.5/
+models/bge-reranker-base/
 
 # Logs
 *.log

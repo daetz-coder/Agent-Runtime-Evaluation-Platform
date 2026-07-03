@@ -5,14 +5,10 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-try:
-    from app.core.cache import cache_delete, cache_get, cache_set
-    from app.core.config import settings as _platform_settings
-    _CACHE_SESSION_TTL = _platform_settings.CACHE_SESSION_TTL
-except ImportError:
-    from app.wiki_agent.cache import cache_delete, cache_get, cache_set
-    from app.wiki_agent.config import settings as _platform_settings
-    _CACHE_SESSION_TTL = _platform_settings.CACHE_SESSION_TTL
+from app.wiki_agent.cache import cache_delete, cache_get, cache_set
+from app.wiki_agent.config import settings
+
+_CACHE_SESSION_TTL = settings.CACHE_SESSION_TTL
 
 from app.wiki_agent.database import get_db
 
@@ -459,36 +455,3 @@ async def merge_user_memory(new_facts: list[dict], user_id: str = "default") -> 
     return merged
 
 
-async def get_active_eval_task_id(session_id: str) -> str | None:
-    """获取会话当前活跃的评估 task_id"""
-    db = await get_db()
-    try:
-        cursor = await db.execute("PRAGMA table_info(sessions)")
-        cols = {row[1] for row in await cursor.fetchall()}
-        if "active_eval_task_id" not in cols:
-            return None
-
-        cursor = await db.execute(
-            "SELECT active_eval_task_id FROM sessions WHERE id = ?",
-            (session_id,),
-        )
-        row = await cursor.fetchone()
-        return row[0] if row and row[0] else None
-    finally:
-        await db.close()
-
-
-async def set_active_eval_task_id(session_id: str, task_id: str | None) -> None:
-    """设置会话当前活跃的评估 task_id"""
-    db = await get_db()
-    try:
-        cursor = await db.execute("PRAGMA table_info(sessions)")
-        cols = {row[1] for row in await cursor.fetchall()}
-        if "active_eval_task_id" in cols:
-            await db.execute(
-                "UPDATE sessions SET active_eval_task_id = ? WHERE id = ?",
-                (task_id, session_id),
-            )
-            await db.commit()
-    finally:
-        await db.close()

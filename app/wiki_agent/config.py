@@ -2,10 +2,10 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-WIKI_AGENT_ROOT = PROJECT_ROOT / "example" / "wiki-agent"
-WIKI_AGENT_DIR = Path(__file__).resolve().parent
-WIKI_DATA_DIR = PROJECT_ROOT / "data" / "wiki_agent"
+# wiki-agent 项目根目录（即 app/wiki_agent/）
+WIKI_AGENT_ROOT = Path(__file__).resolve().parent
+WIKI_AGENT_DIR = WIKI_AGENT_ROOT
+WIKI_DATA_DIR = WIKI_AGENT_ROOT / "data"
 
 
 class WikiAgentSettings(BaseSettings):
@@ -19,7 +19,7 @@ class WikiAgentSettings(BaseSettings):
     ZHIPUAI_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"
     ZHIPUAI_CHAT_MODEL: str = "glm-4-flash"
 
-    # Paths — runtime data under data/wiki_agent/, seed content under app/wiki_agent/seed/
+    # Paths — runtime data under data/, models under models/
     KNOWLEDGE_DIR: str = str(WIKI_DATA_DIR / "knowledge")
     MILVUS_URI: str = str(WIKI_DATA_DIR / "milvus.db")
     MILVUS_COLLECTION: str = "wiki_knowledge"
@@ -50,18 +50,8 @@ class WikiAgentSettings(BaseSettings):
     # Git
     GIT_ENABLED: bool = True
 
-    # Runtime evaluation platform (same process after integration)
-    EVAL_ENABLED: bool = True
-    EVAL_API_BASE_URL: str = "http://127.0.0.1:8000"
-    EVAL_INPROCESS: bool = True
-    EVAL_AUTO_RUN: bool = False
-    EVAL_BATCH_SIZE: int = 8
-
     model_config = SettingsConfigDict(
-        env_file=[
-            str(WIKI_AGENT_DIR / ".env"),      # Wiki Agent 本地配置（优先）
-            str(PROJECT_ROOT / ".env"),          # 项目根目录配置（兜底）
-        ],
+        env_file=str(WIKI_AGENT_DIR / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

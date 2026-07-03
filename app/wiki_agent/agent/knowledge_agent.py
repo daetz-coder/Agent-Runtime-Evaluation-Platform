@@ -10,7 +10,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field, model_validator
 
 from app.wiki_agent.agent.context_retriever import build_context_block, retrieve_context
-from app.wiki_agent.config import settings
+from app.wiki_agent.agent.llm_factory import create_chat_llm
 
 _llm: ChatOpenAI | None = None
 
@@ -18,12 +18,7 @@ _llm: ChatOpenAI | None = None
 def _get_llm() -> ChatOpenAI:
     global _llm
     if _llm is None:
-        _llm = ChatOpenAI(
-            model=settings.DEEPSEEK_MODEL,
-            api_key=settings.DEEPSEEK_API_KEY or "placeholder",
-            base_url=settings.DEEPSEEK_BASE_URL,
-            temperature=0.3,
-        )
+        _llm = create_chat_llm(temperature=0.3)
     return _llm
 
 

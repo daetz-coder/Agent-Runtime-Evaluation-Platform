@@ -1,0 +1,43 @@
+# Wiki Agent - Python Dependencies
+# Install: pip install -r requirements.txt
+
+# LLM & Agent Framework
+langchain-core>=0.3
+langchain-openai>=0.3
+langgraph>=0.2
+
+# Vector Database
+pymilvus>=2.4
+
+# ML Models (Embedding + Reranker)
+sentence-transformers>=3.0
+
+# NLP Tokenization
+jieba>=0.42
+rank_bm25>=0.2
+
+# Web Framework
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.0
+pydantic-settings>=2.0
+
+# Database
+aiosqlite>=0.20
+
+# Document Parsing
+langchain-text-splitters>=0.3
+pypdf>=4.0
+python-docx>=1.1
+
+# Git Integration
+gitpython>=3.1
+
+# Cache (optional, graceful degradation without Redis)
+redis>=5.0
+
+# Chinese Pinyin (optional)
+pypinyin>=0.51
+
+# Model Download
+modelscope>=1.18

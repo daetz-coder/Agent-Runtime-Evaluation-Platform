@@ -73,17 +73,13 @@ async def list_sessions():
     """所有 session 列表"""
     db = await get_db()
     try:
-        # 先检测 sessions 表有哪些列（兼容有无 key_facts / active_eval_task_id）
         cursor = await db.execute("PRAGMA table_info(sessions)")
         cols = {row[1] for row in await cursor.fetchall()}
         has_key_facts = "key_facts" in cols
-        has_active_task = "active_eval_task_id" in cols
 
         select_parts = ["s.id", "s.name", "s.created_at", "s.updated_at"]
         if has_key_facts:
             select_parts.append("s.key_facts")
-        if has_active_task:
-            select_parts.append("s.active_eval_task_id")
         select_parts.append("(SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as msg_count")
 
         cursor = await db.execute(f"SELECT {', '.join(select_parts)} FROM sessions s ORDER BY s.updated_at DESC")
@@ -92,15 +88,11 @@ async def list_sessions():
         for row in rows:
             idx = 4
             key_facts = []
-            active_task = None
             if has_key_facts:
                 try:
                     key_facts = json.loads(row[idx]) if row[idx] else []
                 except (json.JSONDecodeError, TypeError):
                     key_facts = []
-                idx += 1
-            if has_active_task:
-                active_task = row[idx]
                 idx += 1
 
             sessions.append(
@@ -110,7 +102,6 @@ async def list_sessions():
                     "created_at": row[2],
                     "updated_at": row[3],
                     "key_facts": key_facts,
-                    "active_eval_task_id": active_task,
                     "message_count": row[idx],
                 }
             )
@@ -124,17 +115,13 @@ async def get_session_detail(session_id: str):
     """单个 session 详情"""
     db = await get_db()
     try:
-        # 检测列
         cursor = await db.execute("PRAGMA table_info(sessions)")
         cols = {row[1] for row in await cursor.fetchall()}
         has_key_facts = "key_facts" in cols
-        has_active_task = "active_eval_task_id" in cols
 
         select_parts = ["id", "name", "created_at", "updated_at"]
         if has_key_facts:
             select_parts.append("key_facts")
-        if has_active_task:
-            select_parts.append("active_eval_task_id")
 
         cursor = await db.execute(
             f"SELECT {', '.join(select_parts)} FROM sessions WHERE id = ?",
@@ -146,15 +133,12 @@ async def get_session_detail(session_id: str):
 
         idx = 4
         key_facts = []
-        active_task = None
         if has_key_facts:
             try:
                 key_facts = json.loads(row[idx]) if row[idx] else []
             except (json.JSONDecodeError, TypeError):
                 key_facts = []
             idx += 1
-        if has_active_task:
-            active_task = row[idx]
 
         cursor = await db.execute(
             "SELECT id, role, content, wiki_results, extraction, created_at "
@@ -189,7 +173,6 @@ async def get_session_detail(session_id: str):
             "created_at": row[2],
             "updated_at": row[3],
             "key_facts": key_facts,
-            "active_eval_task_id": active_task,
             "messages": messages,
         }
     finally:

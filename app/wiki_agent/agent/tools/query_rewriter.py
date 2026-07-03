@@ -16,6 +16,7 @@ from enum import Enum
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 
+from app.wiki_agent.agent.llm_factory import create_chat_llm
 from app.wiki_agent.agent.tools.embeddings import generate_embedding
 from app.wiki_agent.config import settings
 
@@ -44,16 +45,7 @@ class QueryType(str, Enum):
 
 def _get_rewrite_llm(temperature: float = 0, max_tokens: int = 200) -> ChatOpenAI:
     """获取用于 query 改写的轻量 LLM 实例"""
-    model = settings.ZHIPUAI_CHAT_MODEL if settings.ZHIPUAI_API_KEY else settings.DEEPSEEK_MODEL
-    api_key = settings.ZHIPUAI_API_KEY or settings.DEEPSEEK_API_KEY
-    base_url = settings.ZHIPUAI_BASE_URL if settings.ZHIPUAI_API_KEY else settings.DEEPSEEK_BASE_URL
-    return ChatOpenAI(
-        model=model,
-        api_key=api_key,
-        base_url=base_url,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    return create_chat_llm(temperature=temperature, max_tokens=max_tokens)
 
 
 # ── 1. 上下文补齐 ────────────────────────────────────────────
