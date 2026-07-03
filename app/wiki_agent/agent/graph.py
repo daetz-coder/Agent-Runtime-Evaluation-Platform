@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, Literal, TypedDict
@@ -259,7 +260,6 @@ async def _extract_key_facts(
         r'^(查询|搜索|查找|找)',
         r'^(帮我|请|能否|可以)',
     ]
-    import re
     for pattern in simple_patterns:
         if re.match(pattern, user_message.strip(), re.IGNORECASE):
             return [], []
@@ -313,7 +313,6 @@ async def _extract_key_facts(
         except Exception:
             response = await _fact_llm.ainvoke([HM(content=prompt)])
             content = response.content or ""
-            import re
             json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
             json_text = json_match.group(1) if json_match else content
             result = _fact_parser.parse(json_text)

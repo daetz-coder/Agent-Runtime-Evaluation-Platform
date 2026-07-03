@@ -247,9 +247,9 @@ wiki-agent 通过 `hooks.py` 定义的生命周期钩子接口支持低侵入接
 在评估平台启动时注册 hooks 实现：
 
 ```python
-from app.wiki_agent.hooks import register_hooks
+from agent_hooks import AgentHooks, register
 
-class EvalHooks:
+class EvalHooks(AgentHooks):
     async def on_session_start(self, goal, session_id, context):
         # 评估平台采集逻辑
         ...
@@ -262,7 +262,7 @@ class EvalHooks:
         # 结束评估
         ...
 
-register_hooks(EvalHooks())
+register(EvalHooks())
 ```
 
 wiki-agent 默认使用空操作 hooks，独立运行时零开销。

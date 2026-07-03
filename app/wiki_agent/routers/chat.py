@@ -76,7 +76,7 @@ async def stream_response(session_id: str, user_message: str) -> AsyncGenerator[
     :return: The stream response.
     """
     import asyncio
-    total_start = asyncio.get_event_loop().time()
+    total_start = asyncio.get_running_loop().time()
 
     await _ensure_session(session_id)
 
@@ -103,7 +103,7 @@ async def stream_response(session_id: str, user_message: str) -> AsyncGenerator[
             if event_type == "content":
                 if first_content:
                     first_content = False
-                    elapsed = asyncio.get_event_loop().time() - total_start
+                    elapsed = asyncio.get_running_loop().time() - total_start
                     print(f"[Timing] Total time to first content: {elapsed*1000:.0f}ms")
                 collected += event.get("text", "")
             elif event_type == "wiki_results":
