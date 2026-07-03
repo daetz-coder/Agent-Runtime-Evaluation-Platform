@@ -21,8 +21,8 @@
   - [4.1 整体架构图](#41-整体架构图)
   - [4.2 LangGraph 对话流程图](#42-langgraph-对话流程图)
   - [4.3 混合检索 Pipeline](#43-混合检索-pipeline)
-  - [4.4 三端同步机制](#44-三端同步机制)
-  - [4.5 三路记忆体系](#45-三路记忆体系)
+  - [4.4 四端同步机制](#44-四端同步机制)
+  - [4.5 四路记忆体系与压缩策略](#45-四路记忆体系与压缩策略)
   - [4.6 Query 改写 Pipeline](#46-query-改写-pipeline)
 - [五、数据流](#五数据流)
   - [5.1 用户对话数据流](#51-用户对话数据流)
@@ -216,27 +216,30 @@ class WikiState(TypedDict):
 - `none` — 普通问答、闲聊 → 不操作
 
 **工作流程**：
-1. 调用 `search_tools.hybrid_search()` 查找相关现有知识
-2. 读取相关条目的正文内容（前 500 字预览）
-3. 构建 Prompt（用户消息 + AI 回复 + 现有知识 + 格式指令）
+1. 调用 `retrieve_context()` 获取四层上下文（Query Rewrite + 混合检索 + 用户/会话记忆 + 对话历史）
+2. `build_context_block()` 预算裁剪组装
+3. 构建 Prompt（用户消息 + AI 回复 + 四层上下文 + 格式指令）
 4. 用 LLM 生成结构化 `KnowledgeDecision`（通过 PydanticOutputParser）
+5. `model_validator` 硬校验必填字段，失败时反馈错误重试（最多 2 次）
 
 #### `agent/context_retriever.py` — 统一上下文检索
 
-**功能**：合并三路记忆源，为 LLM 提供完整的上下文。
+**功能**：合并四路记忆源，为 LLM 提供完整的上下文。
 
-**三路记忆**：
+**四路记忆**：
 
 | 记忆类型 | 来源 | 说明 |
 |----------|------|------|
-| External KB (RAG) | `hybrid_search()` | 知识库混合检索结果 |
-| Long-term Memory | `session.key_facts` | 会话累积的关键事实 |
-| Short-term Memory | `chat_history` | 最近 10 条对话消息 |
+| User Memory | `user_memory.facts` | 用户级持久事实（跨 session，上限 30 条） |
+| Session Memory | `sessions.key_facts` | 会话级事实（当前 session，上限 20 条） |
+| External KB (RAG) | `hybrid_search()` | 知识库混合检索结果（top 5） |
+| Working Memory | `chat_history` | 最近 10 轮对话消息（200 字/条） |
 
 **预算管理**：总预算约 3000 字符，按优先级分配：
-1. key_facts（500 字符，固定保留）
-2. wiki_results（1500 字符）
-3. history_summary（1000 字符）
+1. User Memory（600 字符，最高优先级）
+2. Session Memory（400 字符）
+3. wiki_results（1200 字符）
+4. history_summary（800 字符，最低优先级）
 
 #### `agent/auto_tagger.py` — 自动标签生成
 
@@ -508,6 +511,7 @@ updated: 2024-01-01T00:00:00
 |------|------|
 | `create_session()` | 创建新会话 |
 | `get_session()` | 获取会话及所有消息（带 Redis 缓存） |
+| `get_recent_messages()` | 获取最近 N 条消息（SQL LIMIT，高效部分加载） |
 | `list_sessions()` | 列出所有会话摘要 |
 | `add_message()` | 添加消息（自动更新 session 的 updated_at） |
 | `delete_session()` | 删除会话及所有消息 |
@@ -959,48 +963,55 @@ example/wiki-agent/
 
 ---
 
-### 4.5 三路记忆体系
+### 4.5 四路记忆体系与压缩策略
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   统一上下文检索                          │
-│              context_retriever.py                        │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │  External KB (RAG) — 外部知识库                  │    │
-│  │                                                 │    │
-│  │  hybrid_search(query) → top 5 results           │    │
-│  │  每个结果: {path, title, snippet, score}         │    │
-│  │                                                 │    │
-│  │  预算: 1500 字符                                │    │
-│  │  优先级: ★★★                                    │    │
-│  └─────────────────────────────────────────────────┘    │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │  Long-term Memory — 长期记忆                    │    │
-│  │                                                 │    │
-│  │  session.key_facts (SQLite + Redis)             │    │
-│  │  每轮对话 LLM 自动提取关键事实                   │    │
-│  │  去重合并，最多 20 条                            │    │
-│  │                                                 │    │
-│  │  预算: 500 字符                                 │    │
-│  │  优先级: ★★★★（最高）                           │    │
-│  └─────────────────────────────────────────────────┘    │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │  Short-term Memory — 短期记忆                   │    │
-│  │                                                 │    │
-│  │  chat_history (最近 10 条消息)                   │    │
-│  │  拼接为 "用户: ... / 助手: ..." 格式             │    │
-│  │                                                 │    │
-│  │  预算: 1000 字符                                │    │
-│  │  优先级: ★★                                     │    │
-│  └─────────────────────────────────────────────────┘    │
-│                                                         │
-│  总预算: ~3000 字符                                      │
-│  组装顺序: key_facts → wiki_results → history            │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    统一上下文检索 + 六层压缩                          │
+│                context_retriever.py + graph.py                      │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  ① User Memory — 用户级持久事实（优先级 1，600 字符）         │   │
+│  │     user_memory.facts，跨 session 共享，上限 30 条           │   │
+│  │     LLM 提炼 scope=user 的事实（偏好、习惯）                 │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  ② Session Memory — 会话级事实（优先级 2，400 字符）          │   │
+│  │     sessions.key_facts，当前 session 生效，上限 20 条        │   │
+│  │     LLM 提炼 scope=session 的事实（项目、约束、目标）        │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  ③ External KB — 知识库检索（优先级 3，1200 字符）            │   │
+│  │     hybrid_search: semantic + BM25 + RRF + CrossEncoder     │   │
+│  │     Query Rewrite: 消歧 → 分类 → 多策略改写 → 相似度校验     │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  ④ Working Memory — 对话历史（优先级 4，800 字符）            │   │
+│  │     chat_history，最近 10 轮（20 条），200 字/条              │   │
+│  │     六层压缩: SQL LIMIT → 滑动窗口 → 二次截断 →              │   │
+│  │              字符预算 → LLM 提炼 → 分块截断                  │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  总预算: ~3000 字符                                                 │
+│  组装顺序: user_facts → session_facts → wiki_results → history      │
+└─────────────────────────────────────────────────────────────────────┘
 ```
+
+**六层压缩策略**：
+
+| 层级 | 机制 | 位置 | 说明 |
+|------|------|------|------|
+| ① SQL 截断 | `get_recent_messages(limit)` | store.py | 只查最近 20 条，不全量加载 |
+| ② 滑动窗口 | `_build_history(max_turns)` | chat.py | 只取最近 10 轮 |
+| ③ 二次保护 | `_build_llm_messages` 截断 | graph.py | prior[-20:] + SystemMessage 提示 |
+| ④ 字符预算 | `build_context_block()` | context_retriever.py | 按优先级裁剪到 3000 字符 |
+| ⑤ LLM 提炼 | `_extract_key_facts()` | graph.py | 对话→结构化事实，替代 SummaryMemory |
+| ⑥ 分块截断 | `chunk_markdown()` | chunker.py | 知识条目 500 字/块存储 |
+
+> 详细压缩策略说明见 `docs/wiki-agent-memory-architecture.md`。
 
 ---
 
@@ -1252,13 +1263,21 @@ eval_middleware.py
 
 Query 改写 Pipeline 在检索前优化查询，显著提升召回率。
 
-### 7.4 为什么用三路记忆？
+### 7.4 为什么用四路记忆 + 六层压缩？
 
+**四路记忆**：
+- **User Memory**：记住用户偏好、习惯，跨 session 持久生效
+- **Session Memory**：记住当前项目的上下文、技术约束
 - **External KB**：回答需要引用知识库内容
-- **Long-term Memory**：记住用户偏好、项目约束等跨轮次信息
-- **Short-term Memory**：理解多轮对话的上下文
+- **Working Memory**：理解多轮对话的上下文
 
-三路记忆让 Agent 既能引用知识库，又能记住对话历史中的关键信息。
+**六层压缩**：
+- 滑动窗口（①②③）零成本保证最近对话完整
+- 字符预算（④）控制 context 长度
+- LLM 提炼（⑤）复用 search 节点，零额外调用，替代 LangChain ConversationSummaryMemory
+- 分块截断（⑥）写入时一次性处理
+
+四路记忆 + 六层压缩让 Agent 既能引用知识库，又能记住关键信息，同时不会因对话过长而超出 token 限制。
 
 ### 7.5 为什么用评估中间件？
 
