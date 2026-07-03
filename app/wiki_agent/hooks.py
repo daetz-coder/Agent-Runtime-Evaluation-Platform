@@ -7,6 +7,7 @@ wiki-agent 业务代码通过此模块的 emit_* 函数触发事件。
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,24 @@ except ImportError:
     _emit = _NoOpEmit()
 
 
-# ── 便捷函数（业务代码调用，保持向后兼容）────────────────
+# ── 通用层 ─────────────────────────────────────────
+
+
+async def emit_trace(
+    action: str,
+    input: dict[str, Any] | None = None,
+    output: dict[str, Any] | None = None,
+    duration_ms: float | None = None,
+    meta: dict[str, Any] | None = None,
+) -> None:
+    await _emit.trace(action, input, output, duration_ms, meta)
+
+
+async def emit_step(name: str, detail: str = "", status: str = "ok") -> None:
+    await _emit.step(name, detail, status)
+
+
+# ── 结构化层（向后兼容）─────────────────────────────
 
 
 async def emit_session_start(goal: str, session_id: str, context: dict) -> None:

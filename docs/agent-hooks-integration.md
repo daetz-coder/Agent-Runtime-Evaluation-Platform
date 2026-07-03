@@ -36,6 +36,46 @@
 
 ---
 
+## 两层接口设计
+
+不同 Agent 有不同的架构。为了适配所有类型的 Agent，agent-hooks 提供两层接口：
+
+```
+通用层（任何 Agent 都能用）：
+  emit.trace(action, input, output)    ← 结构化但灵活，action 自定义
+  emit.step(name, detail)              ← 最简单，一句话描述
+
+结构化层（可选，提供更精确评估）：
+  emit.retrieval(query, results, ms)   ← RAG Agent 专用
+  emit.tool_call(name, args, result)   ← 工具 Agent 专用
+  emit.llm_call(model, msgs, resp)     ← LLM Agent 专用
+```
+
+### 选择指南
+
+```
+你的 Agent 有检索/工具/LLM 组件吗？
+├─ 有 → 用结构化层（更精确的评估）
+└─ 没有 / 不确定 / 想快速接入
+    ├─ 想要结构化数据 → emit.trace(action, input, output)
+    └─ 想要最简单 → emit.step(name, detail)
+```
+
+### 不同类型 Agent 的接入方式
+
+| Agent 类型 | 推荐方式 | 示例 |
+|-----------|---------|------|
+| RAG Agent | 结构化 `retrieval` + `llm_call` | `await emit.retrieval(query, results, 120)` |
+| Code Agent | 结构化 `tool_call` + `llm_call` | `await emit.tool_call("sandbox", args, result)` |
+| Chat Agent | 结构化 `llm_call` | `await emit.llm_call(model, msgs, resp)` |
+| Workflow Agent | 通用 `trace` | `await emit.trace("step_name", input=..., output=...)` |
+| Multi-Agent | 通用 `step` | `await emit.step("子Agent名", "做了什么")` |
+| 自研框架 | 通用 `trace` 或混合 | `await emit.trace("custom_action", ...)` |
+
+两层可以混用：有明确组件的部分用结构化事件，自定义操作用 trace/step。
+
+---
+
 ## 什么是关键节点
 
 Agent 的执行是一个流程，**关键节点**是这个流程中对评估有意义的事件发生点：

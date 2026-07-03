@@ -8,10 +8,37 @@ from typing import Any
 class NoOpHooks:
     """所有钩子方法为空操作。"""
 
+    # ── 通用层 ─────────────────────────────────────────
+
+    async def on_trace(
+        self,
+        action: str,
+        input: dict[str, Any] | None = None,
+        output: dict[str, Any] | None = None,
+        duration_ms: float | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        pass
+
+    async def on_step(
+        self,
+        name: str,
+        detail: str = "",
+        status: str = "ok",
+    ) -> None:
+        pass
+
+    # ── 会话生命周期 ───────────────────────────────────
+
     async def on_session_start(
         self, goal: str, session_id: str, context: dict[str, Any]
     ) -> None:
         pass
+
+    async def on_session_end(self, session_id: str) -> None:
+        pass
+
+    # ── 结构化层 ───────────────────────────────────────
 
     async def on_llm_call(
         self,
@@ -50,7 +77,4 @@ class NoOpHooks:
         pass
 
     async def on_error(self, session_id: str, error: Exception) -> None:
-        pass
-
-    async def on_session_end(self, session_id: str) -> None:
         pass
