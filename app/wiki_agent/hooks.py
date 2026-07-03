@@ -1,94 +1,51 @@
-"""wiki-agent 生命周期钩子接口。
+"""wiki-agent 生命周期钩子 — 委托给 agent-hooks SDK。
 
-默认所有方法为空操作，不影响独立运行。
-外部系统（如评估平台）可通过 register_hooks() 注入实现来采集数据。
+wiki-agent 业务代码通过此模块的 emit_* 函数触发事件。
+默认空操作，评估平台通过 agent-hooks 的 register() 注入实现。
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
+# 尝试导入 agent-hooks SDK，不可用时降级为空操作
+try:
+    from agent_hooks import emit as _emit
+    _HAS_SDK = True
+except ImportError:
+    _HAS_SDK = False
+    logger.info("[Wiki Agent] agent-hooks not installed — hooks disabled")
 
-class WikiAgentHooks(Protocol):
-    """钩子接口，外部系统实现此接口来监听 wiki-agent 生命周期事件。"""
+    class _NoOpEmit:
+        """降级空操作 emitter。"""
+        def __getattr__(self, name: str):
+            async def _noop(*args, **kwargs):
+                pass
+            return _noop
 
-    async def on_session_start(self, goal: str, session_id: str, context: dict) -> None: ...
-    async def on_retrieval(self, query: str, results: list[dict], duration_ms: float) -> None: ...
-    async def on_key_facts(self, facts: list[str]) -> None: ...
-    async def on_response(self, session_id: str, response: str) -> None: ...
-    async def on_session_end(self, session_id: str) -> None: ...
-
-
-class _NoOpHooks:
-    """默认空操作实现 — 独立运行时使用，零开销。"""
-
-    async def on_session_start(self, goal: str, session_id: str, context: dict) -> None:
-        pass
-
-    async def on_retrieval(self, query: str, results: list[dict], duration_ms: float) -> None:
-        pass
-
-    async def on_key_facts(self, facts: list[str]) -> None:
-        pass
-
-    async def on_response(self, session_id: str, response: str) -> None:
-        pass
-
-    async def on_session_end(self, session_id: str) -> None:
-        pass
+    _emit = _NoOpEmit()
 
 
-_hooks: WikiAgentHooks = _NoOpHooks()
-
-
-def register_hooks(hooks: WikiAgentHooks) -> None:
-    """注册外部 hooks 实现（评估平台在集成时调用）。"""
-    global _hooks
-    _hooks = hooks
-    logger.info("[Wiki Agent] External hooks registered: %s", type(hooks).__name__)
-
-
-def get_hooks() -> WikiAgentHooks:
-    """获取当前 hooks 实例。"""
-    return _hooks
-
-
-# ── 便捷 emit 函数（业务代码调用，自动遍历已注册 hooks）────────
+# ── 便捷函数（业务代码调用，保持向后兼容）────────────────
 
 
 async def emit_session_start(goal: str, session_id: str, context: dict) -> None:
-    try:
-        await _hooks.on_session_start(goal, session_id, context)
-    except Exception as e:
-        logger.debug("Hook on_session_start error: %s", e)
+    await _emit.session_start(goal, session_id, context)
 
 
 async def emit_retrieval(query: str, results: list[dict], duration_ms: float) -> None:
-    try:
-        await _hooks.on_retrieval(query, results, duration_ms)
-    except Exception as e:
-        logger.debug("Hook on_retrieval error: %s", e)
+    await _emit.retrieval(query, results, duration_ms)
 
 
 async def emit_key_facts(facts: list[str]) -> None:
-    try:
-        await _hooks.on_key_facts(facts)
-    except Exception as e:
-        logger.debug("Hook on_key_facts error: %s", e)
+    await _emit.key_facts(facts, scope="session")
 
 
 async def emit_response(session_id: str, response: str) -> None:
-    try:
-        await _hooks.on_response(session_id, response)
-    except Exception as e:
-        logger.debug("Hook on_response error: %s", e)
+    await _emit.response(session_id, response)
 
 
 async def emit_session_end(session_id: str) -> None:
-    try:
-        await _hooks.on_session_end(session_id)
-    except Exception as e:
-        logger.debug("Hook on_session_end error: %s", e)
+    await _emit.session_end(session_id)
