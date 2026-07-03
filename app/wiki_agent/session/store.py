@@ -317,8 +317,22 @@ async def merge_session_key_facts(session_id: str, new_facts: list[dict]) -> lis
     """
     existing = await get_session_key_facts(session_id)
 
-    existing_contents = {f["content"].strip().lower() for f in existing}
-    merged = list(existing)
+    # 兼容旧数据：existing 中可能有纯字符串（旧版本）和 dict（新版本）
+    existing_contents = set()
+    merged = []
+    for f in existing:
+        if isinstance(f, dict):
+            existing_contents.add(f.get("content", "").strip().lower())
+            merged.append(f)
+        elif isinstance(f, str) and f.strip():
+            # 旧格式字符串 → 迁移为 dict
+            existing_contents.add(f.strip().lower())
+            merged.append({
+                "content": f.strip(),
+                "type": "unknown",
+                "confidence": 0.7,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            })
 
     for fact in new_facts:
         content = fact.get("content", "").strip() if isinstance(fact, dict) else str(fact).strip()
@@ -402,9 +416,21 @@ async def merge_user_memory(new_facts: list[dict], user_id: str = "default") -> 
     """
     existing = await get_user_memory(user_id)
 
-    # 去重：基于 content 的小写比较
-    existing_contents = {f["content"].strip().lower() for f in existing}
-    merged = list(existing)
+    # 去重：基于 content 的小写比较（兼容旧数据）
+    existing_contents = set()
+    merged = []
+    for f in existing:
+        if isinstance(f, dict):
+            existing_contents.add(f.get("content", "").strip().lower())
+            merged.append(f)
+        elif isinstance(f, str) and f.strip():
+            existing_contents.add(f.strip().lower())
+            merged.append({
+                "content": f.strip(),
+                "type": "unknown",
+                "confidence": 0.7,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            })
 
     for fact in new_facts:
         content = fact.get("content", "").strip()
