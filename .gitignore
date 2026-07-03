@@ -62,3 +62,10 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 *.local
+
+# Personal files
+cv_docs/
+output/
+example/resume/*.aux
+example/resume/*.log
+example/resume/*.synctex.gz
