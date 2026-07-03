@@ -30,6 +30,42 @@ except ImportError:
     _SDK_AVAILABLE = False
     logger.info("[Wiki Agent] SDK not available — evaluation features disabled")
 
+
+def _check_eval_db() -> bool:
+    """检查评估平台数据库表是否存在（独立运行时可能缺失）"""
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        from app.core.config import settings as platform_settings
+        # DATABASE_URL 格式: "sqlite+aiosqlite:///./agent_eval.db"
+        url = platform_settings.DATABASE_URL
+        if "sqlite" not in url:
+            return False
+        # 提取文件路径
+        db_file = url.split("///")[-1]
+        if not Path(db_file).is_absolute():
+            db_file = Path(platform_settings._base_dir or ".") / db_file
+    except (ImportError, AttributeError):
+        return False
+
+    try:
+        conn = sqlite3.connect(str(db_file), timeout=2)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='workspaces'"
+        )
+        has_workspaces = cursor.fetchone() is not None
+        conn.close()
+        return has_workspaces
+    except Exception:
+        return False
+
+
+# 独立运行时（评估数据库不可用），禁用 SDK
+if _SDK_AVAILABLE and not _check_eval_db():
+    _SDK_AVAILABLE = False
+    logger.info("[Wiki Agent] Eval database not found — SDK disabled for standalone mode")
+
 _plan_llm: BaseChatModel | None = None
 
 
