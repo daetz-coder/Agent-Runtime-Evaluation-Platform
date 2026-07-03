@@ -268,13 +268,17 @@ async def _extract_key_facts(
         - session_facts: list[dict]，存入当前 session 的 key_facts
         - user_facts: list[dict]，存入 User Memory（跨 session）
     """
-    # 跳过简单查询，不提取事实
+    # 跳过简单查询和信息查询，不提取事实
     simple_patterns = [
         r'^(你好|hi|hello|hey|嗨|您好)',
         r'^(你是谁|你叫什么|who are you)',
         r'^(什么是|怎么用|如何|解释|说明)',
         r'^(谢谢|感谢|thanks)',
         r'^(再见|bye|拜拜)',
+        r'^(总结|概述|列举|列出|介绍|描述|解释)',
+        r'^(有哪些|有什么|包含什么|包括什么)',
+        r'^(查询|搜索|查找|找)',
+        r'^(帮我|请|能否|可以)',
     ]
     import re
     for pattern in simple_patterns:

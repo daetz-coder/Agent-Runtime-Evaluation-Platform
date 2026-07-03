@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from app.wiki_agent.agent.tools.embeddings import generate_embedding, get_embedding_model
 from app.wiki_agent.agent.tools.reranker import rerank_results
 from app.wiki_agent.agent.tools.vector_store import get_vector_store
@@ -124,15 +126,23 @@ def hybrid_search(query: str, limit: int = 5) -> list[dict]:
     recall_limit = max(limit * settings.RERANK_CANDIDATE_MULTIPLIER, limit * 2)
 
     # 并行执行语义搜索和关键词搜索
+    t0 = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         semantic_future = executor.submit(semantic_search, query, recall_limit)
         keyword_future = executor.submit(keyword_search, query, recall_limit)
         semantic_results = semantic_future.result()
         keyword_results = keyword_future.result()
+    t1 = time.time()
+    print(f"[Timing] semantic+keyword search: {(t1-t0)*1000:.0f}ms")
 
     merged = _rrf_merge(semantic_results, keyword_results)
 
-    return rerank_results(query, merged, top_k=limit)
+    t2 = time.time()
+    result = rerank_results(query, merged, top_k=limit)
+    t3 = time.time()
+    print(f"[Timing] rerank: {(t3-t2)*1000:.0f}ms")
+
+    return result
 
 
 def _generate_embedding(text: str) -> list[float]:
