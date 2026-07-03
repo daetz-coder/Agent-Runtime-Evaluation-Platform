@@ -74,7 +74,7 @@ ANSWER_BANK: dict[int, dict] = {
     ),
     7: _a(
         "Wiki Agent 是同仓库的 RAG Demo 与评估样例：graph.py 中 search→respond→decide→execute，hybrid_search（Milvus+BGE+BM25+RRF）检索知识库，EvaluationTrace 显式 record_retrieval。EVAL_AUTO_RUN 在对话结束后自动 POST 评估。与评估平台放同一仓库是为零拷贝集成：trajectory schema、ActionType、RetrievalEvaluator 字段与 search 节点输出对齐，新工程师可跑通「提问→检索→回答→六维报告」全链路。它是 Demo 也是集成测试夹具。",
-        ["app/wiki_agent/agent/graph.py", "app/wiki_agent/agent/eval_middleware.py", "app/main.py"],
+        ["app/wiki_agent/agent/graph.py", "app/wiki_agent/hooks.py", "app/main.py"],
         ["Demo + 集成测试 + RAG 评估样例", "EvaluationTrace 与 sdk 格式对齐", "EVAL_AUTO_RUN 自动触发评估", "同仓避免 schema 漂移"],
         [
             ("能拆成两个 repo 吗？", "可以，但 ActionType 与 API 版本需严格同步。"),
@@ -182,7 +182,7 @@ ANSWER_BANK: dict[int, dict] = {
     ),
     19: _a(
         "retrieval 记录检索动作：query、retrieved_docs 列表（path/snippet/score 等）；evidence 记录最终送入 LLM 的证据池（可能裁剪/重排后）。RetrievalEvaluator 消费 retrieval；evidence 帮助评 evidence_accuracy 与幻觉。Wiki search 节点 hybrid_search 后 record_retrieval，respond 前可 record_evidence。",
-        ["app/evaluators/retrieval_evaluator.py", "app/wiki_agent/agent/eval_middleware.py", "app/models/action_types.py"],
+        ["app/evaluators/retrieval_evaluator.py", "app/wiki_agent/hooks.py", "app/models/action_types.py"],
         ["retrieval=召回阶段", "evidence=生成前证据池", "retrieved_docs 结构是评估输入", "两者分离定位召回 vs 引用问题"],
         [
             ("只录 evidence 够吗？", "不够，无法评 coverage/relevance 召回。"),
@@ -227,7 +227,7 @@ ANSWER_BANK: dict[int, dict] = {
     ),
     24: _a(
         "Human-in-the-loop：轨迹应记录 interrupt、用户输入、decide 节点分支。Wiki Agent graph decide 节点判断是否需要人工确认（如知识提取）；LangGraph interrupt 暂停后恢复，checkpoint AsyncSqliteSaver 存状态。EvaluationTrace 可 record_state_change 记录 HITL 前后 diff。评估时 Tactical 可看是否因 HITL 改变路径。",
-        ["app/wiki_agent/agent/graph.py", "app/models/action_types.py", "app/wiki_agent/agent/eval_middleware.py"],
+        ["app/wiki_agent/agent/graph.py", "app/models/action_types.py", "app/wiki_agent/hooks.py"],
         ["记录 interrupt 与用户决策", "decide 节点 HITL 网关", "state_change 记录前后状态", "checkpoint 支持会话恢复"],
         [
             ("interrupt 和 failure？", "interrupt 是预期暂停，failure 是异常。"),
@@ -336,10 +336,10 @@ ANSWER_BANK: dict[int, dict] = {
     ),
     35: _a(
         "Q35 与 显式 vs 自动埋点 相关。Wiki 用 EvaluationTrace 精确控制 retrieval 字段；SDK 适合通用 Agent Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。轨迹是六维 Judge 的唯一输入，ActionType 契约在 app/models/action_types.py 与 sdk/collector.py 双处维护。若涉及 RAG，强调 hybrid_search 的 RRF k=60 与 record_retrieval 写入 ActionType.RETRIEVAL。",
-        ["app/wiki_agent/agent/eval_middleware.py", "sdk/collector.py", "app/graphs/evaluation_graph.py"],
-        ["显式 vs 自动埋点：Wiki 用 EvaluationTrace 精确控制 retrieval 字段", "代码入口：app/wiki_agent/agent/eval_middleware.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        ["app/wiki_agent/hooks.py", "sdk/collector.py", "app/graphs/evaluation_graph.py"],
+        ["显式 vs 自动埋点：Wiki 用 EvaluationTrace 精确控制 retrieval 字段", "代码入口：app/wiki_agent/hooks.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「显式 vs 自动埋点」最先看哪段代码？", "打开 app/wiki_agent/agent/eval_middleware.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「显式 vs 自动埋点」最先看哪段代码？", "打开 app/wiki_agent/hooks.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 显式 vs 自动埋点？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],
@@ -1095,11 +1095,11 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     111: _a(
-        "问题「Wiki Agent search 节点如何 `record_retrieval`？数据如何流到 RetrievalEvaluator？」考察 record_retrieval。search 后写入 retrieval 步骤 Wiki 侧 hybrid_search 用 Milvus 语义 + jieba BM25，RRF k=60 融合；检索步骤需 record_retrieval 供 RetrievalEvaluator。 首要读 app/wiki_agent/agent/eval_middleware.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及可靠性，提 monotonicity benchmark 容差 +0.05 与 ReplanEvaluator 无 missed 时满分 100 的规则。",
-        ["app/wiki_agent/agent/eval_middleware.py", "app/wiki_agent/agent/graph.py", "app/graphs/evaluation_graph.py"],
-        ["record_retrieval：search 后写入 retrieval 步骤", "代码入口：app/wiki_agent/agent/eval_middleware.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        "问题「Wiki Agent search 节点如何 `record_retrieval`？数据如何流到 RetrievalEvaluator？」考察 record_retrieval。search 后写入 retrieval 步骤 Wiki 侧 hybrid_search 用 Milvus 语义 + jieba BM25，RRF k=60 融合；检索步骤需 record_retrieval 供 RetrievalEvaluator。 首要读 app/wiki_agent/hooks.py，并结合 evaluation_graph.py 理解评估如何消费 trajectory。若涉及可靠性，提 monotonicity benchmark 容差 +0.05 与 ReplanEvaluator 无 missed 时满分 100 的规则。",
+        ["app/wiki_agent/hooks.py", "app/wiki_agent/agent/graph.py", "app/graphs/evaluation_graph.py"],
+        ["record_retrieval：search 后写入 retrieval 步骤", "代码入口：app/wiki_agent/hooks.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「record_retrieval」最先看哪段代码？", "打开 app/wiki_agent/agent/eval_middleware.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「record_retrieval」最先看哪段代码？", "打开 app/wiki_agent/hooks.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 record_retrieval？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],
@@ -1195,21 +1195,21 @@ ANSWER_BANK: dict[int, dict] = {
         ],
     ),
     121: _a(
-        "围绕 EvaluationTrace 事件：plan/tool/retrieval 等与 SDK 同 schema 面试回答应先说业务场景，再落到 app/wiki_agent/agent/eval_middleware.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及分数聚合，说明 planning/tactical 权重 20%，其余四维各 15%，见 aggregate_results。",
-        ["app/wiki_agent/agent/eval_middleware.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
-        ["EvaluationTrace 事件：plan/tool/retrieval 等与 SDK 同 schema", "代码入口：app/wiki_agent/agent/eval_middleware.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        "围绕 EvaluationTrace 事件：plan/tool/retrieval 等与 SDK 同 schema 面试回答应先说业务场景，再落到 app/wiki_agent/hooks.py 的实现细节与配置项（app/core/config.py 中 EVAL_PARALLEL、EVAL_BATCH_SIZE 等）。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及分数聚合，说明 planning/tactical 权重 20%，其余四维各 15%，见 aggregate_results。",
+        ["app/wiki_agent/hooks.py", "app/graphs/evaluation_graph.py", "app/evaluators/base.py"],
+        ["EvaluationTrace 事件：plan/tool/retrieval 等与 SDK 同 schema", "代码入口：app/wiki_agent/hooks.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「EvaluationTrace 事件」最先看哪段代码？", "打开 app/wiki_agent/agent/eval_middleware.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「EvaluationTrace 事件」最先看哪段代码？", "打开 app/wiki_agent/hooks.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 EvaluationTrace 事件？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],
     ),
     122: _a(
         "Q122 与 EVAL_AUTO_RUN 相关。finish 后异步 POST /evaluations Wiki Demo 在 app/wiki_agent/ 提供端到端样例；外部 Agent 通过 sdk/collector.py 上报同样 schema。Wiki 是 reference Agent：graph 节点 + EvaluationTrace 显式埋点 + EVAL_AUTO_RUN 自动评估。若涉及分数聚合，说明 planning/tactical 权重 20%，其余四维各 15%，见 aggregate_results。",
-        ["app/wiki_agent/agent/eval_middleware.py", "app/core/config.py", "app/graphs/evaluation_graph.py"],
-        ["EVAL_AUTO_RUN：finish 后异步 POST /evaluations", "代码入口：app/wiki_agent/agent/eval_middleware.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
+        ["app/wiki_agent/hooks.py", "app/core/config.py", "app/graphs/evaluation_graph.py"],
+        ["EVAL_AUTO_RUN：finish 后异步 POST /evaluations", "代码入口：app/wiki_agent/hooks.py", "与六维 LLM-as-Judge 评估链路相关", "轨迹 schema 见 app/models/action_types.py"],
         [
-            ("「EVAL_AUTO_RUN」最先看哪段代码？", "打开 app/wiki_agent/agent/eval_middleware.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
+            ("「EVAL_AUTO_RUN」最先看哪段代码？", "打开 app/wiki_agent/hooks.py，再对照 app/graphs/evaluation_graph.py 的数据流。"),
             ("Demo 里如何验证 EVAL_AUTO_RUN？", "跑 Wiki Agent + EVAL_AUTO_RUN，或 sdk/collector finish(auto_run=True)。"),
             ("与 benchmark 关系？", "改相关 Evaluator 后跑 app/benchmarks/monotonicity.py 看是否仍单调。"),
         ],

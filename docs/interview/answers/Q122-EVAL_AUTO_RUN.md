@@ -18,14 +18,14 @@ Q122 与 EVAL_AUTO_RUN 相关。finish 后异步 POST /evaluations Wiki Demo 在
 
 ## 代码依据
 
-- `app/wiki_agent/agent/eval_middleware.py`
+- `app/wiki_agent/hooks.py`
 - `app/core/config.py`
 - `app/graphs/evaluation_graph.py`
 
 ## 回答要点
 
 - EVAL_AUTO_RUN：finish 后异步 POST /evaluations
-- 代码入口：app/wiki_agent/agent/eval_middleware.py
+- 代码入口：app/wiki_agent/hooks.py
 - 与六维 LLM-as-Judge 评估链路相关
 - 轨迹 schema 见 app/models/action_types.py
 
@@ -33,7 +33,7 @@ Q122 与 EVAL_AUTO_RUN 相关。finish 后异步 POST /evaluations Wiki Demo 在
 
 **Q: 「EVAL_AUTO_RUN」最先看哪段代码？**
 
-A: 打开 app/wiki_agent/agent/eval_middleware.py，再对照 app/graphs/evaluation_graph.py 的数据流。
+A: 打开 app/wiki_agent/hooks.py，再对照 app/graphs/evaluation_graph.py 的数据流。
 
 **Q: Demo 里如何验证 EVAL_AUTO_RUN？**
 

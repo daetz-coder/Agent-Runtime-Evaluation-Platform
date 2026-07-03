@@ -701,65 +701,44 @@ Wiki Agent 需要将每一步执行轨迹提交给评估引擎，但业务代码
 
 ### 现有解法
 
+通过 agent-hooks SDK 的生命周期钩子实现解耦：
+
 ```
-graph.py (业务代码)          eval_middleware.py (桥接层)         SDK
-─────────────────          ─────────────────────────         ───
-                            instrument_graph() ──────────────→ 自动采集节点执行
-wrap_llm() ────────────────→ wrap_llm() ─────────────────────→ 自动采集 LLM 调用
-                            record_retrieval() ──────────────→ 手动记录检索事件
-                            start_session() ─────────────────→ 创建评估 task
-                            finish_session() ────────────────→ flush 轨迹，触发评估
+graph.py (业务代码)          hooks.py (钩子层)              agent-hooks SDK
+─────────────────          ───────────────────           ───────────────
+emit_retrieval() ─────────→ _emit.retrieval() ──────────→ on_retrieval()
+emit_response()  ─────────→ _emit.response()  ──────────→ on_response()
+emit_session_end() ───────→ _emit.session_end() ────────→ on_session_end()
 ```
 
 ```python
-# eval_middleware.py
+# hooks.py — 委托给 agent-hooks SDK
 
-def instrument_graph(graph):
-    """用 SDK 包裹 graph，自动采集节点执行/状态变化/工具调用/失败"""
-    return instrument_langgraph(graph)
+try:
+    from agent_hooks import emit as _emit
+except ImportError:
+    _emit = _NoOpEmit()  # 降级为空操作
 
-def wrap_llm(llm):
-    """用 SDK 包裹 LLM，自动采集 LLM 调用和工具决策"""
-    return create_proxy_llm(llm)
-
-def record_retrieval(query, results, duration_ms):
-    """记录检索事件（SDK 无法自动采集检索细节）"""
-    collector = get_collector()
-    collector.record_retrieval(query=query, retrieved_docs=..., source="hybrid_search")
-
-async def start_session(goal, session_id, mode, **extra):
-    """启动评估会话，创建 task"""
-    collector = get_collector()
-    task_id = collector.start(goal, context)
-    # 生成结构化计划
-    plan_data = await _generate_plan(goal)
-    collector.record(ActionType.PLAN, plan_data)
-    return task_id
-
-async def finish_session(auto_run=True):
-    """结束评估会话，flush 轨迹"""
-    collector = get_collector()
-    return collector.finish(auto_run=auto_run)
+async def emit_retrieval(query, results, duration_ms):
+    await _emit.retrieval(query, results, duration_ms)
 ```
 
 ### 解耦效果
 
 ```python
-# graph.py — 业务代码完全不 import SDK
+# graph.py — 业务代码不 import SDK，只调用 hooks
 
-from app.wiki_agent.agent.eval_middleware import (
-    instrument_graph, wrap_llm, record_retrieval,
-    start_session, finish_session, update_context
-)
+from app.wiki_agent.hooks import emit_retrieval, emit_response, emit_session_end
 
-# graph.py 只调用 middleware 的函数，不直接使用 SDK
-chat_llm = wrap_llm(ChatOpenAI(...))
-graph = instrument_graph(compiled_graph)
+# 在关键节点调用 emit
+await emit_retrieval(query, results, duration_ms)
+await emit_response(session_id, response)
+await emit_session_end(session_id)
 ```
 
 ### 学习建议
 
-> 先理解 SDK 的三种适配器（`sdk/adapters/`），再看 `eval_middleware.py` 如何封装这些适配器，最后看 `graph.py` 如何使用 middleware。
+> 理解 agent-hooks SDK 的 Protocol + Emitter + NoOpHooks 设计，再看 hooks.py 如何委托，最后看 graph.py 如何在关键节点调用。
 
 ---
 

@@ -19,7 +19,7 @@ retrieval 记录检索动作：query、retrieved_docs 列表（path/snippet/scor
 ## 代码依据
 
 - `app/evaluators/retrieval_evaluator.py`
-- `app/wiki_agent/agent/eval_middleware.py`
+- `app/wiki_agent/hooks.py`
 - `app/models/action_types.py`
 
 ## 回答要点

@@ -19,7 +19,7 @@ Wiki Agent 是同仓库的 RAG Demo 与评估样例：graph.py 中 search→resp
 ## 代码依据
 
 - `app/wiki_agent/agent/graph.py`
-- `app/wiki_agent/agent/eval_middleware.py`
+- `app/wiki_agent/hooks.py`
 - `app/main.py`
 
 ## 回答要点

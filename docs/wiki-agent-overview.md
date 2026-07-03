@@ -78,10 +78,10 @@ app/wiki_agent/
 ├── agent/                         # Agent 智能体层
 │   ├── __init__.py
 │   ├── graph.py                   # ★ LangGraph 主编排（search → respond → decide → execute）
+│   ├── llm_factory.py             # 统一 LLM 创建工厂
 │   ├── knowledge_agent.py         # 知识库维护决策器（create/update/delete/none）
-│   ├── context_retriever.py       # 统一上下文检索（合并三路记忆）
+│   ├── context_retriever.py       # 统一上下文检索（合并四路记忆）
 │   ├── auto_tagger.py             # LLM 自动标签生成
-│   ├── eval_middleware.py         # 评估中间件（SDK 桥接层）
 │   └── tools/                     # Agent 工具集
 │       ├── __init__.py
 │       ├── search_tools.py        # 混合搜索入口（语义 + BM25 + RRF + 重排）
@@ -250,17 +250,23 @@ class WikiState(TypedDict):
 - 标签 2-5 个中文字或英文字
 - 输出 JSON 格式
 
-#### `agent/eval_middleware.py` — 评估中间件
+#### `agent/llm_factory.py` — 统一 LLM 工厂
 
-**功能**：Wiki Agent 与评估 SDK 的唯一桥接层。业务代码不直接 import SDK。
+**功能**：统一 LLM 创建逻辑，ZhipuAI 优先、DeepSeek 兜底。
 
-**核心职责**：
-- `instrument_graph()` — 用 SDK 包裹 LangGraph，自动采集节点执行/状态变化
-- `wrap_llm()` — 用 SDK 包裹 LLM，自动采集 LLM 调用
-- `start_session()` — 启动评估会话，创建 task，生成结构化计划
-- `finish_session()` — 结束评估会话，flush 轨迹
-- `record_retrieval()` — 记录检索事件（SDK 无法自动采集）
-- `record_key_facts()` — 记录 key_facts 为 memory_write 事件
+**核心函数**：
+- `create_chat_llm(temperature, streaming, max_tokens)` — 创建 ChatOpenAI 实例
+
+#### `hooks.py` — 生命周期钩子接口
+
+**功能**：通过 agent-hooks SDK 提供评估接入点。默认空操作，评估平台可通过 `register()` 注入实现。
+
+**核心事件**：
+- `emit_session_start()` — 会话开始
+- `emit_retrieval()` — 检索完成
+- `emit_key_facts()` — 记忆提取
+- `emit_response()` — 回复生成
+- `emit_session_end()` — 会话结束
 
 ---
 
@@ -744,7 +750,7 @@ example/wiki-agent/
 │  │  agent/context_retriever.py  —  统一上下文检索             │   │
 │  │  agent/knowledge_agent.py    —  知识库维护决策             │   │
 │  │  agent/auto_tagger.py        —  自动标签生成               │   │
-│  │  agent/eval_middleware.py    —  评估中间件（SDK 桥接）      │   │
+│  │  agent/llm_factory.py        —  统一 LLM 工厂              │   │
 │  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
         │
@@ -1146,37 +1152,36 @@ sync_manager.create() / update() / delete()
 
 ### 5.3 评估数据流
 
+wiki-agent 通过 agent-hooks SDK 提供生命周期钩子，评估平台可注册实现来采集数据：
+
 ```
 Wiki Agent 对话执行
      │
      ▼
-eval_middleware.py
-  ├─ start_session()
-  │     ├─ collector.start() → 创建评估 task
-  │     ├─ _generate_plan() → LLM 生成结构化计划
-  │     └─ collector.record(PLAN, plan_data)
+hooks.py (agent-hooks SDK)
+  ├─ emit_session_start() → 会话开始
   │
-  ├─ wrap_llm() → SDK 包裹 LLM，自动采集:
-  │     ├─ LLM 调用 (prompt/response/latency)
-  │     └─ 工具决策
+  ├─ emit_retrieval() → 记录检索事件
+  │     └─ query, results, duration_ms
   │
-  ├─ instrument_graph() → SDK 包裹 Graph，自动采集:
-  │     ├─ 节点执行
-  │     ├─ 状态变化
-  │     └─ 工具调用
+  ├─ emit_key_facts() → 记忆提取
+  │     └─ facts, scope
   │
-  ├─ record_retrieval() → 手动记录检索事件
-  │     └─ query, retrieved_docs, source, duration
+  ├─ emit_response() → 回复生成
+  │     └─ session_id, response
   │
-  └─ finish_session()
-        └─ collector.finish() → flush 轨迹 → 触发评估
-              │
-              ▼
-        评估引擎 (6 个并行 LLM-as-Judge)
-              │
-              ▼
-        评估结果 (6 维评分)
+  └─ emit_session_end() → 会话结束
+        │
+        ▼
+  评估平台 (register(EvalHooks()))
+        ├─ 采集轨迹数据
+        ├─ 触发 6 个评估器
+        │
+        ▼
+  评估结果 (6 维评分)
 ```
+
+独立运行时 hooks 为空操作，零开销。
 
 ---
 
