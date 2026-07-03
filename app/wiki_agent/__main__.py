@@ -63,7 +63,8 @@ def create_app(host: str = "0.0.0.0", port: int = 8000):
     app.include_router(chat.router)
     app.include_router(wiki.router)
     app.include_router(debug.router)
-    app.include_router(vector_admin.router)
+    app.include_router(vector_admin.api_router)
+    app.include_router(vector_admin.page_router)
 
     # 健康检查
     @app.get("/health")
