@@ -5,7 +5,7 @@ Coordinates:
   1. Sandbox session acquisition (SessionPool)
   2. Workspace setup (WorkspaceManager)
   3. Agent loop execution (LangGraph graph)
-  4. Trajectory capture (TrajectoryRecorder)
+  4. Trajectory capture (SDK TrajectoryCollector)
   5. Workspace state capture
   6. Session cleanup
 
@@ -31,10 +31,10 @@ from app.agent_runtime.sandbox.session_pool import (
 from app.agent_runtime.sandbox.workspace import WorkspaceManager
 from app.agent_runtime.state import AgentState
 from app.agent_runtime.tools.base import ToolProxy
-from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
 from app.core.config import settings
 from app.core.metrics import AGENT_RUN_DURATION, AGENT_STEPS
 from app.core.tracing import get_tracer
+from sdk.collector import TrajectoryCollector, get_collector
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer(__name__)
@@ -165,11 +165,12 @@ class AgentRunner:
                         logger.info("Workspace initialized with %d files", file_count)
 
                 # ── 3. Create components ──
-                recorder = TrajectoryRecorder()
+                collector = get_collector()
+                collector.start(goal, {"model": model, "provider": provider, "tools": effective_tools})
                 tool_proxy = ToolProxy(
                     container=session.container,
                     allowed_tools=effective_tools,
-                    recorder=recorder,
+                    recorder=collector,
                 )
 
                 try:
@@ -187,7 +188,7 @@ class AgentRunner:
                 graph = create_agent_graph(
                     llm=llm,
                     tool_proxy=tool_proxy,
-                    recorder=recorder,
+                    recorder=collector,
                     goal=goal,
                     context=context,
                     max_steps=effective_max_steps,
@@ -213,9 +214,12 @@ class AgentRunner:
                             timeout=agent_timeout,
                         )
                     except asyncio.TimeoutError:
-                        recorder.record_failure(
-                            f"Agent timed out after {agent_timeout}s",
-                            context={"goal": goal},
+                        collector.record_failure(
+                            error_type="TimeoutError",
+                            error_message=f"Agent timed out after {agent_timeout}s",
+                            context=f"Goal: {goal}",
+                            recoverable=False,
+                            node_name="agent_loop",
                         )
                         loop_span.set_attribute("timed_out", True)
                         final_state = {
@@ -232,7 +236,8 @@ class AgentRunner:
 
                 # ── 6. Build result ──
                 duration_ms = (time.monotonic() - start_time) * 1000
-                trajectory = recorder.get_trajectory()
+                trajectory = collector.get_steps()
+                collector.finish(auto_run=False)  # flush 轨迹到评估平台
                 final_answer = final_state.get("final_answer", "")
                 error = final_state.get("error")
                 success = error is None

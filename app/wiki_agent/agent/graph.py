@@ -28,6 +28,7 @@ from app.wiki_agent.agent.llm_factory import create_chat_llm
 from app.wiki_agent.agent.tools import crud_tools
 from app.wiki_agent.config import settings
 from app.wiki_agent.hooks import emit_key_facts, emit_retrieval, emit_response, emit_session_end, emit_session_start
+from sdk.collector import get_collector
 from app.wiki_agent.session import store as session_store
 
 _CHECKPOINT_DB = os.path.join(os.path.dirname(settings.DB_PATH), "checkpoints.db")
@@ -346,6 +347,9 @@ async def _extract_key_facts(
 async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     """统一检索四路记忆（KB + user_memory + session_memory + history）"""
     print("[Wiki Agent] 检索上下文...")
+    collector = get_collector()
+    state_before = {k: str(v)[:100] for k, v in state.items() if v}
+    collector.record_node_execute("search", input_data=state_before)
     user_message = state["user_message"]
     configurable = _get_configurable(config)
     chat_history: list[BaseMessage] = configurable.get("chat_history") or []
@@ -398,6 +402,12 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     if ctx.session_facts or ctx.user_facts:
         await emit_key_facts([f.get("content", "") for f in (ctx.session_facts + ctx.user_facts) if isinstance(f, dict)])
 
+    # 记录 MEMORY_READ（读取记忆）
+    if ctx.user_facts:
+        collector.record_memory_read("user_memory", value=len(ctx.user_facts), context="search node", hit=True)
+    if ctx.session_facts:
+        collector.record_memory_read("session_memory", value=len(ctx.session_facts), context="search node", hit=True)
+
     # 日志
     context_block = build_context_block(ctx)
     print(
@@ -406,6 +416,11 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         f"session: {len(ctx.session_facts)} facts, "
         f"history: {len(ctx.history_summary)} chars → {len(context_block)} chars"
     )
+
+    # 记录 NODE_COMPLETE + STATE_CHANGE
+    state_after = {"wiki_results_count": len(ctx.wiki_results), "user_facts_count": len(ctx.user_facts), "session_facts_count": len(ctx.session_facts)}
+    collector.record_node_execute("search_complete", output_data=state_after)
+    collector.record_state_change(state_before, state_after, trigger="search", node_name="search")
 
     return {
         **state,
@@ -424,6 +439,9 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
 async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     """流式或非流式生成回复"""
     print("[Wiki Agent] 生成回复...")
+    collector = get_collector()
+    state_before = {"ai_response": "", "stage": state.get("stage", "")}
+    collector.record_node_execute("respond", input_data=state_before)
     t0 = asyncio.get_running_loop().time()
     configurable = _get_configurable(config)
     queue: asyncio.Queue | None = configurable.get("event_queue")
@@ -453,12 +471,19 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     if session_id:
         await emit_response(session_id, collected)
 
+    # 记录 NODE_COMPLETE + STATE_CHANGE
+    state_after = {"ai_response_len": len(collected), "stage": "respond"}
+    collector.record_node_execute("respond_complete", output_data=state_after)
+    collector.record_state_change(state_before, state_after, trigger="respond", node_name="respond")
+
     return {**state, "ai_response": collected, "stage": "respond"}
 
 
 async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
     """分析对话，决定知识库操作"""
     print("[Wiki Agent] 分析对话...")
+    collector = get_collector()
+    collector.record_node_execute("decide", input_data={"user_message": state["user_message"][:100]})
     configurable = _get_configurable(config)
     queue: asyncio.Queue | None = configurable.get("event_queue")
 
@@ -490,11 +515,21 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
         stem = decision_dict["path"].replace(".md", "").split("/")[-1]
         decision_dict["title"] = stem
 
+    # 记录 STATE_CHANGE
+    collector.record_node_execute("decide_complete", output_data={"action": decision_dict.get("action")})
+    collector.record_state_change(
+        {"stage": "respond"},
+        {"stage": "decide", "action": decision_dict.get("action")},
+        trigger="decide", node_name="decide",
+    )
+
     return {**state, "decision": decision_dict, "stage": "decide"}
 
 
 async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
     """Human-in-the-Loop：等待用户确认后执行 CRUD"""
+    collector = get_collector()
+    collector.record_node_execute("execute", input_data={"decision": state.get("decision")})
     user_confirmed = interrupt({})
 
     if not user_confirmed:

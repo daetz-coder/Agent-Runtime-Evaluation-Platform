@@ -144,14 +144,16 @@ class ToolProxy:
                 error = f"Tool '{tool_name}' is not allowed. Available: {self.allowed_tools}"
                 span.set_attribute("success", False)
                 span.set_attribute("error", "not_allowed")
-                self.recorder.record_tool_call(tool_name, tool_input, error, success=False)
+                self.recorder.record_tool_call(tool_name, tool_input, error)
+                self.recorder.record_tool_result(tool_name, error, success=False, error_type="NotAllowed")
                 return error
 
             if tool_name not in self._registry:
                 error = f"Tool '{tool_name}' not found in registry."
                 span.set_attribute("success", False)
                 span.set_attribute("error", "not_found")
-                self.recorder.record_tool_call(tool_name, tool_input, error, success=False)
+                self.recorder.record_tool_call(tool_name, tool_input, error)
+                self.recorder.record_tool_result(tool_name, error, success=False, error_type="NotFound")
                 return error
 
             tool = self._registry[tool_name]
@@ -196,8 +198,9 @@ class ToolProxy:
             TOOL_CALL_COUNT.labels(tool=tool_name, status=status_label).inc()
             TOOL_CALL_DURATION.labels(tool=tool_name).observe(duration_ms / 1000)
 
-            # 4. Record trajectory
-            self.recorder.record_tool_call(tool_name, tool_input, output, success=success, duration_ms=duration_ms)
+            # 4. Record trajectory (TOOL_CALL + TOOL_RESULT)
+            self.recorder.record_tool_call(tool_name, tool_input, output, duration_ms=duration_ms)
+            self.recorder.record_tool_result(tool_name, output, duration_ms=duration_ms, success=success)
 
             # Truncate output for agent context (keep full output in trajectory)
             max_len = 5000
