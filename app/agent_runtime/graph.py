@@ -65,6 +65,36 @@ def create_agent_graph(
         context=json.dumps(context, ensure_ascii=False) if context else "",
     )
 
+    # ── RAG 检索：构建简单的关键词知识库 ──
+    _knowledge_base: list[dict] = []
+    if context:
+        # 从 context 中提取可用知识
+        for key, value in context.items():
+            if isinstance(value, str) and len(value) > 10:
+                _knowledge_base.append({"title": key, "content": value[:500], "source": "context"})
+
+    async def _retrieve_knowledge(query: str) -> list[dict]:
+        """简单关键词检索 — 在 context 知识库中搜索相关知识。"""
+        import time as _time
+        t0 = _time.monotonic()
+        results = []
+        query_lower = query.lower()
+        for doc in _knowledge_base:
+            # 简单关键词匹配
+            if any(word in doc["content"].lower() for word in query_lower.split() if len(word) > 2):
+                results.append(doc)
+        duration_ms = (_time.monotonic() - t0) * 1000
+
+        # 记录 RETRIEVAL
+        recorder.record_retrieval(
+            query=query,
+            retrieved_docs=[{"title": r["title"], "snippet": r["content"][:200], "source": r["source"]} for r in results[:3]],
+            source="agent_knowledge_base",
+            top_k=3,
+            duration_ms=duration_ms,
+        )
+        return results[:3]
+
     # Define the think_and_act node
     async def think_and_act(state: AgentState) -> Dict[str, Any]:
         """LLM thinks and decides next action; tools are executed if called."""
@@ -85,6 +115,14 @@ def create_agent_graph(
             context=f"step {current_step}",
             hit=len(messages) > 0,
         )
+
+        # ── RETRIEVAL：每步开始前检索相关知识 ──
+        if _knowledge_base and current_step == 0:
+            retrieved = await _retrieve_knowledge(goal)
+            if retrieved:
+                # 将检索到的知识注入到系统提示中
+                knowledge_text = "\n".join(f"- {r['title']}: {r['content'][:100]}" for r in retrieved)
+                messages.insert(0, SystemMessage(content=f"相关知识:\n{knowledge_text}"))
 
         # Check if we've hit max steps
         if current_step >= max_s:

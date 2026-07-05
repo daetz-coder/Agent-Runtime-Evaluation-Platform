@@ -633,7 +633,72 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
             success=False,
             error_type=type(e).__name__,
         )
-        result = {"status": "error", "message": str(e)}
+
+        # ── REPLAN：失败后尝试替代方案 ──
+        replan_reason = f"{action} 失败: {str(e)[:100]}"
+        alternative_action = None
+
+        # 策略 1: create 失败（已存在）→ 尝试 update
+        if action == "create" and "已存在" in str(e):
+            alternative_action = "update"
+            replan_reason += " → 尝试 update 替代"
+
+        # 策略 2: update 失败（不存在）→ 尝试 create
+        elif action == "update" and "不存在" in str(e):
+            alternative_action = "create"
+            replan_reason += " → 尝试 create 替代"
+
+        # 记录 REPLAN
+        collector.record_replan(
+            reason=replan_reason,
+            new_plan=f"尝试 {alternative_action}" if alternative_action else "返回错误",
+            trigger=f"crud_{action}_failure",
+        )
+
+        # 尝试替代方案
+        if alternative_action:
+            print(f"[Wiki Agent] REPLAN: {replan_reason}")
+            try:
+                retry_start = _time.monotonic()
+                if alternative_action == "update":
+                    result = crud_tools.update_knowledge(
+                        path=decision.get("path", ""),
+                        content=decision.get("content"),
+                        tags=decision.get("tags"),
+                    )
+                elif alternative_action == "create":
+                    result = crud_tools.create_knowledge(
+                        title=decision.get("title", ""),
+                        content=decision.get("content", ""),
+                        category=decision.get("category", ""),
+                        tags=decision.get("tags") or [],
+                    )
+                retry_ms = (_time.monotonic() - retry_start) * 1000
+
+                # 记录替代方案的 TOOL_CALL + TOOL_RESULT
+                collector.record_tool_call(
+                    tool_name=f"crud_{alternative_action}_retry",
+                    tool_input={"title": decision.get("title"), "path": decision.get("path")},
+                    tool_output=str(result)[:2000] if result else None,
+                    duration_ms=retry_ms,
+                )
+                collector.record_tool_result(
+                    tool_name=f"crud_{alternative_action}_retry",
+                    tool_output=str(result)[:2000] if result else None,
+                    duration_ms=retry_ms,
+                    success=result.get("status") == "ok" if result else False,
+                )
+            except Exception as retry_e:
+                result = {"status": "error", "message": f"替代方案也失败: {retry_e}"}
+                collector.record_failure(
+                    error_type=type(retry_e).__name__,
+                    error_message=str(retry_e),
+                    context=f"Retry {alternative_action} also failed",
+                    recoverable=False,
+                    node_name="execute",
+                )
+        else:
+            result = {"status": "error", "message": str(e)}
 
     print(f"[Wiki Agent] 执行结果: {result}")
     return {**state, "action_result": result, "stage": "execute"}
