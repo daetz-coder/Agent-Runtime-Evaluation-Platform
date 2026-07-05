@@ -13,7 +13,6 @@ Agent 工程师快速上手指南 — 聚焦本地开发、调试和迭代。
 pip install -e ".[dev]"
 
 # Mock 模式启动后端（无需 Docker）
-SANDBOX_MOCK_MODE=true python -m app.main
 
 # 另一个终端：启动前端
 cd frontend && npm install && npm run dev
@@ -239,9 +238,7 @@ make check-ci      # CI 门禁
 
 ---
 
-## 11. Agent in Sandbox（沙箱评估）
 
-Agent 在 Docker 容器内运行，平台完全控制执行环境：
 
 ```bash
 # 沙箱评估 — Agent 在容器内运行 python/bash/file 工具
@@ -276,7 +273,6 @@ curl -N -X POST http://localhost:8000/api/v1/evaluations/run/stream \
 **Mock 模式**（无需 Docker 开发）：
 
 ```bash
-SANDBOX_MOCK_MODE=true python -m app.main
 # Agent Runtime 返回固定 5 步轨迹，含 _llm_trace
 ```
 
@@ -309,7 +305,6 @@ open http://localhost:16686
 
 Trace 结构：
 ```
-sandbox_evaluation (5min)
 ├── session_acquire (10ms)
 ├── workspace_setup (200ms)
 ├── agent_loop (4min)
@@ -335,7 +330,6 @@ curl http://localhost:8000/api/v1/system/metrics
 # agent_eval_evaluation_duration_seconds{mode}    — 评估耗时分布
 # agent_eval_llm_calls_total{provider,model}      — LLM 调用次数
 # agent_eval_tool_calls_total{tool,status}        — 工具调用次数
-# agent_eval_sandbox_active_sessions              — 活跃沙箱数
 # agent_eval_http_requests_total{method,endpoint} — HTTP 请求数
 ```
 
@@ -347,7 +341,7 @@ curl http://localhost:8000/api/v1/system/metrics
 
 ```bash
 # 启动 Celery worker（另一个终端）
-celery -A app.celery_app worker -l info -c 4 -Q evaluation,sandbox
+celery -A app.celery_app worker -l info -c 4 -Q evaluation
 
 # 评估请求自动路由到 Celery（如果可用）
 # 不可用时 fallback 到 FastAPI BackgroundTasks

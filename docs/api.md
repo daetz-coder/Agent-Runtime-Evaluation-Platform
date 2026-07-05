@@ -121,7 +121,7 @@ http://localhost:8000/api/v1
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET /system/health` | 健康检查（DB + sandbox + session pool 状态） |
+| `GET /system/health` | 健康检查（DB 状态） |
 | `GET /system/metrics` | Prometheus 指标端点（`/metrics`） |
 | `GET /settings` | 运行时配置（provider、tools、quota 等公开信息） |
 

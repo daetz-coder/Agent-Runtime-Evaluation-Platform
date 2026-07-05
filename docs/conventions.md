@@ -17,7 +17,6 @@
 |------|---------|
 | Install (backend) | `pip install -e ".[dev]"` |
 | Run backend | `python -m app.main` |
-| Run backend (mock mode, no Docker) | `SANDBOX_MOCK_MODE=true python -m app.main` |
 | Run frontend | `cd frontend && npm run dev` |
 | Docker Compose | `docker compose up --build` |
 | DB migration | `alembic upgrade head` |
@@ -63,9 +62,6 @@ app/agent_runtime/
   runner.py           Agent Runtime 沙箱执行引擎
   graph.py            LangGraph ReAct agent 循环 (自动注入 _llm_trace)
   prompts/            系统提示词包 (PROMPT_VERSION=v1.1, templates/v1.1.yaml)
-  mock_executor.py    Mock 模式 — 无需 Docker 返回预定义轨迹
-  sandbox/            Docker 沙箱容器管理 (SessionPool + WorkspaceManager)
-  tools/              沙箱内工具 (python/bash/file)
 app/models/           Pydantic schemas + ActionType (14 种)
 app/db/               SQLAlchemy ORM (AgentTask/Trajectory/Evaluation/Workspace/AuditLog)
 app/wiki_agent/       RAG Wiki Agent (Milvus + BM25 + BGE-M3 + RRF + Redis 会话缓存)
@@ -78,7 +74,6 @@ Makefile              开发常用命令 (lint/test/golden/check-ci/run)
 
 **Judge Transparency**: 每个 evaluator 的 `_invoke_llm_cached()` 自动保存原始 prompt/response → `_judge_raw` 存入 feedback JSON → `GET /evaluations/{id}/judge-raw` 查看。
 
-**Mock Mode**: `SANDBOX_MOCK_MODE=true` 启动后无需 Docker，Agent Runtime 返回固定轨迹。适合本地快速迭代 prompt。
 
 **Incremental Eval**: `POST /evaluations/incremental` 对比两次 trajectory diff → 只重算变化维度 → 复用基线分数。
 

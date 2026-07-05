@@ -53,8 +53,8 @@ cd frontend && npm install && cd ..
 
 # 2. 配置 API Key（编辑 .env，填入 DEEPSEEK_API_KEY）
 
-# 3. Mock 模式启动（无需 Docker）
-SANDBOX_MOCK_MODE=true python -m app.main
+# 3. 启动后端
+python -m app.main
 
 # 4. 另一个终端启动前端
 cd frontend && npm run dev
@@ -77,7 +77,6 @@ cd frontend && npm run dev
 | 数据库 | SQLAlchemy Async + SQLite / PostgreSQL | 持久化存储，Alembic 迁移管理 |
 | 缓存 | Redis（可选，优雅降级） | LLM 响应缓存、报表聚合、接口限流 |
 | 前端 | Vue 3 + TypeScript + Element Plus + ECharts | 管理面板与可视化图表 |
-| 容器 | Docker（Sandbox 执行环境） | 安全隔离的 Agent 运行沙箱 |
 | 可观测性 | OpenTelemetry + Prometheus + structlog | 链路追踪、指标监控、结构化日志 |
 | 任务队列 | Celery（可选，优雅降级） | 异步评估任务，指数退避重试 |
 | SDK | Python SDK（httpx + langchain-core） | 零侵入轨迹采集，支持 LangGraph 自动采集和手动记录 |
@@ -88,7 +87,7 @@ cd frontend && npm run dev
 
 | 特性 | 说明 |
 |------|------|
-| **双模评测** | Sandbox 自动化评测 / 外部 SDK 埋点轨迹评测 |
+| **SDK 评测** | 外部 SDK 埋点轨迹评测 |
 | **6 维评分体系** | Planning / Tactical / Tool Use / Memory / Replan / Retrieval，含 20 项子指标 |
 | **适用性标记** | 维度不适用时自动标记并从综合评分剔除（如无工具调用时 Tool Use 标记为 N/A） |
 | **多模型共识** | 跨厂商（DeepSeek + GLM + Qwen）独立评分，LLM 缓存按模型名隔离 |
@@ -123,7 +122,7 @@ cd frontend && npm run dev
 ## 系统架构
 
 ```
-Frontend (Vue 3) ──REST/SSE──▶ Backend (FastAPI) ──▶ Docker Sandbox
+Frontend (Vue 3) ──REST/SSE──▶ Backend (FastAPI) ◀── SDK (HTTP)
                                     │
                               ┌─────┴─────┐
                               │           │
@@ -138,11 +137,10 @@ Frontend (Vue 3) ──REST/SSE──▶ Backend (FastAPI) ──▶ Docker Sand
                               └───────────┘
 ```
 
-平台包含三个核心子系统：
+平台包含两个核心子系统：
 
 | 子系统 | 说明 |
 |--------|------|
-| **Agent Runtime** | 在 Docker 沙箱中运行 Agent，自动采集执行轨迹 |
 | **评估引擎** | 6 个并行 LLM-as-Judge 评估器，对轨迹进行多维度评分 |
 | **Wiki Agent** | 基于 RAG 的知识库问答 Agent，形成"运行-评估-改进"闭环 |
 
@@ -206,7 +204,6 @@ graph = instrument_langgraph(build_graph())  # 一行接入
 
 ```
 app/                        # 后端应用
-├── agent_runtime/          # Agent 沙箱运行时（runner / graph / tools / sandbox）
 ├── evaluators/             # 6 个评估器 + 共识评估 + 评分工具
 ├── graphs/                 # LangGraph 评估工作流（串行 / 并行 / 增量）
 ├── services/               # 业务逻辑层（evaluation / replay / judge / diff / incremental）

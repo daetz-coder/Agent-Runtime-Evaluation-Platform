@@ -143,23 +143,17 @@ Each evaluator focuses on a specific dimension:
 | Replan | Replanning decisions | Trigger Appropriateness, Adaptation Quality, Learning |
 | Retrieval | RAG / retrieval quality | Relevance, Evidence Accuracy, Coverage, Hallucination detection |
 
-### 6. Agent Runtime (`app/agent_runtime/`)
 
 The Agent Runtime runs AI agents inside Docker sandbox containers and captures
 their full trajectory for evaluation.
 
 | Component | File | Description |
 |-----------|------|-------------|
-| **AgentRunner** | `runner.py` | Orchestrates agent execution: acquire session → setup workspace → create LLM → run LangGraph → capture trajectory |
 | **LangGraph Agent** | `graph.py` | ReAct loop: think → act → observe. Auto-injects `_llm_trace` (prompt/response/model/latency) into each step |
 | **Prompts** | `prompts/` (package) | System prompt templates in `templates/v1.1.yaml`. Versioned via `PROMPT_VERSION=v1.1` constant |
-| **Mock Executor** | `mock_executor.py` | `SANDBOX_MOCK_MODE=true` — returns predefined trajectory without Docker |
 | **TrajectoryCollector** | `sdk/collector.py` | Unified trajectory recorder for all agents. Records 14 action types with Pydantic schema validation |
-| **SessionPool** | `sandbox/session_pool.py` | Docker container pool with writable `/workspace` |
-| **WorkspaceManager** | `sandbox/workspace.py` | File injection, capture, and cleanup in sandbox containers |
 | **Tools** | `tools/` | PythonExecute, BashExecute, FileRead/Write/List |
 
-**Mock mode flow**: `AgentRunner.run()` checks `settings.SANDBOX_MOCK_MODE` →
 calls `get_mock_trajectory(goal)` → returns fixed 5-step trajectory with
 `_llm_trace` → no Docker required.
 
@@ -235,7 +229,7 @@ Curated trajectories with expected score ranges for evaluator regression testing
 
 **Tracing span 树**：
 ```
-sandbox_evaluation
+evaluation
 ├── session_acquire → container_id
 ├── workspace_setup → file_count
 ├── agent_loop
@@ -254,7 +248,6 @@ sandbox_evaluation
 - `agent_eval_evaluation_duration_seconds{mode}` — 评估耗时分布
 - `agent_eval_llm_calls_total{provider,model}` — LLM 调用计数
 - `agent_eval_tool_calls_total{tool,status}` — 工具调用计数
-- `agent_eval_sandbox_active_sessions` — 活跃沙箱数
 
 ### 11. Celery Task Queue（任务队列）
 
@@ -264,7 +257,7 @@ sandbox_evaluation
 |------|------|
 | **自动重试** | 指数退避（15s, 30s, 45s），最多 3 次 |
 | **并发控制** | `worker_prefetch_multiplier=1`，防止 worker 抢占多个长时间任务 |
-| **队列分离** | `evaluation` 队列（传统评估）和 `sandbox` 队列（沙箱评估） |
+| **队列分离** | `evaluation` 队列 |
 | **任务超时** | soft limit = AGENT_TIMEOUT + 60s，hard limit = AGENT_TIMEOUT + 120s |
 | **Worker 重启** | `max_tasks_per_child=50`，防止内存泄漏 |
 | **Fallback** | Celery 不可用时自动降级到 BackgroundTasks |

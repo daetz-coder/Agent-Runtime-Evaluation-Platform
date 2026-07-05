@@ -27,7 +27,6 @@
 
 两种 Agent：
   Wiki Agent   — RAG 知识库问答（嵌入平台进程）
-  Sandbox Agent — Docker 沙箱执行（平台控制运行）
 
 6 个评估维度：
   Planning / Tactical / Tool Use / Memory / Replan / Retrieval
@@ -55,7 +54,6 @@
   ├── 数据模型（action_types.py、schemas.py、db/models.py）
   ├── 配置（config.py、cache.py）
   ├── Wiki Agent（hooks.py → graph.py → knowledge_agent.py → tools/）
-  └── Sandbox Agent（runner.py → graph.py → tools/base.py）
 
 第 4 层: 评估层（理解"怎么评分"）          预计 45 分钟
   ├── 评估器 Schema（eval_schemas.py）
@@ -94,7 +92,7 @@
 
 **关键认知**：
 - 三大子系统：评估引擎 / Agent Runtime / Wiki Agent
-- 双模评测：Sandbox 自动化 / SDK 埋点
+- SDK 评测
 
 ### ③ `docs/two-flow-architecture.md`
 
@@ -107,10 +105,10 @@
 
 ### ④ `docs/data-collection-architecture.md`
 
-**读什么**：数据采集的四条路径（现合并为两条）、14 种 ActionType、数据库表结构
+**读什么**：数据采集的一条 SDK 采集路径、14 种 ActionType、数据库表结构
 
 **关键认知**：
-- SDK HTTP 模式 + Sandbox 模式
+- SDK HTTP 模式
 - 14 种 ActionType 的数据格式
 - agent_trajectories 表结构
 
@@ -248,9 +246,6 @@
 ⑩ app/wiki_agent/agent/knowledge_agent.py ← 知识决策，10 分钟
 ⑪ app/wiki_agent/agent/context_retriever.py ← 四路记忆，10 分钟
 ⑫ app/wiki_agent/agent/tools/*.py    ← 工具层，20 分钟
-⑬ app/agent_runtime/runner.py        ← Sandbox 编排，10 分钟
-⑭ app/agent_runtime/graph.py         ← Sandbox 图，15 分钟
-⑮ app/agent_runtime/tools/base.py    ← 工具代理，5 分钟
 ```
 
 ### ① `app/models/action_types.py`（48 行）
@@ -283,7 +278,7 @@
 
 **读什么**：全局配置
 
-**关键配置项**：服务器、数据库、Redis、LLM Provider、Sandbox、评估权重、可观测性
+**关键配置项**：服务器、数据库、Redis、LLM Provider、评估权重、可观测性
 
 ### ⑤ `app/core/cache.py`（320 行）
 
@@ -378,15 +373,10 @@ sync_manager.py    ← 四端同步
 env_monitor.py     ← 文件变化监控
 ```
 
-### ⑬ `app/agent_runtime/runner.py`（290 行）⭐⭐
 
-**读什么**：Sandbox Agent 的顶层编排器
 
-**执行流程**：获取 Docker 会话 → 设置工作区 → 创建 Collector + ToolProxy → 执行 Agent 图 → 获取轨迹
 
-### ⑭ `app/agent_runtime/graph.py`（441 行）⭐⭐
 
-**读什么**：Sandbox Agent 的 LangGraph ReAct 循环
 
 **think_and_act 节点**：
 - LLM 推理 → 记录 THINK
@@ -394,11 +384,8 @@ env_monitor.py     ← 文件变化监控
 - 最终回答 → 记录 EVIDENCE
 - 无工具调用 → 记录 REPLAN
 
-### ⑮ `app/agent_runtime/tools/base.py`（209 行）
 
-**读什么**：工具代理层
 
-**关键类**：`ToolProxy` — 统一工具调用网关（验证、审计、超时、轨迹记录）
 
 ---
 
@@ -486,7 +473,6 @@ env_monitor.py     ← 文件变化监控
 - `create_task()` — 创建评估任务
 - `add_trajectory()` — 提交轨迹步骤
 - `run_evaluation()` — 运行 6 维评估
-- `run_sandbox_evaluation()` — Sandbox 模式评估
 - `_persist_evaluation_results()` — 持久化评估结果
 
 ---
@@ -506,8 +492,6 @@ env_monitor.py     ← 文件变化监控
 | ⭐⭐ | `app/wiki_agent/agent/knowledge_agent.py` | 235 | 知识决策器 |
 | ⭐⭐ | `app/wiki_agent/agent/context_retriever.py` | 237 | 四路记忆检索 |
 | ⭐⭐ | `app/wiki_agent/hooks.py` | 130 | Wiki Agent SDK 桥梁 |
-| ⭐⭐ | `app/agent_runtime/runner.py` | 290 | Sandbox Agent 编排 |
-| ⭐⭐ | `app/agent_runtime/graph.py` | 441 | Sandbox Agent 图 |
 | ⭐⭐ | `app/services/evaluation_service.py` | 1070 | 评估服务 |
 | ⭐⭐ | `app/wiki_agent/agent/tools/query_rewriter.py` | 487 | Query 改写 Pipeline |
 | ⭐⭐ | `app/wiki_agent/agent/tools/search_tools.py` | 155 | 混合搜索 |
@@ -547,10 +531,6 @@ Wiki Agent（业务逻辑）:
   app/evaluators/consensus.py             — 多模型共识
   app/evaluators/scoring.py               — 评分工具
 
-Sandbox Agent（沙箱执行）:
-  app/agent_runtime/runner.py    — 编排器
-  app/agent_runtime/graph.py     — Agent 图
-  app/agent_runtime/tools/base.py — 工具代理
 
 基础设施:
   app/core/config.py              — 全局配置

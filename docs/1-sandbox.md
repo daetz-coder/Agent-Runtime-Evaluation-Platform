@@ -1,1 +1,0 @@
->Docker 是一种容器技术，负责提供进程、文件系统、网络和资源隔离；Agent Sandbox 是围绕 Agent 安全执行设计的一整套运行时系统。Docker 只是 Sandbox 的底层执行引擎之一。一个完整的 Agent Sandbox 还需要负责 Workspace 生命周期管理、权限控制、网络策略、轨迹采集、Artifact 收集、超时回收以及与 Agent 框架（如 LangGraph）的集成。因此，Docker 解决的是"怎么隔离"，而 Agent Sandbox 解决的是"如何让 Agent 在一个可控、可复现、可审计的环境中安全运行"

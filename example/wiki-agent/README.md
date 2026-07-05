@@ -15,7 +15,7 @@
 
 ```bash
 # Mock 模式（无需 Docker）
-SANDBOX_MOCK_MODE=true python -m app.main
+python -m app.main python -m app.main
 
 # 前端
 cd frontend && npm run dev

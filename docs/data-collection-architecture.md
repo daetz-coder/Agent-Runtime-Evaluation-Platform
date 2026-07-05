@@ -40,16 +40,14 @@
                          ┌─────────────┴─────────────┐
                          │                           │
           ┌──────────────┴──────┐      ┌─────────────┴─────────┐
-          │  路径 1: SDK 采集    │      │  路径 2: Sandbox      │
-          │  (所有 Agent 统一)   │      │  (平台控制 Agent 运行) │
-          │                     │      │                       │
-          │  Wiki Agent         │      │  AgentRunner.run()    │
-          │  外部 Agent         │      │  Docker 沙箱执行      │
-          │  手动提交           │      │  自动捕获轨迹         │
-          └─────────────────────┘      └───────────────────────┘
+          │  SDK 采集（所有 Agent 统一）  │
+          │                             │
+          │  Wiki Agent                 │
+          │  外部 Agent                 │
+          └─────────────────────────────┘
 ```
 
-**精简为 2 条路径**：所有 Agent 统一通过 SDK HTTP 模式推送数据，Sandbox 模式用于平台控制 Agent 运行的场景。
+**统一为 SDK 单路径**：所有 Agent 通过 SDK HTTP 模式推送轨迹数据到评估平台。
 
 ---
 
@@ -125,72 +123,6 @@ def record(self, action_type, action_detail, observation=None, *, dedupe_key=Non
 
 ---
 
-### 路径 2: Sandbox 自动采集
-
-**适用场景**：评估平台在 Docker 容器中运行 Agent，自动捕获完整轨迹。
-
-**代码流程**：
-
-```
-POST /api/v1/evaluations/run
-  │
-  └─ EvaluationService.run_sandbox_evaluation()         # evaluation_service.py:518
-       │
-       ├─ 1. 创建评估任务 (DB)
-       │     └─ service.create_task(TaskCreate(goal=...))
-       │
-       ├─ 2. 运行 Agent (Docker 沙箱)
-       │     └─ AgentRunner().run(goal, ...)            # runner.py:73
-       │          │
-       │          ├─ recorder = TrajectoryCollector()    # 创建轨迹记录器
-       │          ├─ tool_proxy = ToolProxy(recorder=recorder)  # 工具代理注入 recorder
-       │          ├─ graph = create_agent_graph(recorder=recorder)
-       │          │
-       │          ├─ graph.ainvoke(state)               # Agent 执行
-       │          │    ├─ recorder.record_plan(plan)    # 自动记录计划
-       │          │    ├─ recorder.record_think(...)    # 自动记录思考
-       │          │    ├─ recorder.record_tool_call(...) # 自动记录工具调用
-       │          │    └─ recorder.record_node_execute(...) # 自动记录节点
-       │          │
-       │          └─ return AgentRunResult(trajectory=recorder.get_trajectory())
-       │
-       ├─ 3. 持久化轨迹
-       │     └─ service.add_trajectory(task_id, trajectory)
-       │
-       ├─ 4. 运行评估
-       │     └─ evaluate_parallel(trajectory)            # 6 个评估器并行
-       │
-       └─ 5. 保存结果
-             └─ _persist_evaluation_results(scores)
-```
-
-**关键代码** (`app/agent_runtime/runner.py:167-184`)：
-
-```python
-# 创建 TrajectoryCollector，注入到所有组件
-recorder = TrajectoryCollector()
-tool_proxy = ToolProxy(container=..., allowed_tools=..., recorder=recorder)
-llm = create_llm(provider=provider, model=model, ...)
-
-# 构建 Agent 图，recorder 在每个节点被调用
-graph = create_agent_graph(llm=llm, tool_proxy=tool_proxy, recorder=recorder)
-
-# 执行 Agent
-final_state = await asyncio.wait_for(graph.ainvoke(initial_state), timeout=agent_timeout)
-
-# 获取完整轨迹
-trajectory = recorder.get_trajectory()
-```
-
-**为什么 Sandbox 能自动采集？**
-
-因为 `TrajectoryCollector` 被注入到了 Agent 的每个组件中：
-- `ToolProxy` 在每次工具调用时调用 `recorder.record_tool_call()`
-- `create_agent_graph` 在每个节点执行时调用 `recorder.record_node_execute()`
-- Agent 的 planner 在生成计划时调用 `recorder.record_plan()`
-
----
-
 ## 三、14 种轨迹数据类型详解
 
 ### 3.1 规划类
@@ -205,8 +137,8 @@ trajectory = recorder.get_trajectory()
 
 | ActionType | 记录方法 | 数据格式 | 示例 |
 |-----------|---------|---------|------|
-| `TOOL_CALL` | `record_tool_call()` | `{tool_name, input, duration_ms}` + observation=output | `{"tool_name": "sandbox", "input": {"code": "print(1)"}}` |
-| `TOOL_RESULT` | `record_tool_result()` | `{tool_name, success, error_type, duration_ms}` + observation=output | `{"tool_name": "sandbox", "success": true}` |
+| `TOOL_CALL` | `record_tool_call()` | `{tool_name, input, duration_ms}` + observation=output | `{"tool_name": "python_execute", "input": {"code": "print(1)"}}` |
+| `TOOL_RESULT` | `record_tool_result()` | `{tool_name, success, error_type, duration_ms}` + observation=output | `{"tool_name": "python_execute", "success": true}` |
 | `TOOL_DECISION` | `record(TOOL_DECISION, ...)` | `{node_name, tool_name, input}` | `{"node_name": "decide", "tool_name": "search"}` |
 
 ### 3.3 记忆类
@@ -424,45 +356,6 @@ async def run_chat_stream(user_message, chat_history, session_id=None):
 
 ---
 
-### 4.4 Sandbox 统一使用 SDK TrajectoryCollector
-
-**文件**：`app/agent_runtime/runner.py` + `app/agent_runtime/graph.py`
-
-Sandbox 现在使用与外部 Agent 相同的 `TrajectoryCollector`，不再使用独立的 `TrajectoryCollector`。
-
-```python
-# runner.py — 创建 collector 并注入到 Agent 组件
-collector = get_collector()
-collector.start(goal, {"model": model, "provider": provider, "tools": effective_tools})
-```
-
-**为什么 TrajectoryCollector 能自动采集？**
-
-因为它被注入到了 Agent 的每个组件：
-
-```python
-# runner.py:167-173
-recorder = TrajectoryCollector()
-tool_proxy = ToolProxy(container=..., allowed_tools=..., recorder=collector)
-graph = create_agent_graph(llm=llm, tool_proxy=tool_proxy, recorder=collector, ...)
-
-# 执行完成后 flush
-trajectory = collector.get_steps()
-collector.finish(auto_run=False)
-```
-
-**为什么 Sandbox 能自动采集？**
-
-因为 `TrajectoryCollector` 被注入到了 Agent 的每个组件：
-- `ToolProxy` 每次执行工具时调用 `collector.record_tool_call()` + `collector.record_tool_result()`
-- `create_agent_graph` 在每个节点执行时调用 `collector.record_node_execute()`
-- Agent 的 planner 在生成计划时调用 `collector.record_plan()`
-- LLM 返回 tool_calls 时调用 `collector.record(TOOL_DECISION, ...)`
-
-- `ToolProxy` 每次执行工具时调用 `recorder.record_tool_call()`
-- Agent 图的每个节点执行时调用 `recorder.record_node_execute()`
-- Planner 生成计划时调用 `recorder.record_plan()`
-
 ---
 
 ## 五、数据消费：6 个评估器
@@ -520,22 +413,22 @@ def _extract_retrievals(self, trajectory):
 
 两个 Agent 都覆盖全部 14 种 ActionType，缺失的类型是因为 Agent 本身没有对应行为：
 
-| ActionType | Sandbox Agent | Wiki Agent | Agent 行为对应 |
-|-----------|:---:|:---:|-------------|
-| `PLAN` | ✅ | ✅ | 生成计划 |
-| `PLAN_UPDATE` | ✅ | ✅ | 更新计划/进度 |
-| `TOOL_CALL` | ✅ | ✅ | 调用工具 |
-| `TOOL_RESULT` | ✅ | ✅ | 工具返回 |
-| `TOOL_DECISION` | ✅ | ✅ | 决定调用哪个工具 |
-| `MEMORY_WRITE` | ✅ | ✅ | 写入记忆 |
-| `MEMORY_READ` | ✅ | ✅ | 读取记忆 |
-| `STATE_CHANGE` | ✅ | ✅ | 状态变化 |
-| `NODE_EXECUTE` | ✅ | ✅ | 节点执行 |
-| `THINK` | ✅ | ✅ | 思考推理 |
-| `FAILURE` | ✅ | ✅ | 异常/失败 |
-| `REPLAN` | ✅ | ✅ | 失败后重规划（create↔update 替代） |
-| `RETRIEVAL` | ✅ | ✅ | RAG 检索 |
-| `EVIDENCE` | ✅ | ✅ | 构建证据池 |
+| ActionType | Wiki Agent | Agent 行为对应 |
+|-----------|:---:|-------------|
+| `PLAN` | ✅ | 生成计划 |
+| `PLAN_UPDATE` | ✅ | 更新计划/进度 |
+| `TOOL_CALL` | ✅ | 调用工具 |
+| `TOOL_RESULT` | ✅ | 工具返回 |
+| `TOOL_DECISION` | ✅ | 决定调用哪个工具 |
+| `MEMORY_WRITE` | ✅ | 写入记忆 |
+| `MEMORY_READ` | ✅ | 读取记忆 |
+| `STATE_CHANGE` | ✅ | 状态变化 |
+| `NODE_EXECUTE` | ✅ | 节点执行 |
+| `THINK` | ✅ | 思考推理 |
+| `FAILURE` | ✅ | 异常/失败 |
+| `REPLAN` | ✅ | 失败后重规划（create↔update 替代） |
+| `RETRIEVAL` | ✅ | RAG 检索 |
+| `EVIDENCE` | ✅ | 构建证据池 |
 
 **覆盖率：14/14（100%）**
 
@@ -628,7 +521,7 @@ CREATE TABLE evaluations (
 
 // TOOL_CALL 类型
 {
-    "tool_name": "sandbox",
+    "tool_name": "python_execute",
     "input": {"code": "import jwt; print(jwt.__version__)"},
     "duration_ms": 1234.5
 }
@@ -665,9 +558,8 @@ CREATE TABLE evaluations (
 
 | 采集方式 | 机制 | 侵入性 |
 |---------|------|--------|
-| SDK 外部采集 | Agent 代码显式调用 `collector.record_*()` | 中（需改业务代码） |
+| SDK 采集 | Agent 代码显式调用 `collector.record_*()` | 中（需改业务代码） |
 | Wiki Agent hooks | graph.py 显式调用 `emit_*()` | 中（6 个调用点） |
-| Sandbox 自动采集 | `TrajectoryCollector` 注入到 Agent 组件 | 低（框架层注入） |
 
 ### 7.2 SDK 采集的工作原理
 
