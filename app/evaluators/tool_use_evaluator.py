@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
+from app.evaluators.eval_schemas import ToolUseEvaluationResult
 from app.models.schemas import ToolUseScore, TrajectoryStep
 
 TOOL_USE_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、inefficient_calls）。你是一位 AI Agent 工具使用评估专家。
@@ -115,12 +116,13 @@ class ToolUseEvaluator(BaseEvaluator):
         if tool_results:
             execution_results_text = self._format_tool_results(tool_results)
 
-        # Create prompt
+        # Create prompt + structured output chain
         prompt = ChatPromptTemplate.from_template(TOOL_USE_EVALUATION_PROMPT)
+        structured_llm = self.llm.with_structured_output(ToolUseEvaluationResult)
+        chain = prompt | structured_llm
 
         # Get LLM evaluation (with Redis caching)
-        chain = prompt | self.llm
-        response = await self._invoke_llm_cached(
+        result = await self._invoke_llm_cached(
             chain,
             {
                 "goal": goal,
@@ -130,8 +132,12 @@ class ToolUseEvaluator(BaseEvaluator):
             },
         )
 
-        # Parse response
-        scores = self._parse_scores(response.content)
+        # Pydantic model 直接使用，无需手动解析
+        if isinstance(result, ToolUseEvaluationResult):
+            scores = result.model_dump()
+        else:
+            # 兼容旧路径（缓存命中时可能是 dict）
+            scores = self._parse_scores(result.content if hasattr(result, "content") else str(result))
 
         # Calculate weighted overall score
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)

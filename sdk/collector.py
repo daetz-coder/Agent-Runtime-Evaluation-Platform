@@ -500,33 +500,18 @@ class TrajectoryCollector:
             logger.warning("Task update failed: %s", exc)
             return False
 
-    # ── 格式校验 Schema ──
+    # ── 格式校验（Pydantic Schema） ──
 
-    # 每种 ActionType 的 action_detail 必须包含的字段
-    _REQUIRED_FIELDS: Dict[str, set] = {
-        ActionType.PLAN: {"goal"},
-        ActionType.PLAN_UPDATE: {"next_action"},
-        ActionType.TOOL_CALL: {"tool_name"},
-        ActionType.TOOL_RESULT: {"tool_name"},
-        ActionType.TOOL_DECISION: {"tool_name"},
-        ActionType.MEMORY_WRITE: {"key", "value"},
-        ActionType.MEMORY_READ: {"key"},
-        ActionType.STATE_CHANGE: {"node_name"},
-        ActionType.NODE_EXECUTE: {"node_name"},
-        ActionType.THINK: {"thought"},
-        ActionType.FAILURE: {"error_type", "error_message"},
-        ActionType.REPLAN: {"reason"},
-        ActionType.RETRIEVAL: {"query"},
-        ActionType.EVIDENCE: {"evidence_type"},
-    }
-
-    def _validate_step(self, action_type: str, action_detail: Dict[str, Any]) -> Optional[str]:
-        """校验 step 格式是否符合规范。
+    @staticmethod
+    def _validate_step(action_type: str, action_detail: Dict[str, Any]) -> Optional[str]:
+        """用 Pydantic Schema 校验 action_detail 格式。
 
         返回:
             None — 校验通过
             str — 错误消息（校验失败）
         """
+        from sdk.schemas import ACTION_DETAIL_SCHEMAS
+
         # 1. action_type 必须合法
         if action_type not in ActionType.ALL_TYPES:
             return f"Invalid action_type: '{action_type}', must be one of {ActionType.ALL_TYPES}"
@@ -535,11 +520,13 @@ class TrajectoryCollector:
         if not isinstance(action_detail, dict):
             return f"action_detail must be dict, got {type(action_detail).__name__}"
 
-        # 3. 必填字段校验
-        required = self._REQUIRED_FIELDS.get(action_type, set())
-        missing = required - set(action_detail.keys())
-        if missing:
-            return f"action_type='{action_type}' missing required fields: {missing}"
+        # 3. Pydantic Schema 校验
+        schema_class = ACTION_DETAIL_SCHEMAS.get(action_type)
+        if schema_class:
+            try:
+                schema_class.model_validate(action_detail)
+            except Exception as e:
+                return f"action_type='{action_type}' schema validation failed: {e}"
 
         return None
 
