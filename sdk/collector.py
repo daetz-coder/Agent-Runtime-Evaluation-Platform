@@ -500,6 +500,49 @@ class TrajectoryCollector:
             logger.warning("Task update failed: %s", exc)
             return False
 
+    # ── 格式校验 Schema ──
+
+    # 每种 ActionType 的 action_detail 必须包含的字段
+    _REQUIRED_FIELDS: Dict[str, set] = {
+        ActionType.PLAN: {"goal"},
+        ActionType.PLAN_UPDATE: {"next_action"},
+        ActionType.TOOL_CALL: {"tool_name"},
+        ActionType.TOOL_RESULT: {"tool_name"},
+        ActionType.TOOL_DECISION: {"tool_name"},
+        ActionType.MEMORY_WRITE: {"key", "value"},
+        ActionType.MEMORY_READ: {"key"},
+        ActionType.STATE_CHANGE: {"node_name"},
+        ActionType.NODE_EXECUTE: {"node_name"},
+        ActionType.THINK: {"thought"},
+        ActionType.FAILURE: {"error_type", "error_message"},
+        ActionType.REPLAN: {"reason"},
+        ActionType.RETRIEVAL: {"query"},
+        ActionType.EVIDENCE: {"evidence_type"},
+    }
+
+    def _validate_step(self, action_type: str, action_detail: Dict[str, Any]) -> Optional[str]:
+        """校验 step 格式是否符合规范。
+
+        返回:
+            None — 校验通过
+            str — 错误消息（校验失败）
+        """
+        # 1. action_type 必须合法
+        if action_type not in ActionType.ALL_TYPES:
+            return f"Invalid action_type: '{action_type}', must be one of {ActionType.ALL_TYPES}"
+
+        # 2. action_detail 必须是 dict
+        if not isinstance(action_detail, dict):
+            return f"action_detail must be dict, got {type(action_detail).__name__}"
+
+        # 3. 必填字段校验
+        required = self._REQUIRED_FIELDS.get(action_type, set())
+        missing = required - set(action_detail.keys())
+        if missing:
+            return f"action_type='{action_type}' missing required fields: {missing}"
+
+        return None
+
     # ── 核心记录方法 ──
 
     def record(
@@ -513,11 +556,12 @@ class TrajectoryCollector:
         """记录一条轨迹步骤（所有便捷方法的底层实现）。
 
         流程：
-            1. 检查 task_id 和 enabled 状态
-            2. dedupe_key 去重（防止同一事件重复记录）
-            3. 构建 step dict（含 step_number, action_type, action_detail, observation, timestamp）
-            4. 追加到 session.steps 缓冲区
-            5. 缓冲区满时自动触发后台 flush
+            1. 校验 action_type 和 action_detail 格式
+            2. 检查 task_id 和 enabled 状态
+            3. dedupe_key 去重（防止同一事件重复记录）
+            4. 构建 step dict（含 step_number, action_type, action_detail, observation, timestamp）
+            5. 追加到 session.steps 缓冲区
+            6. 缓冲区满时自动触发后台 flush
 
         参数:
             action_type: 动作类型（必须是 ActionType.ALL_TYPES 之一）
@@ -528,6 +572,12 @@ class TrajectoryCollector:
         返回:
             构建的 step dict，如果被去重或禁用则返回 None
         """
+        # 格式校验
+        error = self._validate_step(action_type, action_detail)
+        if error:
+            logger.warning("Step validation failed: %s", error)
+            return None
+
         session = self._session()
         if not session.task_id or not self._enabled:
             return None
