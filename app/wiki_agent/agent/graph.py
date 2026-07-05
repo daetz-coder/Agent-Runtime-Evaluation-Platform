@@ -417,6 +417,17 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         f"history: {len(ctx.history_summary)} chars → {len(context_block)} chars"
     )
 
+    # 记录 EVIDENCE（组装证据池）
+    collector.record_evidence(
+        evidence_type="rag_context",
+        sources={
+            "retrieved_docs": ctx.wiki_results,
+            "memory_results": ctx.user_facts + ctx.session_facts,
+            "chat_history_count": len(chat_history),
+        },
+        context=f"Query: {user_message[:100]}, complexity: {complexity.value if 'complexity' in dir() else 'unknown'}",
+    )
+
     # 记录 NODE_COMPLETE + STATE_CHANGE
     state_after = {"wiki_results_count": len(ctx.wiki_results), "user_facts_count": len(ctx.user_facts), "session_facts_count": len(ctx.session_facts)}
     collector.record_node_execute("search_complete", output_data=state_after)

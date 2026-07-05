@@ -72,6 +72,20 @@ def create_agent_graph(
         max_s = state["max_steps"]
         messages = list(state["messages"])
 
+        # 记录 NODE_EXECUTE（每步开始）
+        recorder.record_node_execute(
+            "think_and_act",
+            input_data={"step": current_step, "max_steps": max_s, "messages_count": len(messages)},
+        )
+
+        # 记录 MEMORY_READ（读取对话历史）
+        recorder.record_memory_read(
+            key="conversation_history",
+            value=len(messages),
+            context=f"step {current_step}",
+            hit=len(messages) > 0,
+        )
+
         # Check if we've hit max steps
         if current_step >= max_s:
             recorder.record_failure(
@@ -198,6 +212,20 @@ def create_agent_graph(
                     # Add tool result to messages
                     new_messages.append(ToolMessage(content=result, tool_call_id=tool_id))
 
+                # 记录 STATE_CHANGE + MEMORY_WRITE（工具执行后状态变化）
+                recorder.record_state_change(
+                    state_before={"messages_count": len(messages), "step": current_step},
+                    state_after={"messages_count": len(new_messages), "step": current_step + 1},
+                    trigger="tool_execution",
+                    node_name="think_and_act",
+                )
+                recorder.record_memory_write(
+                    key="conversation_history",
+                    value=f"Added {len(tool_calls)} tool results",
+                    source="tool_execution",
+                    memory_type="context",
+                )
+
                 return {
                     "messages": new_messages,
                     "current_step": current_step + 1,
@@ -210,6 +238,25 @@ def create_agent_graph(
                 if is_final or current_step >= max_s - 1:
                     final = _extract_final_answer(ai_content)
                     recorder.record_node_execute("final_answer", final)
+
+                    # 记录 EVIDENCE（最终回答的证据构建）
+                    recorder.record_evidence(
+                        evidence_type="final_answer",
+                        sources={
+                            "tool_results_count": sum(1 for m in messages if hasattr(m, "tool_call_id")),
+                            "chat_history_count": len(messages),
+                        },
+                        context=f"Goal: {goal}, steps: {current_step + 1}",
+                    )
+
+                    # 记录 STATE_CHANGE
+                    recorder.record_state_change(
+                        state_before={"done": False, "step": current_step},
+                        state_after={"done": True, "step": current_step + 1, "has_final_answer": True},
+                        trigger="final_answer",
+                        node_name="think_and_act",
+                    )
+
                     step_span.set_attribute("is_final_answer", True)
                     return {
                         "messages": [response],
@@ -229,6 +276,19 @@ def create_agent_graph(
                                 "trigger": "no_tool_call",
                             },
                         )
+                    # 记录 STATE_CHANGE + MEMORY_WRITE
+                    recorder.record_state_change(
+                        state_before={"messages_count": len(messages), "step": current_step},
+                        state_after={"messages_count": len(messages) + 1, "step": current_step + 1},
+                        trigger="reconsider",
+                        node_name="think_and_act",
+                    )
+                    recorder.record_memory_write(
+                        key="conversation_history",
+                        value="Agent reconsidered approach",
+                        source="reconsider",
+                        memory_type="context",
+                    )
                     return {
                         "messages": [response],
                         "current_step": current_step + 1,
