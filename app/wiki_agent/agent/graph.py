@@ -626,11 +626,8 @@ async def run_chat_stream(
             extraction = _extraction_from_result(result, thread_id)
             if extraction:
                 await queue.put({"type": "extraction", "data": extraction})
-            # 通知 hooks
-            await emit_session_end(session_id or "")
             await queue.put({"type": "_done", "result": result})
         except Exception as e:
-            await emit_session_end(session_id or "")
             await queue.put({"type": "error", "message": str(e)})
         finally:
             await queue.put(None)
@@ -646,6 +643,8 @@ async def run_chat_stream(
                 break
             yield event
     finally:
+        # 无论正常结束还是客户端断开，都确保 flush 评估轨迹
+        await emit_session_end(session_id or "")
         if not task.done():
             task.cancel()
             try:

@@ -53,7 +53,7 @@ async def emit_trace(
             detail["meta"] = meta
         collector.record(action, detail)
     except Exception as e:
-        logger.debug("[Wiki Agent] emit_trace error: %s", e)
+        logger.warning("[Wiki Agent] emit_trace error: %s", e)
 
 
 async def emit_step(name: str, detail: str = "", status: str = "ok") -> None:
@@ -64,7 +64,7 @@ async def emit_step(name: str, detail: str = "", status: str = "ok") -> None:
     try:
         collector.record_think(f"[{status}] {name}: {detail}" if detail else f"[{status}] {name}")
     except Exception as e:
-        logger.debug("[Wiki Agent] emit_step error: %s", e)
+        logger.warning("[Wiki Agent] emit_step error: %s", e)
 
 
 # ── 结构化层（wiki-agent graph.py 使用）──────────────
@@ -77,9 +77,9 @@ async def emit_session_start(goal: str, session_id: str, context: dict) -> None:
         return
     try:
         await collector.start_async(goal, context)
-        logger.debug("[Wiki Agent] eval session started for: %s", session_id)
+        logger.info("[Wiki Agent] eval session started for: %s", session_id)
     except Exception as e:
-        logger.debug("[Wiki Agent] emit_session_start error: %s", e)
+        logger.warning("[Wiki Agent] emit_session_start error: %s", e)
 
 
 async def emit_retrieval(query: str, results: list[dict], duration_ms: float) -> None:
@@ -90,7 +90,7 @@ async def emit_retrieval(query: str, results: list[dict], duration_ms: float) ->
     try:
         collector.record_retrieval(query, results, duration_ms=duration_ms)
     except Exception as e:
-        logger.debug("[Wiki Agent] emit_retrieval error: %s", e)
+        logger.warning("[Wiki Agent] emit_retrieval error: %s", e)
 
 
 async def emit_key_facts(facts: list[str]) -> None:
@@ -101,7 +101,7 @@ async def emit_key_facts(facts: list[str]) -> None:
     try:
         collector.record_memory_write("key_facts", facts, source="llm_extraction", memory_type="fact")
     except Exception as e:
-        logger.debug("[Wiki Agent] emit_key_facts error: %s", e)
+        logger.warning("[Wiki Agent] emit_key_facts error: %s", e)
 
 
 async def emit_response(session_id: str, response: str) -> None:
@@ -115,7 +115,7 @@ async def emit_response(session_id: str, response: str) -> None:
             {"final_response": response[:4000], "session_id": session_id},
         )
     except Exception as e:
-        logger.debug("[Wiki Agent] emit_response error: %s", e)
+        logger.warning("[Wiki Agent] emit_response error: %s", e)
 
 
 async def emit_session_end(session_id: str) -> None:
@@ -125,6 +125,6 @@ async def emit_session_end(session_id: str) -> None:
         return
     try:
         await collector.finish_async(auto_run=True)
-        logger.debug("[Wiki Agent] eval session ended for: %s", session_id)
+        logger.info("[Wiki Agent] eval session ended for: %s", session_id)
     except Exception as e:
-        logger.debug("[Wiki Agent] emit_session_end error: %s", e)
+        logger.warning("[Wiki Agent] emit_session_end error: %s", e)
