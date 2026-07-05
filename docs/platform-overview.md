@@ -902,10 +902,10 @@ tests/
 │  ③ LLM.bind_tools() → 调用 LLM                             │
 │  ④ 如果 LLM 返回工具调用:                                    │
 │     ├─ ToolProxy.execute() → 在沙箱中执行工具                │
-│     ├─ TrajectoryRecorder.record_tool_call() → 记录轨迹      │
+│     ├─ TrajectoryCollector.record_tool_call() → 记录轨迹      │
 │     └─ 将结果加入消息列表 → 继续循环                         │
 │  ⑤ 如果 LLM 返回最终答案:                                    │
-│     ├─ TrajectoryRecorder.record_think() → 记录轨迹          │
+│     ├─ TrajectoryCollector.record_think() → 记录轨迹          │
 │     └─ done=True → 结束                                     │
 └─────────────────────┬───────────────────────────────────────┘
                       │
@@ -1085,10 +1085,10 @@ AgentRunner.run()
   ③ create_agent_graph() → 构建 LangGraph
   ④ graph.ainvoke() → 运行 Agent ReAct 循环
      │
-     ├─ think → TrajectoryRecorder.record_think()
-     ├─ tool_call → ToolProxy.execute() → TrajectoryRecorder.record_tool_call()
-     ├─ replan → TrajectoryRecorder.record_replan()
-     └─ done → TrajectoryRecorder.get_trajectory()
+     ├─ think → TrajectoryCollector.record_think()
+     ├─ tool_call → ToolProxy.execute() → TrajectoryCollector.record_tool_call()
+     ├─ replan → TrajectoryCollector.record_replan()
+     └─ done → TrajectoryCollector.get_trajectory()
      │
      ▼
   ⑤ 持久化轨迹到 agent_trajectories 表

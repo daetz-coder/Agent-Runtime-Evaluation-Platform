@@ -232,7 +232,7 @@
 │     · 知识库检索结果（top 5）                                │
 │     · 现有 User Memory（冲突检测）                           │
 │     · 现有 Session Memory（冲突检测）                        │
-│     · PydanticOutputParser 格式说明                          │
+│     · with_structured_output 格式说明（Function Calling）     │
 │                                                              │
 │  ② 调用 LLM                                                  │
 │     · 优先 with_structured_output（Function Calling）        │

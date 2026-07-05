@@ -354,7 +354,7 @@ build_context_block(ctx) 的预算裁剪：
 **读完你应该知道**：
 - 决策类型：create / update / delete / none
 - 决策前会先 `hybrid_search()` 查找相关现有知识
-- 用 PydanticOutputParser 解析 LLM 输出为结构化决策
+- 用 with_structured_output 生成结构化决策（降级 PydanticOutputParser）
 - Wiki 链接规则：content 中引用其他条目时用 `[[页面名称]]` 语法
 
 ### 5.3 `app/wiki_agent/agent/graph.py` ⭐⭐⭐

@@ -154,7 +154,7 @@ their full trajectory for evaluation.
 | **LangGraph Agent** | `graph.py` | ReAct loop: think → act → observe. Auto-injects `_llm_trace` (prompt/response/model/latency) into each step |
 | **Prompts** | `prompts/` (package) | System prompt templates in `templates/v1.1.yaml`. Versioned via `PROMPT_VERSION=v1.1` constant |
 | **Mock Executor** | `mock_executor.py` | `SANDBOX_MOCK_MODE=true` — returns predefined trajectory without Docker |
-| **TrajectoryRecorder** | `trajectory_recorder.py` | Records 14 action types. Accepts optional `llm_trace` parameter |
+| **TrajectoryCollector** | `sdk/collector.py` | Unified trajectory recorder for all agents. Records 14 action types with Pydantic schema validation |
 | **SessionPool** | `sandbox/session_pool.py` | Docker container pool with writable `/workspace` |
 | **WorkspaceManager** | `sandbox/workspace.py` | File injection, capture, and cleanup in sandbox containers |
 | **Tools** | `tools/` | PythonExecute, BashExecute, FileRead/Write/List |

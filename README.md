@@ -112,7 +112,7 @@ cd frontend && npm run dev
 |------|------|
 | 评估维度 × 子指标 | 6 × 3~4 = 20 项 |
 | 轨迹动作类型 | 14 种（plan / tool_call / replan / retrieval / think / memory_write / failure 等） |
-| 接入模式 | 4 种（LangGraph Instrument / LLM Proxy / Callback / Agent Hooks） |
+| 接入模式 | 3 种（LangGraph Instrument / LLM Proxy / Callback） |
 | 单次全评估耗时 | 15~30s（6 评估器并行 asyncio.gather） |
 | 检索基准（Wiki Agent） | Hybrid Top-1: 75%, MRR: 0.825（20 条查询） |
 
@@ -169,14 +169,13 @@ Frontend (Vue 3) ──REST/SSE──▶ Backend (FastAPI) ──▶ Docker Sand
 
 ## 接入方式
 
-平台提供 4 种接入方式，适配不同类型的 Agent 项目：
+平台提供 3 种接入方式，适配不同类型的 Agent 项目：
 
 | 方式 | 适用场景 | 侵入性 | 推荐度 |
 |------|----------|--------|--------|
 | **LangGraph Instrument** | LangGraph 项目 | 一行代码，零侵入 | ⭐⭐⭐ |
 | **LLM Proxy** | LangChain 系框架 | 替换 LLM 创建，零侵入 | ⭐⭐⭐ |
 | **Callback** | 需要细粒度控制 | 注入 callback handler | ⭐⭐ |
-| **Agent Hooks** | 任意框架（推荐非 LangGraph 项目） | 关键点添加 emit 调用 | ⭐⭐⭐ |
 
 **LangGraph 项目**推荐用 SDK 自动采集（[集成指南](docs/adapters.md)）：
 

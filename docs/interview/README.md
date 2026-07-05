@@ -38,7 +38,7 @@
 
 ## 轨迹（Trajectory）与埋点
 
-- [★★ Q025](answers/Q025-两套collector对比.md) — 请说明 `sdk/collector.py` 与 `app/collectors/inprocess_transport.py` 的关系：为什么 Wiki 内嵌时需要 in-process transport？
+- [★★ Q025](answers/Q025-两套collector对比.md) — 请说明 `sdk/collector.py` 的 TrajectoryCollector 如何统一所有 Agent 的轨迹采集？
 - [★ Q026](answers/Q026-finish与离线缓冲.md) — SDK 的 `finish(auto_run=True)` 做了什么？离线缓冲是如何实现的？
 - [★ Q027](answers/Q027-EVAL_BATCH_SIZE.md) — `EVAL_BATCH_SIZE` 批量上报的设计考虑是什么？太小或太大有什么影响？
 - [★ Q028](answers/Q028-上报失败重试.md) — 轨迹上报失败时（网络抖动、后端 500），SDK 会丢数据还是重试？你会如何改进？

@@ -75,7 +75,7 @@
 
 ### 收集机制
 
-25. **★** 请说明 `sdk/collector.py` 与 `app/collectors/inprocess_transport.py` 的关系：为什么 Wiki 内嵌时需要 in-process transport？
+25. **★** 请说明 `sdk/collector.py` 的 TrajectoryCollector 如何统一所有 Agent 的轨迹采集？HTTP 模式如何避免自死锁？
 26. SDK 的 `finish(auto_run=True)` 做了什么？离线缓冲是如何实现的？
 27. `EVAL_BATCH_SIZE` 批量上报的设计考虑是什么？太小或太大有什么影响？
 28. 轨迹上报失败时（网络抖动、后端 500），SDK 会丢数据还是重试？你会如何改进？

@@ -142,7 +142,7 @@ POST /api/v1/evaluations/run
        ├─ 2. 运行 Agent (Docker 沙箱)
        │     └─ AgentRunner().run(goal, ...)            # runner.py:73
        │          │
-       │          ├─ recorder = TrajectoryRecorder()    # 创建轨迹记录器
+       │          ├─ recorder = TrajectoryCollector()    # 创建轨迹记录器
        │          ├─ tool_proxy = ToolProxy(recorder=recorder)  # 工具代理注入 recorder
        │          ├─ graph = create_agent_graph(recorder=recorder)
        │          │
@@ -167,8 +167,8 @@ POST /api/v1/evaluations/run
 **关键代码** (`app/agent_runtime/runner.py:167-184`)：
 
 ```python
-# 创建 TrajectoryRecorder，注入到所有组件
-recorder = TrajectoryRecorder()
+# 创建 TrajectoryCollector，注入到所有组件
+recorder = TrajectoryCollector()
 tool_proxy = ToolProxy(container=..., allowed_tools=..., recorder=recorder)
 llm = create_llm(provider=provider, model=model, ...)
 
@@ -184,7 +184,7 @@ trajectory = recorder.get_trajectory()
 
 **为什么 Sandbox 能自动采集？**
 
-因为 `TrajectoryRecorder` 被注入到了 Agent 的每个组件中：
+因为 `TrajectoryCollector` 被注入到了 Agent 的每个组件中：
 - `ToolProxy` 在每次工具调用时调用 `recorder.record_tool_call()`
 - `create_agent_graph` 在每个节点执行时调用 `recorder.record_node_execute()`
 - Agent 的 planner 在生成计划时调用 `recorder.record_plan()`
@@ -428,7 +428,7 @@ async def run_chat_stream(user_message, chat_history, session_id=None):
 
 **文件**：`app/agent_runtime/runner.py` + `app/agent_runtime/graph.py`
 
-Sandbox 现在使用与外部 Agent 相同的 `TrajectoryCollector`，不再使用独立的 `TrajectoryRecorder`。
+Sandbox 现在使用与外部 Agent 相同的 `TrajectoryCollector`，不再使用独立的 `TrajectoryCollector`。
 
 ```python
 # runner.py — 创建 collector 并注入到 Agent 组件
@@ -436,13 +436,13 @@ collector = get_collector()
 collector.start(goal, {"model": model, "provider": provider, "tools": effective_tools})
 ```
 
-**为什么 TrajectoryRecorder 能自动采集？**
+**为什么 TrajectoryCollector 能自动采集？**
 
 因为它被注入到了 Agent 的每个组件：
 
 ```python
 # runner.py:167-173
-recorder = TrajectoryRecorder()
+recorder = TrajectoryCollector()
 tool_proxy = ToolProxy(container=..., allowed_tools=..., recorder=collector)
 graph = create_agent_graph(llm=llm, tool_proxy=tool_proxy, recorder=collector, ...)
 
@@ -667,7 +667,7 @@ CREATE TABLE evaluations (
 |---------|------|--------|
 | SDK 外部采集 | Agent 代码显式调用 `collector.record_*()` | 中（需改业务代码） |
 | Wiki Agent hooks | graph.py 显式调用 `emit_*()` | 中（6 个调用点） |
-| Sandbox 自动采集 | `TrajectoryRecorder` 注入到 Agent 组件 | 低（框架层注入） |
+| Sandbox 自动采集 | `TrajectoryCollector` 注入到 Agent 组件 | 低（框架层注入） |
 
 ### 7.2 SDK 采集的工作原理
 

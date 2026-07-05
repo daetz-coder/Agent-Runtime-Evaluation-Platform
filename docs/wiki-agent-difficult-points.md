@@ -467,18 +467,16 @@ LLM 的输出是自由文本，不是结构化 JSON。即使 Prompt 要求返回
 ```python
 # knowledge_agent.py — decide_action()
 
-async def decide_action(user_message, ai_response):
-    # 用 PydanticOutputParser 解析
-    response = await llm.ainvoke([HumanMessage(content=prompt)])
-    raw_text = (response.content or "").strip()
+# 路径 1（推荐）：with_structured_output
+structured_llm = llm.with_structured_output(KnowledgeDecision)
+chain = prompt | structured_llm
+result = await chain.ainvoke(inputs)
+# → KnowledgeDecision(action="create", title="JWT", content="...")
 
-    if not raw_text:
-        return KnowledgeDecision(action="none", reason="LLM 返回空内容")
-
-    try:
-        decision = parser.parse(raw_text)  # PydanticOutputParser
-    except Exception as e:
-        return KnowledgeDecision(action="none", reason=f"决策失败: {e}")
+# 路径 2（降级）：PydanticOutputParser（LLM 不支持 function calling 时）
+response = await llm.ainvoke([HumanMessage(content=prompt)])
+raw_text = (response.content or "").strip()
+decision = parser.parse(raw_text)  # PydanticOutputParser
 ```
 
 ```python

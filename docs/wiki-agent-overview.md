@@ -219,7 +219,7 @@ class WikiState(TypedDict):
 1. 调用 `retrieve_context()` 获取四层上下文（Query Rewrite + 混合检索 + 用户/会话记忆 + 对话历史）
 2. `build_context_block()` 预算裁剪组装
 3. 构建 Prompt（用户消息 + AI 回复 + 四层上下文 + 格式指令）
-4. 用 LLM 生成结构化 `KnowledgeDecision`（通过 PydanticOutputParser）
+4. 用 LLM 生成结构化 `KnowledgeDecision`（通过 with_structured_output，降级 PydanticOutputParser）
 5. `model_validator` 硬校验必填字段，失败时反馈错误重试（最多 2 次）
 
 #### `agent/context_retriever.py` — 统一上下文检索
