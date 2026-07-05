@@ -428,6 +428,29 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         context=f"Query: {user_message[:100]}, complexity: {complexity.value if 'complexity' in dir() else 'unknown'}",
     )
 
+    # 记录 PLAN_UPDATE（基于检索结果的真正规划）
+    has_kb_results = len(ctx.wiki_results) > 0
+    has_memory = len(ctx.user_facts) > 0 or len(ctx.session_facts) > 0
+    plan_steps = []
+    if has_kb_results:
+        plan_steps.append(f"引用知识库 {len(ctx.wiki_results)} 条结果回答")
+    if has_memory:
+        plan_steps.append("结合用户偏好和会话上下文")
+    plan_steps.append("生成结构化回复")
+    if len(user_message) > 20:
+        plan_steps.append("分析是否需要保存为知识条目")
+
+    collector.record_plan_update(
+        milestone_status={
+            "search": "done",
+            "respond": "pending",
+            "decide": "pending",
+        },
+        next_action="respond: 基于检索结果生成回复",
+        reason=f"检索到 {len(ctx.wiki_results)} 条知识库结果，{'有' if has_memory else '无'}记忆数据",
+        remaining_steps=plan_steps,
+    )
+
     # 记录 NODE_COMPLETE + STATE_CHANGE
     state_after = {"wiki_results_count": len(ctx.wiki_results), "user_facts_count": len(ctx.user_facts), "session_facts_count": len(ctx.session_facts)}
     collector.record_node_execute("search_complete", output_data=state_after)
