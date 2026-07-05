@@ -424,50 +424,16 @@ async def run_chat_stream(user_message, chat_history, session_id=None):
 
 ---
 
-### 4.4 TrajectoryRecorder — Sandbox 自动采集
+### 4.4 Sandbox 统一使用 SDK TrajectoryCollector
 
-**文件**：`app/agent_runtime/trajectory_recorder.py`
+**文件**：`app/agent_runtime/runner.py` + `app/agent_runtime/graph.py`
+
+Sandbox 现在使用与外部 Agent 相同的 `TrajectoryCollector`，不再使用独立的 `TrajectoryRecorder`。
 
 ```python
-# line 38-40
-class TrajectoryRecorder:
-    def __init__(self):
-        self._steps = []
-        self._step_counter = 0
-
-    # line 66-94 — 工具调用（一次记录两个步骤）
-    def record_tool_call(self, tool_name, tool_input, tool_output, success=True, duration_ms=None):
-        # 步骤 1: TOOL_CALL
-        self._record(ActionType.TOOL_CALL,
-            {"tool_name": tool_name, "input": self._truncate(tool_input)},
-            observation=tool_output[:3000])
-        # 步骤 2: TOOL_RESULT
-        self._record(ActionType.TOOL_RESULT,
-            {"tool_name": tool_name, "success": success, "duration_ms": duration_ms})
-
-    # line 51-64 — 思考记录（含 LLM 原始数据）
-    def record_think(self, thought, llm_trace=None):
-        detail = {"thought": thought}
-        self._record(ActionType.THINK, detail, llm_trace=llm_trace)
-
-    # line 154-183 — 核心记录方法
-    def _record(self, action_type, action_detail, observation=None, llm_trace=None):
-        self._step_counter += 1
-        if llm_trace:
-            action_detail["_llm_trace"] = {           # 注入 LLM 原始数据
-                "prompt": llm_trace.get("prompt", "")[:10000],
-                "response": llm_trace.get("response", "")[:10000],
-                "model": llm_trace.get("model", "unknown"),
-                "latency_ms": llm_trace.get("latency_ms", 0),
-            }
-        step = {
-            "step_number": self._step_counter,
-            "action_type": action_type,
-            "action_detail": action_detail,
-            "observation": observation,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        self._steps.append(step)
+# runner.py — 创建 collector 并注入到 Agent 组件
+collector = get_collector()
+collector.start(goal, {"model": model, "provider": provider, "tools": effective_tools})
 ```
 
 **为什么 TrajectoryRecorder 能自动采集？**
@@ -477,9 +443,21 @@ class TrajectoryRecorder:
 ```python
 # runner.py:167-173
 recorder = TrajectoryRecorder()
-tool_proxy = ToolProxy(container=..., recorder=recorder)  # 工具代理持有 recorder
-graph = create_agent_graph(recorder=recorder)              # 图节点持有 recorder
+tool_proxy = ToolProxy(container=..., allowed_tools=..., recorder=collector)
+graph = create_agent_graph(llm=llm, tool_proxy=tool_proxy, recorder=collector, ...)
+
+# 执行完成后 flush
+trajectory = collector.get_steps()
+collector.finish(auto_run=False)
 ```
+
+**为什么 Sandbox 能自动采集？**
+
+因为 `TrajectoryCollector` 被注入到了 Agent 的每个组件：
+- `ToolProxy` 每次执行工具时调用 `collector.record_tool_call()` + `collector.record_tool_result()`
+- `create_agent_graph` 在每个节点执行时调用 `collector.record_node_execute()`
+- Agent 的 planner 在生成计划时调用 `collector.record_plan()`
+- LLM 返回 tool_calls 时调用 `collector.record(TOOL_DECISION, ...)`
 
 - `ToolProxy` 每次执行工具时调用 `recorder.record_tool_call()`
 - Agent 图的每个节点执行时调用 `recorder.record_node_execute()`
@@ -538,7 +516,30 @@ def _extract_retrievals(self, trajectory):
          └─ 评估：相关性、证据准确、覆盖度、幻觉检测
 ```
 
-### 5.3 评估流程
+### 5.3 两个 Agent 的 ActionType 完整覆盖
+
+两个 Agent 都覆盖全部 14 种 ActionType，缺失的类型是因为 Agent 本身没有对应行为：
+
+| ActionType | Sandbox Agent | Wiki Agent | Agent 行为对应 |
+|-----------|:---:|:---:|-------------|
+| `PLAN` | ✅ | ✅ | 生成计划 |
+| `PLAN_UPDATE` | ✅ | ✅ | 更新计划/进度 |
+| `TOOL_CALL` | ✅ | ✅ | 调用工具 |
+| `TOOL_RESULT` | ✅ | ✅ | 工具返回 |
+| `TOOL_DECISION` | ✅ | ✅ | 决定调用哪个工具 |
+| `MEMORY_WRITE` | ✅ | ✅ | 写入记忆 |
+| `MEMORY_READ` | ✅ | ✅ | 读取记忆 |
+| `STATE_CHANGE` | ✅ | ✅ | 状态变化 |
+| `NODE_EXECUTE` | ✅ | ✅ | 节点执行 |
+| `THINK` | ✅ | ✅ | 思考推理 |
+| `FAILURE` | ✅ | ✅ | 异常/失败 |
+| `REPLAN` | ✅ | ✅ | 失败后重规划（create↔update 替代） |
+| `RETRIEVAL` | ✅ | ✅ | RAG 检索 |
+| `EVIDENCE` | ✅ | ✅ | 构建证据池 |
+
+**覆盖率：14/14（100%）**
+
+### 5.4 评估流程
 
 ```python
 # app/services/evaluation_service.py:339-461
