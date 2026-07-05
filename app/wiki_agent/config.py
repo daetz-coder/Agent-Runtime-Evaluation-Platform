@@ -2,6 +2,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.config import settings as _platform_settings
+
 # wiki-agent 项目根目录（即 app/wiki_agent/）
 WIKI_AGENT_ROOT = Path(__file__).resolve().parent
 WIKI_AGENT_DIR = WIKI_AGENT_ROOT
@@ -9,13 +11,13 @@ WIKI_DATA_DIR = WIKI_AGENT_ROOT / "data"
 
 
 class WikiAgentSettings(BaseSettings):
-    # LLM (DeepSeek, OpenAI-compatible API)
-    DEEPSEEK_API_KEY: str = ""
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-    DEEPSEEK_MODEL: str = "deepseek-chat"
+    # LLM (DeepSeek, OpenAI-compatible API) — 默认值复用平台配置
+    DEEPSEEK_API_KEY: str = _platform_settings.DEEPSEEK_API_KEY
+    DEEPSEEK_BASE_URL: str = _platform_settings.DEEPSEEK_BASE_URL
+    DEEPSEEK_MODEL: str = _platform_settings.DEEPSEEK_MODEL
 
     # LLM (ZhipuAI / GLM, OpenAI-compatible API) — optional override
-    ZHIPUAI_API_KEY: str = ""
+    ZHIPUAI_API_KEY: str = _platform_settings.ZHIPUAI_API_KEY
     ZHIPUAI_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"
     ZHIPUAI_CHAT_MODEL: str = "glm-4-flash"
 

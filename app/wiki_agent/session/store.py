@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from app.wiki_agent.cache import cache_delete, cache_get, cache_set
+from app.core.cache import cache_delete, cache_get, cache_set
 from app.wiki_agent.config import settings
 
 _CACHE_SESSION_TTL = settings.CACHE_SESSION_TTL

@@ -3,6 +3,13 @@ TrajectoryRecorder — capture agent activity as TrajectoryStep records.
 
 Maps agent runtime events (LLM calls, tool calls, thinking, planning, failures)
 to the existing 14 ActionType constants used by the evaluation pipeline.
+
+注意：此模块与 sdk/collector.py 的 TrajectoryCollector 功能有重叠。
+关键差异：
+- record_tool_call() 语义不同：本模块一次调用同时记录 TOOL_CALL + TOOL_RESULT，
+  SDK 的 TrajectoryCollector 将两者分开为 record_tool_call() 和 record_tool_result()。
+- 本模块用于 agent_runtime 内部（sandbox 执行），TrajectoryCollector 用于外部 Agent SDK。
+- ActionType 常量已统一：app/models/action_types.py 从 sdk/collector.py re-export。
 """
 
 from __future__ import annotations

@@ -2,6 +2,11 @@
 
 ZhipuAI 优先（如配置了 API Key），否则回退到 DeepSeek。
 所有需要 LLM 的模块统一使用 create_chat_llm()，避免重复逻辑。
+
+注意：此工厂与 app/agent_runtime/llm_factory.py 功能有重叠。
+后者支持 5 个 provider（OpenAI/Anthropic/DeepSeek/ZhipuAI/Qwen），
+但不支持 streaming 和 max_tokens 参数。
+本工厂专为 wiki_agent 的流式输出需求定制，保留独立实现。
 """
 
 from __future__ import annotations

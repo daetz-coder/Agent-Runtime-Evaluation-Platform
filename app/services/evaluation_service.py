@@ -33,14 +33,7 @@ from app.models.schemas import (
 logger = logging.getLogger(__name__)
 tracer = get_tracer(__name__)
 
-DIMENSION_LABELS = {
-    "planning": "规划质量",
-    "tactical": "战术决策",
-    "tool_use": "工具使用",
-    "memory": "记忆保持",
-    "replan": "重规划",
-    "retrieval": "检索质量",
-}
+from app.constants import DIMENSION_LABELS
 
 
 class EvaluationService:
