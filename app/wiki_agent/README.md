@@ -244,7 +244,7 @@ wiki-agent 通过 `hooks.py` 委托给 SDK `TrajectoryCollector` 实现评估数
 
 ### 运行模式
 
-- **评估平台运行中**：SDK 自动推送轨迹数据到平台（HTTP 或进程内直写）
+- **评估平台运行中**：SDK 自动通过 HTTP 推送轨迹数据到平台
 - **评估平台未运行**：SDK 自动缓冲到本地，不阻塞 Agent 运行
 - **EVAL_ENABLED=false**：所有操作静默跳过，零开销
 

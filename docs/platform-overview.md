@@ -927,7 +927,7 @@ tests/
 ### 4.4 SDK 轨迹采集架构
 
 ```
-外部 Agent 项目
+Agent 项目（Wiki Agent / 外部 Agent）
      │
      ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -945,6 +945,10 @@ tests/
 │  handler = create_callback_handler()                        │
 │  llm = ChatZhipuAI(callbacks=[handler])                     │
 │  → 自动采集: LLM 调用事件                                    │
+│                                                             │
+│  方式 4: 手动记录（任意框架）                                  │
+│  collector.record_retrieval(query, results, ms)             │
+│  → 灵活记录任意操作                                          │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
@@ -953,11 +957,11 @@ tests/
 │                                                             │
 │  ① start(goal, context) → 创建 task_id                     │
 │  ② record(action_type, detail) → 追加到内存缓冲             │
-│  ③ finish(auto_run) → flush 到平台                         │
+│  ③ finish(auto_run) → HTTP flush 到平台                     │
 │                                                             │
 │  传输层:                                                     │
-│  - InProcess: 同进程调用（EVAL_INPROCESS=true）              │
 │  - HTTP: POST /api/v1/tasks/{id}/trajectory（批量上传）      │
+│  - 异步: asyncio.to_thread 不阻塞事件循环                    │
 │  - 失败回退: 内存缓冲 + 指数退避重试                         │
 └─────────────────────┬───────────────────────────────────────┘
                       │

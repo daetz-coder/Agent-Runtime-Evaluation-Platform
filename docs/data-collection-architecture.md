@@ -7,7 +7,7 @@
 ## 目录
 
 - [一、数据采集全景图](#一数据采集全景图)
-- [二、四条数据采集路径](#二四条数据采集路径)
+- [二、两条数据采集路径](#二两条数据采集路径)
 - [三、14 种轨迹数据类型详解](#三14-种轨迹数据类型详解)
 - [四、核心代码逐行解析](#四核心代码逐行解析)
 - [五、数据消费：6 个评估器](#五数据消费6-个评估器)
@@ -22,41 +22,44 @@
                     ┌─────────────────────────────────────────────┐
                     │              评估平台 (FastAPI)              │
                     │                                             │
-                    │   ┌─────────────┐    ┌──────────────────┐  │
-                    │   │  REST API   │    │  InProcess 直写   │  │
-                    │   │  /tasks/    │    │  (同进程 DB)      │  │
-                    │   └──────┬──────┘    └────────┬─────────┘  │
-                    │          │                    │             │
-                    │          ▼                    ▼             │
+                    │   ┌─────────────────────────────────────┐  │
+                    │   │  REST API                            │  │
+                    │   │  POST /tasks/                        │  │
+                    │   │  POST /tasks/{id}/trajectory         │  │
+                    │   │  POST /evaluations/                  │  │
+                    │   └──────────────┬──────────────────────┘  │
+                    │                  │                          │
+                    │                  ▼                          │
                     │   ┌─────────────────────────────────────┐  │
                     │   │       EvaluationService              │  │
                     │   │  add_trajectory() → DB 写入          │  │
                     │   │  run_evaluation() → 6 个评估器并行    │  │
                     │   └─────────────────────────────────────┘  │
-                    └─────────────────────────────────────────────
-                         ▲                    ▲
-                         │ HTTP               │ 进程内直写
-                         │                    │
-          ┌──────────────┴──────┐    ┌────────┴────────────┐
-          │  路径 1: SDK 外部采集 │    │ 路径 2: Wiki Agent  │
-          │  (外部 Agent 进程)   │    │ (嵌入同一 FastAPI)  │
-          └─────────────────────┘    └─────────────────────┘
-
-          ┌─────────────────────┐    ┌─────────────────────┐
-          │  路径 3: Sandbox    │    │ 路径 4: 手动 API    │
-          │  (平台运行 Agent)   │    │ (用户提交轨迹)      │
-          └─────────────────────┘    └─────────────────────┘
+                    └──────────────────▲──────────────────────────┘
+                                       │ HTTP
+                         ┌─────────────┴─────────────┐
+                         │                           │
+          ┌──────────────┴──────┐      ┌─────────────┴─────────┐
+          │  路径 1: SDK 采集    │      │  路径 2: Sandbox      │
+          │  (所有 Agent 统一)   │      │  (平台控制 Agent 运行) │
+          │                     │      │                       │
+          │  Wiki Agent         │      │  AgentRunner.run()    │
+          │  外部 Agent         │      │  Docker 沙箱执行      │
+          │  手动提交           │      │  自动捕获轨迹         │
+          └─────────────────────┘      └───────────────────────┘
 ```
+
+**精简为 2 条路径**：所有 Agent 统一通过 SDK HTTP 模式推送数据，Sandbox 模式用于平台控制 Agent 运行的场景。
 
 ---
 
-## 二、四条数据采集路径
+## 二、两条数据采集路径
 
-### 路径 1: SDK 外部采集（HTTP 模式）
+### 路径 1: SDK 采集（HTTP 模式）
 
-**适用场景**：Agent 运行在独立进程中，通过 HTTP 推送轨迹数据。
+**适用场景**：所有 Agent（Wiki Agent、外部 Agent、手动提交）统一使用此路径。
 
-**触发条件**：`EVAL_INPROCESS=false` 或 API 地址不是 localhost。
+**工作原理**：Agent 代码调用 `collector.record_*()`，数据先缓冲到内存，`finish()` 时批量 HTTP POST 到评估平台。
 
 **代码流程**：
 
@@ -114,7 +117,7 @@ def record(self, action_type, action_detail, observation=None, *, dedupe_key=Non
         session.steps.append(step)
 
         # 缓冲区满时自动 flush
-        if len(session.steps) >= self._batch_size and not self.use_inprocess():
+        if len(session.steps) >= self._batch_size:
             threading.Thread(target=self._flush_steps, ...).start()
 
         return step
@@ -122,73 +125,7 @@ def record(self, action_type, action_detail, observation=None, *, dedupe_key=Non
 
 ---
 
-### 路径 2: 进程内直写（Wiki Agent 嵌入模式）
-
-**适用场景**：Wiki Agent 运行在评估平台的同一 FastAPI 进程中。
-
-**触发条件**：`EVAL_INPROCESS=true` 且 API 地址是 localhost（默认配置）。
-
-**代码流程**：
-
-```
-Wiki Agent (graph.py)
-  │
-  ├─ hooks.emit_session_start(goal, sid, ctx)          # hooks.py:73
-  │    └─ await collector.start_async(goal, ctx)       # sdk/collector.py:422
-  │         └─ inprocess_transport.create_task_record() # 直接写 DB
-  │              └─ EvaluationService.create_task()     # SQLAlchemy INSERT
-  │
-  ├─ hooks.emit_retrieval(query, results, ms)           # hooks.py:85
-  │    └─ collector.record_retrieval(...)               # 内存缓冲
-  │
-  ├─ hooks.emit_key_facts(facts)                        # hooks.py:96
-  │    └─ collector.record_memory_write(...)            # 内存缓冲
-  │
-  ├─ hooks.emit_response(sid, response)                 # hooks.py:107
-  │    └─ collector.record(EVIDENCE, {...})             # 内存缓冲
-  │
-  └─ hooks.emit_session_end(sid)                        # hooks.py:121
-       └─ await collector.finish_async(auto_run=True)   # sdk/collector.py:488
-            └─ inprocess_transport.persist_collector_session()
-                 ├─ service.add_trajectory(steps)       # 批量写入轨迹
-                 ├─ service.update_task(status=completed)
-                 ├─ service.create_evaluation()         # 创建评估记录
-                 └─ asyncio.create_task(_run_evaluation_background())
-                      └─ service.run_evaluation()       # 后台运行 6 个评估器
-```
-
-**关键代码** (`app/collectors/inprocess_transport.py:49-76`)：
-
-```python
-async def persist_collector_session(task_id, steps, *, auto_run=False, ...):
-    """进程内直写 — 绕过 HTTP，直接写 DB。"""
-    async with async_session_factory() as db:
-        service = EvaluationService(db)
-
-        # 1. 写入所有轨迹步骤
-        await service.add_trajectory(task_id, steps)
-
-        # 2. 标记任务完成
-        await service.update_task(task_id, TaskUpdate(status="completed"))
-
-        # 3. 创建评估记录
-        if auto_run:
-            eval_record = await service.create_evaluation(task_id)
-
-        await db.commit()
-
-    # 4. 后台触发评估
-    if auto_run and eval_record:
-        asyncio.create_task(_run_evaluation_background(task_id, eval_record.id))
-```
-
-**为什么需要进程内直写？**
-
-如果 Wiki Agent 用 HTTP 模式，它会向 `http://127.0.0.1:8000` 发请求，而自己就运行在 `127.0.0.1:8000` 上 —— 这会导致**HTTP 自死锁**（自己请求自己，请求永远无法完成）。进程内直写绕过 HTTP，直接用 SQLAlchemy 写 DB。
-
----
-
-### 路径 3: Sandbox 自动采集
+### 路径 2: Sandbox 自动采集
 
 **适用场景**：评估平台在 Docker 容器中运行 Agent，自动捕获完整轨迹。
 
@@ -251,37 +188,6 @@ trajectory = recorder.get_trajectory()
 - `ToolProxy` 在每次工具调用时调用 `recorder.record_tool_call()`
 - `create_agent_graph` 在每个节点执行时调用 `recorder.record_node_execute()`
 - Agent 的 planner 在生成计划时调用 `recorder.record_plan()`
-
----
-
-### 路径 4: 手动 API 提交
-
-**适用场景**：用户通过 REST API 手动提交轨迹数据。
-
-```bash
-# 1. 创建任务
-curl -X POST /api/v1/tasks/ -d '{"goal": "实现登录功能"}'
-
-# 2. 提交轨迹步骤
-curl -X POST /api/v1/tasks/{task_id}/trajectory -d '[
-  {"step_number": 1, "action_type": "plan", "action_detail": {...}},
-  {"step_number": 2, "action_type": "tool_call", "action_detail": {...}},
-  ...
-]'
-
-# 3. 触发评估
-curl -X POST /api/v1/evaluations/ -d '{"task_id": "..."}'
-```
-
-**关键代码** (`app/api/v1/endpoints/tasks.py:116-141`)：
-
-```python
-@router.post("/{task_id}/trajectory", status_code=201)
-async def add_trajectory(task_id: str, steps: List[TrajectoryStep], ...):
-    steps_data = [step.model_dump() for step in steps]
-    await service.add_trajectory(task_id, steps_data, workspace_id=...)
-    return {"message": f"Added {len(steps_data)} trajectory steps"}
-```
 
 ---
 
@@ -372,7 +278,6 @@ class TrajectoryCollector:
             self._enabled = _env_bool("EVAL_ENABLED", True)
             self._api_base = _env_str("EVAL_API_BASE_URL", "http://127.0.0.1:8000")
             self._batch_size = _env_int("EVAL_BATCH_SIZE", 10)
-            self._inprocess = _env_bool("EVAL_INPROCESS", True)
 ```
 
 **为什么用单例？**
@@ -400,22 +305,22 @@ _collector_session: ContextVar[Optional[_CollectorSession]] = ContextVar(...)
 - 每个对话需要独立的 task_id 和 steps 缓冲区
 - ContextVar 在 asyncio 中自动隔离，无需手动传递
 
-#### 进程内模式判断
+#### 异步方法（不阻塞事件循环）
 
 ```python
-# line 347-355
-def use_inprocess(self) -> bool:
-    """判断是否使用进程内直写（避免 HTTP 自死锁）。"""
-    if not self._inprocess or not self._enabled:
-        return False
-    base = self._api_base.rstrip("/")
-    return base in ("http://127.0.0.1:8000", "http://localhost:8000")
+async def start_async(self, goal, context):
+    """在线程池中执行 HTTP 请求，不阻塞事件循环。"""
+    return await asyncio.to_thread(self.start, goal, context)
+
+async def finish_async(self, *, auto_run=False):
+    """在线程池中执行 HTTP 请求，不阻塞事件循环。"""
+    return await asyncio.to_thread(self.finish, auto_run=auto_run)
 ```
 
-**为什么需要这个判断？**
-- Wiki Agent 运行在 `127.0.0.1:8000`（FastAPI）
-- 如果用 HTTP 模式，会向自己发请求 → 死锁
-- 进程内模式直接用 SQLAlchemy 写 DB，绕过 HTTP
+**为什么用 `asyncio.to_thread`？**
+- Wiki Agent 运行在同一 FastAPI 进程中
+- 如果直接在事件循环中发 HTTP 请求，会阻塞其他请求处理
+- `to_thread` 将 HTTP 请求放到独立线程，事件循环继续运行
 
 ---
 
@@ -800,7 +705,7 @@ Agent 代码
 |------|------|
 | 用内存缓冲而非实时上传 | 减少 HTTP 请求次数，提升性能 |
 | 用 ContextVar 而非全局变量 | 支持并发请求的会话隔离 |
-| 用进程内直写而非 HTTP | 避免嵌入模式下的自死锁 |
+| 用 asyncio.to_thread 发 HTTP | 不阻塞事件循环，避免自死锁 |
 | 用去重集合而非简单追加 | 防止重试导致的重复记录 |
 | 用 LLM-as-Judge 而非规则 | 评估需要理解语义，规则无法覆盖 |
 
