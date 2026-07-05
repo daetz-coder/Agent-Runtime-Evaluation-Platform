@@ -25,7 +25,6 @@ sdk.collector — 轻量级轨迹收集器（TrajectoryCollector）
 - **失败回退**：flush 失败时步骤回退到本地缓冲，下次 flush 重试
 - **指数退避**：HTTP 请求最多重试 3 次（0.5s → 1s → 2s）
 - **离线模式**：EVAL_ENABLED=false 时所有操作静默跳过
-- **进程内模式**：嵌入评估平台时直接写 DB，避免 HTTP 自死锁
 - **事件去重**：通过 dedupe_key 防止同一事件重复记录
 - **单例模式**：全局唯一实例，通过 get_collector() 获取
 
@@ -39,7 +38,6 @@ sdk.collector — 轻量级轨迹收集器（TrajectoryCollector）
 | EVAL_API_BASE_URL   | http://127.0.0.1:8000      | 评估平台地址         |
 | EVAL_API_KEY        | ""                         | API 认证密钥         |
 | EVAL_BATCH_SIZE     | 10                         | 批量上传阈值         |
-| EVAL_INPROCESS      | true                       | 嵌入模式直写 DB      |
 
 ═══════════════════════════════════════════════════════════════════
 使用示例
@@ -280,8 +278,8 @@ class TrajectoryCollector:
     传输模式
     ════════════════════════════════════════════════════════════════
 
-    - HTTP 模式（默认）：通过 REST API 推送轨迹数据
-    - 进程内模式（嵌入评估平台时）：直接写 DB，避免 HTTP 自死锁
+    统一使用 HTTP 模式：通过 REST API 推送轨迹数据到评估平台。
+    异步方法（start_async/finish_async）在线程池中执行 HTTP 请求，不阻塞事件循环。
 
     """
 
@@ -316,7 +314,6 @@ class TrajectoryCollector:
             self._api_base = _env_str("EVAL_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
             self._api_key = _env_str("EVAL_API_KEY", "")
             self._batch_size = _env_int("EVAL_BATCH_SIZE", 10)
-            self._inprocess = _env_bool("EVAL_INPROCESS", True)
 
             import httpx
 
@@ -343,16 +340,6 @@ class TrajectoryCollector:
     @property
     def task_id(self) -> Optional[str]:
         return self._session().task_id
-
-    def use_inprocess(self) -> bool:
-        """Use direct DB writes instead of HTTP when embedded in the same platform."""
-        if not self._inprocess or not self._enabled:
-            return False
-        base = self._api_base.rstrip("/")
-        return base in (
-            "http://127.0.0.1:8000",
-            "http://localhost:8000",
-        ) or base.startswith("http://127.0.0.1:") or base.startswith("http://localhost:")
 
     # ── 生命周期管理 ──
 
@@ -420,30 +407,9 @@ class TrajectoryCollector:
         return session.task_id
 
     async def start_async(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
-        """Async start — uses in-process DB when embedded (no HTTP loopback)."""
-        if not self.use_inprocess():
-            import asyncio
-            return await asyncio.to_thread(self.start, goal, context)
-
-        session = self._new_session()
-        session.task_id = str(uuid.uuid4())
-        session.remote_task_created = False
-        session.eval_triggered = False
-
-        if not self._enabled:
-            return session.task_id
-
-        from app.collectors.inprocess_transport import create_task_record
-
-        session.task_id = await create_task_record(session.task_id, goal, context)
-        session.remote_task_created = True
-        session.goal_context = context
-
-        self.record(
-            ActionType.PLAN,
-            {"goal": goal, "context": _short(context or {})},
-        )
-        return session.task_id
+        """异步创建评估任务（在线程池中执行 HTTP 请求，不阻塞事件循环）。"""
+        import asyncio
+        return await asyncio.to_thread(self.start, goal, context)
 
     def finish(self, *, auto_run: bool = False) -> Optional[str]:
         """结束任务，flush 轨迹，可选触发评估。"""
@@ -486,29 +452,7 @@ class TrajectoryCollector:
         return session.task_id
 
     async def finish_async(self, *, auto_run: bool = False) -> Optional[str]:
-        """Async finish — in-process DB flush avoids HTTP self-deadlock."""
-        session = self._session()
-        if not session.task_id:
-            return None
-        self.record(ActionType.THINK, {"thought": "Run finished"})
-
-        if self.use_inprocess() and session.remote_task_created:
-            from app.collectors.inprocess_transport import persist_collector_session
-
-            with self._buffer_lock:
-                steps_to_send = list(session.steps)
-                session.steps = []
-
-            await persist_collector_session(
-                session.task_id,
-                steps_to_send,
-                auto_run=auto_run and not session.eval_triggered,
-                context=session.goal_context,
-            )
-            if auto_run:
-                session.eval_triggered = True
-            return session.task_id
-
+        """异步结束任务（在线程池中执行 HTTP 请求，不阻塞事件循环）。"""
         import asyncio
         return await asyncio.to_thread(self.finish, auto_run=auto_run)
 
@@ -604,7 +548,7 @@ class TrajectoryCollector:
             }
             session.steps.append(step)
 
-            if len(session.steps) >= self._batch_size and not self.use_inprocess():
+            if len(session.steps) >= self._batch_size:
                 steps_snapshot = list(session.steps)
                 session.steps = []
                 task_id = session.task_id
@@ -1042,8 +986,6 @@ class TrajectoryCollector:
         参数:
             block: 是否阻塞等待 flush_lock（True 用于 finish()，False 用于批量 flush）
         """
-        if self.use_inprocess():
-            return
         if not self._flush_lock.acquire(blocking=block):
             return
         try:

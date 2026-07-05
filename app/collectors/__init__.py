@@ -2,7 +2,7 @@
 Data collectors for trajectory collection.
 
 TrajectoryCollector lives in sdk/collector.py (single implementation).
-Wiki Agent uses app/collectors/inprocess_transport.py for same-process DB writes.
+All agents use HTTP mode to push trajectory data to the evaluation platform.
 """
 
 from sdk.collector import ActionType, TrajectoryCollector, get_collector, reset_collector
