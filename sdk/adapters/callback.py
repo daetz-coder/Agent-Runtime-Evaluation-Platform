@@ -42,13 +42,34 @@ logger = logging.getLogger(__name__)
 
 
 class EvalCallbackHandler(BaseCallbackHandler):
-    """
-    评估回调处理器 - 自动收集轨迹
+    """LangChain 评估回调处理器 — 自动收集 Agent 轨迹。
 
-    自动捕获：
-    - on_llm_start/end: LLM 调用
-    - on_tool_start/end: 工具调用
-    - on_chain_start/end: 链调用
+    ════════════════════════════════════════════════════════════════
+    自动捕获的事件
+    ════════════════════════════════════════════════════════════════
+
+    LLM 回调：
+    - on_llm_start / on_chat_model_start → 记录 LLM 输入
+    - on_llm_end → 记录 LLM 输出 + 工具决策（tool_calls）
+    - on_llm_error → 记录失败（FAILURE）
+
+    工具回调：
+    - on_tool_start → 记录工具输入
+    - on_tool_end → 记录 tool_call + tool_result
+    - on_tool_error → 记录失败 + tool_result(failed)
+
+    链回调：
+    - on_chain_start → 记录开始时间
+    - on_chain_end → 清理状态
+    - on_chain_error → 记录失败（FAILURE）
+
+    ════════════════════════════════════════════════════════════════
+    使用方式
+    ════════════════════════════════════════════════════════════════
+
+        handler = create_callback_handler()
+        llm = ChatZhipuAI(callbacks=[handler])
+
     """
 
     def __init__(self):

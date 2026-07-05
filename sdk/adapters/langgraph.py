@@ -43,12 +43,15 @@ logger = logging.getLogger(__name__)
 
 
 def _accepts_config(node_func: Callable) -> bool:
-    """Return True if node accepts LangGraph RunnableConfig."""
+    """检测节点函数是否接受 LangGraph RunnableConfig 参数。
+
+    通过 inspect.signature 检查函数签名中是否包含 'config' 参数。
+    """
     return "config" in inspect.signature(node_func).parameters
 
 
 def _call_node(node_func: Callable, state: Any, config: RunnableConfig | None) -> Any:
-    """Invoke a sync node, forwarding config when supported."""
+    """调用同步节点函数，自动转发 config 参数（如果节点支持）。"""
     if _accepts_config(node_func):
         return node_func(state, config)
     return node_func(state)
@@ -57,21 +60,33 @@ def _call_node(node_func: Callable, state: Any, config: RunnableConfig | None) -
 async def _call_node_async(
     node_func: Callable, state: Any, config: RunnableConfig | None
 ) -> Any:
-    """Invoke an async node, forwarding config when supported."""
+    """调用异步节点函数，自动转发 config 参数（如果节点支持）。"""
     if _accepts_config(node_func):
         return await node_func(state, config)
     return await node_func(state)
 
 
 class InstrumentedStateGraph:
-    """
-    包装 StateGraph - 自动收集节点执行轨迹
+    """LangGraph StateGraph 的透明包装器 — 自动收集节点执行轨迹。
 
-    这是一个透明包装器，会：
-    1. 包装所有节点函数
-    2. 记录节点输入输出
-    3. 记录状态变化
-    4. 保持原有接口
+    ════════════════════════════════════════════════════════════════
+    自动采集内容
+    ════════════════════════════════════════════════════════════════
+
+    1. 节点执行：每个节点的输入/输出（NODE_EXECUTE）
+    2. 状态变化：节点执行前后的状态 diff（STATE_CHANGE）
+    3. 工具调用：LLM 返回的 tool_calls（TOOL_DECISION + TOOL_CALL）
+    4. 失败事件：节点异常时自动记录（FAILURE）
+
+    ════════════════════════════════════════════════════════════════
+    使用方式
+    ════════════════════════════════════════════════════════════════
+
+        from sdk.adapters.langgraph import instrument_langgraph
+
+        graph = instrument_langgraph(build_graph())
+        result = await graph.ainvoke(initial_state)
+
     """
 
     def __init__(self, original_graph: StateGraph):
