@@ -121,8 +121,8 @@ class ToolUseEvaluator(BaseEvaluator):
         structured_llm = self.llm.with_structured_output(ToolUseEvaluationResult)
         chain = prompt | structured_llm
 
-        # Get LLM evaluation (with Redis caching)
-        result = await self._invoke_llm_cached(
+        # Get LLM evaluation (with structured output + retry)
+        result = await self._invoke_structured_llm(
             chain,
             {
                 "goal": goal,
@@ -130,14 +130,12 @@ class ToolUseEvaluator(BaseEvaluator):
                 "context": context or "No additional context provided.",
                 "execution_results": execution_results_text,
             },
+            schema_class=ToolUseEvaluationResult,
+            max_retries=3,
         )
 
-        # Pydantic model 直接使用，无需手动解析
-        if isinstance(result, ToolUseEvaluationResult):
-            scores = result.model_dump()
-        else:
-            # 兼容旧路径（缓存命中时可能是 dict）
-            scores = self._parse_scores(result.content if hasattr(result, "content") else str(result))
+        # Pydantic model 直接使用
+        scores = result.model_dump() if isinstance(result, ToolUseEvaluationResult) else result
 
         # Calculate weighted overall score
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)

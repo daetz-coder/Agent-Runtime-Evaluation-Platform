@@ -339,6 +339,74 @@ class BaseEvaluator(ABC):
         weighted_sum = sum(scores.get(k, 0) * v for k, v in weights.items())
         return weighted_sum / total_weight if total_weight > 0 else 0
 
+    async def _invoke_structured_llm(
+        self,
+        chain,
+        inputs: Dict[str, Any],
+        schema_class: type,
+        max_retries: int = 3,
+    ) -> Any:
+        """调用 with_structured_output 链，带重试和错误反馈。
+
+        流程：
+            1. 调用 chain（prompt | llm.with_structured_output(Schema)）
+            2. 如果返回 Pydantic 对象 → 直接返回
+            3. 如果 Pydantic 校验失败 → 把错误信息反馈给 LLM 重试
+            4. 重试 max_retries 次后仍失败 → 回退到 _invoke_llm_cached + 手动解析
+
+        参数:
+            chain: LangChain runnable（prompt | structured_llm）
+            inputs: prompt 输入
+            schema_class: 期望的 Pydantic 输出 Schema
+            max_retries: 最大重试次数
+        """
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                # 第一次用原始 inputs，后续重试附加错误反馈
+                retry_inputs = dict(inputs)
+                if attempt > 0 and last_error:
+                    retry_inputs["error_feedback"] = (
+                        f"\n\n⚠️ 上一次输出格式错误: {last_error}\n"
+                        f"请严格按照 {schema_class.__name__} 的字段要求重新输出。"
+                    )
+                    # 如果 prompt 模板没有 error_feedback 变量，追加到 context
+                    if "context" in retry_inputs:
+                        retry_inputs["context"] = str(retry_inputs["context"]) + retry_inputs.pop("error_feedback")
+                    elif "goal" in retry_inputs:
+                        retry_inputs["goal"] = str(retry_inputs["goal"]) + retry_inputs.pop("error_feedback")
+
+                result = await chain.ainvoke(retry_inputs)
+
+                # chain 返回 Pydantic 对象（with_structured_output 的正常行为）
+                if isinstance(result, schema_class):
+                    return result
+
+                # chain 返回了非预期类型（可能是 dict 或 str）
+                if isinstance(result, dict):
+                    return schema_class.model_validate(result)
+
+                last_error = f"Expected {schema_class.__name__}, got {type(result).__name__}"
+                logger.warning("Structured output attempt %d/%d: %s", attempt + 1, max_retries, last_error)
+
+            except Exception as e:
+                last_error = str(e)
+                logger.warning("Structured output attempt %d/%d failed: %s", attempt + 1, max_retries, last_error)
+
+        # 所有重试失败 → 回退到手动解析
+        logger.error("Structured output failed after %d retries, falling back to manual parse", max_retries)
+        try:
+            response = await self._invoke_llm_cached(chain, inputs)
+            scores = self._parse_scores(response.content if hasattr(response, "content") else str(response))
+            return schema_class.model_validate(scores) if scores else schema_class(**{k: 0 for k in schema_class.model_fields if k != "feedback"}, feedback="评估输出解析失败")
+        except Exception as e:
+            logger.error("Fallback parse also failed: %s", e)
+            return schema_class(
+                **{k: 0 for k in schema_class.model_fields if k != "feedback"},
+                feedback=f"评估系统错误: {e}",
+            )
+
     async def _invoke_llm_cached(self, chain, inputs: Dict[str, Any]) -> Any:
         """
         Invoke an LLM chain with Redis caching.
