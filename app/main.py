@@ -61,17 +61,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await wiki_agent_startup()
     logger.info("Wiki Agent initialized")
 
-    from app.agent_runtime.sandbox.executor import init_sandbox
-
-    sandbox_ok = await init_sandbox()
-    logger.info("Sandbox: %s", "ready" if sandbox_ok else "disabled")
-
-    # Initialize Agent Runtime session pool
-    from app.agent_runtime.sandbox.session_pool import init_session_pool
-
-    session_ok = await init_session_pool()
-    logger.info("Agent Runtime: %s", "ready" if session_ok else "disabled")
-
     # Initialize OpenTelemetry tracing
     from app.core.tracing import init_tracing
 
@@ -94,12 +83,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.core.tracing import shutdown_tracing
 
     shutdown_tracing()
-    from app.agent_runtime.sandbox.session_pool import close_session_pool
-
-    await close_session_pool()
-    from app.agent_runtime.sandbox.executor import close_sandbox
-
-    await close_sandbox()
     await close_redis()
     await close_db()
     logger.info("Database connections closed")
@@ -112,7 +95,7 @@ def create_app() -> FastAPI:
         description="""
 # Agent Runtime Evaluation Platform
 
-AI Agent 全维度评估平台，支持 **Sandbox 评测** 与 **外部轨迹评测** 两种模式，覆盖规划、决策、工具使用、记忆、重规划、检索 6 大能力维度。
+AI Agent 全维度评估平台，通过 SDK 轨迹采集覆盖规划、决策、工具使用、记忆、重规划、检索 6 大能力维度。
 
 ---
 
@@ -142,12 +125,11 @@ AI Agent 全维度评估平台，支持 **Sandbox 评测** 与 **外部轨迹评
 | **向量检索** | Milvus Lite + BM25 (RRF) | RAG 知识库混合检索 |
 | **数据库** | SQLite (dev) / PostgreSQL (prod) + Redis | 持久化 + 缓存 |
 | **前端** | Vue 3 + Element Plus + TypeScript | 管理面板与可视化 |
-| **采集 SDK** | Python SDK (in-process / HTTP) | Trajectory 自动埋点 |
-| **容器** | Docker (Sandbox 执行环境) | 安全隔离的 Agent 运行沙箱 |
+| **采集 SDK** | Python SDK (HTTP) | Trajectory 自动埋点 |
 
 ## 🔑 关键特性
 
-- **双模评测** — Sandbox 自动化评测 / 外部 SDK 埋点轨迹评测
+- **SDK 评测** — 外部 SDK 埋点轨迹评测
 - **6 维评分** — Planning、Tactical、Tool Use、Memory、Replan、Retrieval
 - **多模型共识** — 跨厂商（DeepSeek + GLM + Qwen）独立评分，输出均值和置信度
 - **增量评估** — 回归检测，比较历史评分变化趋势
@@ -158,20 +140,7 @@ AI Agent 全维度评估平台，支持 **Sandbox 评测** 与 **外部轨迹评
 
 ## 🚀 快速开始
 
-### Sandbox 评测模式
-```bash
-POST /api/v1/evaluations/run
-{
-  "goal": "分析项目依赖并生成升级报告",
-  "sandbox": {
-    "image": "python:3.14-slim",
-    "workspace": "./repos/my-project"
-  }
-}
-```
-→ Agent 在 Docker 沙箱中运行，自动采集轨迹 → 6 维评分 → SSE 实时推送结果
-
-### SDK 埋点模式（外部 Agent）
+### SDK 埋点模式
 ```python
 from sdk import get_collector
 

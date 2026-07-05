@@ -99,40 +99,6 @@ class Settings(BaseSettings):
     EVAL_WEBHOOK_URL: str = ""
     EVAL_PARALLEL: bool = True
 
-    # Code Execution Sandbox (Docker-based) — shared with Agent Runtime
-    # Note: enable/disable via AGENT_RUNTIME_ENABLED below
-    SANDBOX_TIMEOUT: int = 30  # seconds per snippet (SandboxExecutor)
-    SANDBOX_MEMORY_LIMIT_MB: int = 256
-    SANDBOX_CPU_CORES: int = 1
-    SANDBOX_OUTPUT_LIMIT: int = 10_240_000  # 10 MB
-    SANDBOX_ACQUIRE_TIMEOUT: float = 10.0  # seconds to wait for pool
-    SANDBOX_CACHE_TTL: int = 86400  # 24h cache for identical executions
-
-    # Mock Sandbox Mode — for local development without Docker
-    SANDBOX_MOCK_MODE: bool = True
-    """When True, AgentRuntime returns a fixed mock trajectory instead of
-    running inside Docker.  Useful for rapid prompt iteration."""
-
-    # Agent Runtime (Agent in Sandbox)
-    AGENT_RUNTIME_ENABLED: bool = True
-    AGENT_MAX_STEPS: int = 20
-    AGENT_TIMEOUT: int = 300  # 5 minutes total agent timeout
-
-    # Sandbox Session (for Agent Runtime)
-    SANDBOX_SESSION_POOL_SIZE: int = 3
-    SANDBOX_SESSION_TIMEOUT: int = 600  # 10 minutes per container session
-    SANDBOX_WORKSPACE_SIZE_MB: int = 512  # /workspace tmpfs size
-    SANDBOX_TOOL_TIMEOUT: int = 60  # timeout per tool execution (seconds)
-
-    # Agent Default Tools
-    AGENT_DEFAULT_TOOLS: List[str] = [
-        "python_execute",
-        "bash_execute",
-        "file_read",
-        "file_write",
-        "file_list",
-    ]
-
     # Evaluation weights (shared between full and incremental eval)
     EVAL_DIMENSION_WEIGHTS: dict = {
         "planning": 0.20,

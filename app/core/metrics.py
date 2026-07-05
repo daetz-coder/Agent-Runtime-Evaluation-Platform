@@ -78,24 +78,6 @@ LLM_TOKENS = Counter(
     ["model", "type"],  # type: input/output
 )
 
-# ── Sandbox Metrics ──────────────────────────────────────────
-
-SANDBOX_SESSIONS_ACTIVE = Gauge(
-    "agent_eval_sandbox_active_sessions",
-    "Number of active sandbox sessions",
-)
-
-SANDBOX_SESSION_POOL_SIZE = Gauge(
-    "agent_eval_sandbox_pool_size",
-    "Total sandbox session pool size",
-)
-
-SANDBOX_SESSION_ACQUIRE_DURATION = Histogram(
-    "agent_eval_sandbox_acquire_duration_seconds",
-    "Time to acquire a sandbox session",
-    buckets=[0.01, 0.05, 0.1, 0.5, 1, 5, 10],
-)
-
 # ── Tool Metrics ──────────────────────────────────────────────
 
 TOOL_CALL_COUNT = Counter(

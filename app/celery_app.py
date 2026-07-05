@@ -59,7 +59,6 @@ celery_app.conf.update(
     # Task routes & priorities
     task_routes={
         "app.celery_app.run_evaluation_task": {"queue": "evaluation"},
-        "app.celery_app.run_sandbox_evaluation_task": {"queue": "sandbox"},
     },
     task_queue_max_priority=10,
     task_default_priority=5,
@@ -156,66 +155,6 @@ def run_evaluation_task(
         return {"task_id": task_id, "eval_id": eval_id, "status": "failed", "error": str(exc)}
 
 
-@celery_app.task(
-    bind=True,
-    name="app.celery_app.run_sandbox_evaluation_task",
-    max_retries=2,
-    default_retry_delay=30,
-    acks_late=True,
-    priority=5,
-)
-def run_sandbox_evaluation_task(
-    self,
-    goal: str,
-    model: Optional[str] = None,
-    provider: Optional[str] = None,
-    workspace_files: Optional[dict] = None,
-    tools: Optional[list] = None,
-    max_steps: Optional[int] = None,
-    context: Optional[dict] = None,
-    temperature: float = 0.0,
-    workspace_id: Optional[str] = None,
-) -> dict:
-    """
-    Run a full sandbox-based agent evaluation (Agent in Sandbox).
-
-    Lower max_retries because sandbox runs are long and expensive.
-    """
-    import asyncio
-
-    from app.models.schemas import SandboxEvalRequest
-
-    logger.info("Running sandbox evaluation: goal=%s", goal[:100])
-
-    request = SandboxEvalRequest(
-        goal=goal,
-        model=model,
-        provider=provider,
-        workspace_files=workspace_files,
-        tools=tools,
-        max_steps=max_steps,
-        context=context,
-        temperature=temperature,
-    )
-
-    try:
-        loop = asyncio.new_event_loop()
-        result = loop.run_until_complete(_run_sandbox_evaluation_async(request, workspace_id))
-        loop.close()
-
-        logger.info("Sandbox evaluation completed: task_id=%s", result.task_id)
-        return result.model_dump(mode="json")
-
-    except Exception as exc:
-        logger.error("Sandbox evaluation failed: %s", exc, exc_info=True)
-        if self.request.retries < self.max_retries:
-            raise self.retry(exc=exc, countdown=30 * (self.request.retries + 1))
-        return {"status": "failed", "error": str(exc)}
-
-
-# ── Async Helpers ─────────────────────────────────────────────
-
-
 async def _run_evaluation_async(
     task_id: str,
     eval_id: str,
@@ -232,18 +171,6 @@ async def _run_evaluation_async(
             workspace_id=workspace_id,
             evaluation_id=eval_id,
         )
-        await db.commit()
-        return result
-
-
-async def _run_sandbox_evaluation_async(request, workspace_id: Optional[str] = None):
-    """Async wrapper for sandbox evaluation service."""
-    from app.db.database import async_session_factory
-    from app.services.evaluation_service import EvaluationService
-
-    async with async_session_factory() as db:
-        service = EvaluationService(db)
-        result = await service.run_sandbox_evaluation(request, workspace_id=workspace_id)
         await db.commit()
         return result
 

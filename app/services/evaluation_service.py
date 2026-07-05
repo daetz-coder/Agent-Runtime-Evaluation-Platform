@@ -19,13 +19,10 @@ from app.db.models import AgentTask, AgentTrajectory, Evaluation, EvaluationStat
 from app.evaluators.scoring import dimension_score, score_values, weighted_overall
 from app.graphs.evaluation_graph import EvaluationState, create_evaluation_graph
 from app.models.schemas import (
-    AgentRunInfo,
     EvaluationListItem,
     EvaluationResponse,
     OverallEvaluation,
     RetrievalScore,
-    SandboxEvalRequest,
-    SandboxEvalResponse,
     TaskCreate,
     TaskResponse,
 )
@@ -512,156 +509,6 @@ class EvaluationService:
             model_name=evaluation.model_name,
             model_provider=evaluation.model_provider,
         )
-
-    # ── Agent in Sandbox ──────────────────────────────────────
-
-    async def run_sandbox_evaluation(
-        self,
-        request: SandboxEvalRequest,
-        workspace_id: Optional[str] = None,
-    ) -> SandboxEvalResponse:
-        """
-        Run a full sandbox-based agent evaluation.
-
-        Steps:
-        1. Create a task in the DB
-        2. Run AgentRunner in sandbox (LLM reasoning + tool execution)
-        3. Save captured trajectory to DB
-        4. Run 6 evaluators on the trajectory
-        5. Save evaluation results
-        6. Return SandboxEvalResponse
-        """
-        from app.agent_runtime.runner import AgentRunner
-
-        with tracer.start_as_current_span("sandbox_evaluation") as root_span:
-            root_span.set_attribute("goal", request.goal[:200])
-            root_span.set_attribute("model", request.model or settings.DEFAULT_LLM_MODEL)
-            root_span.set_attribute("provider", request.provider or settings.DEFAULT_LLM_PROVIDER)
-
-            # 1. Create task
-            with tracer.start_as_current_span("task_creation"):
-                from app.services.quota import SANDBOX_EVAL_MODE
-
-                sandbox_context = dict(request.context or {})
-                sandbox_context["eval_mode"] = SANDBOX_EVAL_MODE
-                task_data = TaskCreate(goal=request.goal, context=sandbox_context)
-                task_response = await self.create_task(task_data, workspace_id=workspace_id)
-                task_id = task_response.id
-                root_span.set_attribute("task_id", task_id)
-
-            # Mark task as running
-            task_model = await self._get_task_model(task_id, workspace_id=workspace_id)
-            if not task_model:
-                raise ValueError(f"Task {task_id} not found")
-            task_model.status = TaskStatus.RUNNING
-            task_model.started_at = datetime.now(timezone.utc)
-            await self.db.flush()
-
-            # 2. Run agent in sandbox
-            runner = AgentRunner()
-            agent_result = await runner.run(
-                goal=request.goal,
-                workspace_files=request.workspace_files,
-                tools=request.tools,
-                model=request.model,
-                provider=request.provider,
-                context=request.context,
-                max_steps=request.max_steps,
-                temperature=request.temperature,
-            )
-            root_span.set_attribute("agent_success", agent_result.success)
-            root_span.set_attribute("agent_steps", agent_result.steps_taken)
-
-            # 3. Save trajectory to DB
-            with tracer.start_as_current_span("trajectory_persist") as span:
-                trajectory_steps = agent_result.trajectory
-                span.set_attribute("step_count", len(trajectory_steps))
-                if trajectory_steps:
-                    await self.add_trajectory(task_id, trajectory_steps, workspace_id=workspace_id)
-
-            # 4. Create evaluation record
-            eval_id = str(uuid.uuid4())
-            evaluation = Evaluation(
-                id=eval_id,
-                task_id=task_id,
-                status=EvaluationStatus.IN_PROGRESS,
-                created_at=datetime.now(timezone.utc),
-            )
-            self.db.add(evaluation)
-            await self.db.flush()
-
-            # 5. Run evaluators on the captured trajectory
-            overall = None
-            if trajectory_steps and agent_result.success:
-                try:
-                    with tracer.start_as_current_span("evaluation") as eval_span:
-                        eval_span.set_attribute("evaluator_count", 6)
-                        eval_span.set_attribute("parallel", True)
-
-                        from app.graphs.evaluation_graph import evaluate_parallel
-                        from app.models.schemas import TrajectoryStep as TS
-
-                        steps = [
-                            TS(
-                                step_number=s["step_number"],
-                                action_type=s["action_type"],
-                                action_detail=s.get("action_detail", {}),
-                                observation=s.get("observation"),
-                                timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
-                            )
-                            for s in trajectory_steps
-                        ]
-
-                        parallel_result = await evaluate_parallel(request.goal, steps, request.context)
-                        overall_eval = self._build_overall_from_parallel(parallel_result)
-                        overall = overall_eval.model_dump()
-                        self._merge_judge_raw_into_overall(overall, parallel_result)
-                        eval_span.set_attribute("overall_score", overall.get("overall_score", 0))
-
-                        # Record Prometheus metrics
-                        EVALUATION_COUNT.labels(status="success", mode="sandbox").inc()
-                        score = overall.get("overall_score", 0)
-                        EVALUATION_SCORE.observe(score)
-
-                        await self._persist_evaluation_results(evaluation, task_model, overall)
-                except Exception as e:
-                    import logging
-
-                    logging.getLogger(__name__).error("Evaluation failed: %s", e, exc_info=True)
-                    evaluation.status = EvaluationStatus.FAILED
-                    if task_model:
-                        task_model.status = TaskStatus.FAILED
-                        task_model.completed_at = datetime.now(timezone.utc)
-                    await self.db.flush()
-            else:
-                # No trajectory or agent failed — mark evaluation as failed
-                EVALUATION_COUNT.labels(status="failed", mode="sandbox").inc()
-                evaluation.status = EvaluationStatus.FAILED
-                if task_model:
-                    task_model.status = TaskStatus.FAILED
-                    task_model.completed_at = datetime.now(timezone.utc)
-                await self.db.flush()
-
-            # Build response
-            agent_run_info = AgentRunInfo(
-                success=agent_result.success,
-                steps_taken=agent_result.steps_taken,
-                duration_ms=agent_result.duration_ms,
-                final_answer=agent_result.final_answer,
-                workspace_state=agent_result.workspace_state,
-                workspace_files=agent_result.workspace_files,
-                error=agent_result.error,
-            )
-
-            return SandboxEvalResponse(
-                task_id=task_id,
-                evaluation_id=eval_id,
-                status=evaluation.status.value,
-                agent_run=agent_run_info,
-                evaluation=OverallEvaluation(**overall) if overall else None,
-                created_at=evaluation.created_at,
-                completed_at=evaluation.completed_at,
-            )
 
     async def list_evaluations_with_count(
         self,
