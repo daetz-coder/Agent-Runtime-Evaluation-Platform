@@ -23,7 +23,7 @@ from pydantic import create_model
 from app.agent_runtime.prompts import FINAL_ANSWER_INSTRUCTION, build_system_prompt
 from app.agent_runtime.state import AgentState
 from app.agent_runtime.tools.base import ToolProxy
-from app.agent_runtime.trajectory_recorder import TrajectoryRecorder
+from sdk.collector import ActionType
 from app.core.tracing import get_tracer
 
 logger = logging.getLogger(__name__)
@@ -75,8 +75,11 @@ def create_agent_graph(
         # Check if we've hit max steps
         if current_step >= max_s:
             recorder.record_failure(
-                f"Agent reached maximum steps ({max_s})",
-                context={"goal": goal},
+                error_type="MaxStepsReached",
+                error_message=f"Agent reached maximum steps ({max_s})",
+                context=f"Goal: {goal}",
+                recoverable=False,
+                node_name="think_and_act",
             )
             return {
                 "done": True,
@@ -112,7 +115,13 @@ def create_agent_graph(
                     llm_latency_ms = (_time.monotonic() - llm_start) * 1000
                     llm_span.set_attribute("error", str(e))
                     logger.error("LLM call failed at step %d: %s", current_step, e)
-                    recorder.record_failure(f"LLM call failed: {e}")
+                    recorder.record_failure(
+                        error_type=type(e).__name__,
+                        error_message=f"LLM call failed: {e}",
+                        context=f"Step {current_step}, goal: {goal}",
+                        recoverable=True,
+                        node_name="think_and_act",
+                    )
                     return {
                         "done": True,
                         "final_answer": f"Agent failed: LLM error - {e}",
@@ -141,6 +150,19 @@ def create_agent_graph(
             if tool_calls:
                 step_span.set_attribute("has_tool_call", True)
                 step_span.set_attribute("tool_count", len(tool_calls))
+
+                # 记录 TOOL_DECISION（LLM 决定调用哪些工具）
+                for tc in tool_calls:
+                    recorder.record(
+                        ActionType.TOOL_DECISION,
+                        {
+                            "node_name": "think_and_act",
+                            "tool_name": tc.get("name", ""),
+                            "input": tc.get("args", {}),
+                            "step": current_step,
+                        },
+                    )
+
                 # Execute each tool call through the proxy
                 new_messages = [response]
                 for tc in tool_calls:
@@ -162,6 +184,16 @@ def create_agent_graph(
 
                     # Execute through proxy (validates, audits, records)
                     result = await tool_proxy.execute(tool_name, tool_args)
+
+                    # 记录 PLAN_UPDATE（每步执行后更新进度）
+                    recorder.record(
+                        ActionType.PLAN_UPDATE,
+                        {
+                            "milestone_status": {"current_step": current_step + 1, "max_steps": max_s},
+                            "next_action": f"continue after {tool_name}",
+                            "reason": f"Tool {tool_name} executed",
+                        },
+                    )
 
                     # Add tool result to messages
                     new_messages.append(ToolMessage(content=result, tool_call_id=tool_id))
@@ -188,6 +220,15 @@ def create_agent_graph(
                 else:
                     # LLM responded without tools — treat as thinking, prompt again
                     recorder.record_think("Agent responded without tool call or final answer")
+                    # 记录 REPLAN（Agent 重新考虑策略）
+                    if current_step > 0:
+                        recorder.record(
+                            ActionType.REPLAN,
+                            {
+                                "reason": "Agent responded without tool call, reconsidering approach",
+                                "trigger": "no_tool_call",
+                            },
+                        )
                     return {
                         "messages": [response],
                         "current_step": current_step + 1,

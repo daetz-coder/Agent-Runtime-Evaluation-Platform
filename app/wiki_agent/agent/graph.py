@@ -515,11 +515,25 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
         stem = decision_dict["path"].replace(".md", "").split("/")[-1]
         decision_dict["title"] = stem
 
+    # 记录 TOOL_DECISION（decide 节点决定执行什么操作）
+    action = decision_dict.get("action", "none")
+    if action != "none":
+        collector.record(
+            "tool_decision",
+            {"node_name": "decide", "tool_name": f"crud_{action}", "input": {"title": decision_dict.get("title"), "path": decision_dict.get("path")}},
+        )
+        # 记录 PLAN_UPDATE（决定下一步操作 = 计划更新）
+        collector.record_plan_update(
+            milestone_status={"search": "done", "respond": "done", "decide": "done"},
+            next_action=f"execute {action}",
+            reason=decision_dict.get("reason", ""),
+        )
+
     # 记录 STATE_CHANGE
-    collector.record_node_execute("decide_complete", output_data={"action": decision_dict.get("action")})
+    collector.record_node_execute("decide_complete", output_data={"action": action})
     collector.record_state_change(
         {"stage": "respond"},
-        {"stage": "decide", "action": decision_dict.get("action")},
+        {"stage": "decide", "action": action},
         trigger="decide", node_name="decide",
     )
 
@@ -547,22 +561,68 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
     action = decision.get("action")
     print(f"[Wiki Agent] 用户确认，执行操作: {action}")
 
+    import time as _time
     result = None
-    if action == "create":
-        result = crud_tools.create_knowledge(
-            title=decision.get("title", ""),
-            content=decision.get("content", ""),
-            category=decision.get("category", ""),
-            tags=decision.get("tags") or [],
+    tool_start = _time.monotonic()
+
+    try:
+        if action == "create":
+            result = crud_tools.create_knowledge(
+                title=decision.get("title", ""),
+                content=decision.get("content", ""),
+                category=decision.get("category", ""),
+                tags=decision.get("tags") or [],
+            )
+        elif action == "update":
+            result = crud_tools.update_knowledge(
+                path=decision.get("path", ""),
+                content=decision.get("content"),
+                tags=decision.get("tags"),
+            )
+        elif action == "delete":
+            result = crud_tools.delete_knowledge(decision.get("path", ""))
+
+        duration_ms = (_time.monotonic() - tool_start) * 1000
+
+        # 记录 TOOL_CALL + TOOL_RESULT
+        collector.record_tool_call(
+            tool_name=f"crud_{action}",
+            tool_input={"title": decision.get("title"), "path": decision.get("path")},
+            tool_output=str(result)[:2000] if result else None,
+            duration_ms=duration_ms,
         )
-    elif action == "update":
-        result = crud_tools.update_knowledge(
-            path=decision.get("path", ""),
-            content=decision.get("content"),
-            tags=decision.get("tags"),
+        collector.record_tool_result(
+            tool_name=f"crud_{action}",
+            tool_output=str(result)[:2000] if result else None,
+            duration_ms=duration_ms,
+            success=result.get("status") == "ok" if result else False,
         )
-    elif action == "delete":
-        result = crud_tools.delete_knowledge(decision.get("path", ""))
+
+    except Exception as e:
+        duration_ms = (_time.monotonic() - tool_start) * 1000
+        # 记录 FAILURE
+        collector.record_failure(
+            error_type=type(e).__name__,
+            error_message=str(e),
+            context=f"CRUD operation '{action}' failed",
+            recoverable=True,
+            node_name="execute",
+        )
+        # 记录失败的 TOOL_CALL + TOOL_RESULT
+        collector.record_tool_call(
+            tool_name=f"crud_{action}",
+            tool_input={"title": decision.get("title"), "path": decision.get("path")},
+            tool_output=str(e)[:2000],
+            duration_ms=duration_ms,
+        )
+        collector.record_tool_result(
+            tool_name=f"crud_{action}",
+            tool_output=str(e)[:2000],
+            duration_ms=duration_ms,
+            success=False,
+            error_type=type(e).__name__,
+        )
+        result = {"status": "error", "message": str(e)}
 
     print(f"[Wiki Agent] 执行结果: {result}")
     return {**state, "action_result": result, "stage": "execute"}
