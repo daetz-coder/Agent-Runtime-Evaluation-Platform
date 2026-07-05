@@ -259,7 +259,7 @@ class WikiState(TypedDict):
 
 #### `hooks.py` — 生命周期钩子接口
 
-**功能**：通过 agent-hooks SDK 提供评估接入点。默认空操作，评估平台可通过 `register()` 注入实现。
+**功能**：通过 SDK TrajectoryCollector 提供评估接入点。SDK 不可用或 `EVAL_ENABLED=false` 时自动降级为空操作。
 
 **核心事件**：
 - `emit_session_start()` — 会话开始
@@ -1152,25 +1152,25 @@ sync_manager.create() / update() / delete()
 
 ### 5.3 评估数据流
 
-wiki-agent 通过 agent-hooks SDK 提供生命周期钩子，评估平台可注册实现来采集数据：
+wiki-agent 通过 SDK TrajectoryCollector 提供生命周期钩子，自动采集评估数据：
 
 ```
 Wiki Agent 对话执行
      │
      ▼
-hooks.py (agent-hooks SDK)
-  ├─ emit_session_start() → 会话开始
+hooks.py (SDK TrajectoryCollector)
+  ├─ emit_session_start() → 创建评估任务
   │
   ├─ emit_retrieval() → 记录检索事件
   │     └─ query, results, duration_ms
   │
   ├─ emit_key_facts() → 记忆提取
-  │     └─ facts, scope
+  │     └─ facts
   │
   ├─ emit_response() → 回复生成
   │     └─ session_id, response
   │
-  └─ emit_session_end() → 会话结束
+  └─ emit_session_end() → flush 轨迹 + 触发评估
         │
         ▼
   评估平台 (register(EvalHooks()))

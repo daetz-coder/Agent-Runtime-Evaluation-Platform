@@ -354,7 +354,7 @@ os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIMEOUT_MS", "20000")
    - 并行化语义和关键词搜索
 
 5. `app/wiki_agent/hooks.py`
-   - 通过 agent-hooks SDK 提供生命周期钩子
+   - 通过 SDK TrajectoryCollector 提供生命周期钩子
 
 6. `app/wiki_agent/frontend/src/wiki/components/ChatView.vue`
    - 修复前端错误处理

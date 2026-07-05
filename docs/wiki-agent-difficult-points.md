@@ -701,32 +701,36 @@ Wiki Agent 需要将每一步执行轨迹提交给评估引擎，但业务代码
 
 ### 现有解法
 
-通过 agent-hooks SDK 的生命周期钩子实现解耦：
+通过 SDK TrajectoryCollector 的生命周期钩子实现解耦：
 
 ```
-graph.py (业务代码)          hooks.py (钩子层)              agent-hooks SDK
-─────────────────          ───────────────────           ───────────────
-emit_retrieval() ─────────→ _emit.retrieval() ──────────→ on_retrieval()
-emit_response()  ─────────→ _emit.response()  ──────────→ on_response()
-emit_session_end() ───────→ _emit.session_end() ────────→ on_session_end()
+graph.py (业务代码)          hooks.py (钩子层)              SDK TrajectoryCollector
+─────────────────          ───────────────────           ───────────────────────
+emit_session_start() ────→ collector.start_async() ────→ 创建评估任务
+emit_retrieval()     ────→ collector.record_retrieval() → 记录检索
+emit_key_facts()     ────→ collector.record_memory_write() → 记录事实
+emit_response()      ────→ collector.record(EVIDENCE)   → 记录回复
+emit_session_end()   ────→ collector.finish_async()     → flush + 触发评估
 ```
 
 ```python
-# hooks.py — 委托给 agent-hooks SDK
+# hooks.py — 委托给 SDK TrajectoryCollector
 
 try:
-    from agent_hooks import emit as _emit
+    from sdk.collector import ActionType, get_collector
 except ImportError:
-    _emit = _NoOpEmit()  # 降级为空操作
+    get_collector = None  # SDK 不可用时降级
 
 async def emit_retrieval(query, results, duration_ms):
-    await _emit.retrieval(query, results, duration_ms)
+    collector = get_collector()
+    if collector and collector.enabled:
+        collector.record_retrieval(query, results, duration_ms=duration_ms)
 ```
 
 ### 解耦效果
 
 ```python
-# graph.py — 业务代码不 import SDK，只调用 hooks
+# graph.py — 业务代码不直接依赖 SDK，只调用 hooks
 
 from app.wiki_agent.hooks import emit_retrieval, emit_response, emit_session_end
 
@@ -738,7 +742,7 @@ await emit_session_end(session_id)
 
 ### 学习建议
 
-> 理解 agent-hooks SDK 的 Protocol + Emitter + NoOpHooks 设计，再看 hooks.py 如何委托，最后看 graph.py 如何在关键节点调用。
+> 理解 SDK TrajectoryCollector 的 record/start/finish 生命周期，再看 hooks.py 如何委托，最后看 graph.py 如何在关键节点调用。
 
 ---
 

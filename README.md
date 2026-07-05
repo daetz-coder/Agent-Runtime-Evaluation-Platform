@@ -80,8 +80,7 @@ cd frontend && npm run dev
 | 容器 | Docker（Sandbox 执行环境） | 安全隔离的 Agent 运行沙箱 |
 | 可观测性 | OpenTelemetry + Prometheus + structlog | 链路追踪、指标监控、结构化日志 |
 | 任务队列 | Celery（可选，优雅降级） | 异步评估任务，指数退避重试 |
-| SDK | Python SDK（httpx + langchain-core） | 零侵入轨迹采集，三种集成模式 |
-| Agent Hooks | agent-hooks（零依赖） | 任意 Agent 项目生命周期钩子接入 |
+| SDK | Python SDK（httpx + langchain-core） | 零侵入轨迹采集，支持 LangGraph 自动采集和手动记录 |
 
 ---
 
@@ -186,20 +185,6 @@ from sdk import instrument_langgraph
 graph = instrument_langgraph(build_graph())  # 一行接入
 ```
 
-**任意 Agent 项目**推荐用 agent-hooks（[集成指南](docs/agent-hooks-integration.md)）：
-
-```bash
-pip install -e agent-hooks/
-```
-
-```python
-from agent_hooks import emit
-await emit.session_start(goal, session_id, context)
-await emit.retrieval(query, results, duration_ms)
-await emit.response(session_id, answer)
-await emit.session_end(session_id)
-```
-
 ---
 
 ## API 概览
@@ -233,8 +218,7 @@ app/                        # 后端应用
 └── db/                     # SQLAlchemy ORM + Alembic 迁移
 
 frontend/                   # Vue 3 前端（dashboard / evaluations / analytics / wiki）
-sdk/                        # 独立 SDK 包（LangGraph 项目零侵入集成）
-agent-hooks/                # 独立钩子 SDK（任意 Agent 项目零依赖接入）
+sdk/                        # 独立 SDK 包（LangGraph 自动采集 + 手动记录）
 scripts/                    # 校准脚本（benchmark / 检索评估 / 面试题生成）
 tests/                      # pytest 单元测试与 Golden Test Suite
 docs/                       # 文档
@@ -251,8 +235,7 @@ docs/                       # 文档
 | [设计文档](docs/design.md) | 设计思路、评估体系、缓存策略、关键要点 |
 | [开发者指南](docs/developer_guide.md) | 本地开发、调试工具、CI 门禁、版本追踪 |
 | [API 文档](docs/api.md) | 全部 REST 端点、请求/响应示例、SSE 事件类型 |
-| [SDK 集成指南](docs/adapters.md) | SDK 三种集成方式、配置选项、工作原理 |
-| [Agent Hooks 集成指南](docs/agent-hooks-integration.md) | 任意 Agent 项目接入评估平台（零侵入、零依赖） |
+| [SDK 集成指南](docs/adapters.md) | SDK 集成方式、配置选项、工作原理 |
 | [端口配置](docs/ports.md) | 服务端口、常用地址、一键启动 |
 | [项目约定](docs/conventions.md) | 编码规范、Git 流程、开发命令参考 |
 | [前端文档](frontend/README.md) | Vue 3 前端技术栈、页面功能说明 |

@@ -230,42 +230,23 @@ GET /health
 
 ## 评估平台集成
 
-wiki-agent 通过 `hooks.py` 定义的生命周期钩子接口支持低侵入接入评估系统。
+wiki-agent 通过 `hooks.py` 委托给 SDK `TrajectoryCollector` 实现评估数据采集。
 
-### 钩子事件
+### 采集事件
 
-| 事件 | 触发时机 | 参数 |
-|------|----------|------|
-| `on_session_start` | 对话开始 | goal, session_id, context |
-| `on_retrieval` | 检索完成 | query, results, duration_ms |
-| `on_key_facts` | 提取关键事实 | facts |
-| `on_response` | 回复生成完成 | session_id, response |
-| `on_session_end` | 对话结束 | session_id |
+| 事件 | 触发时机 | SDK 方法 |
+|------|----------|----------|
+| `emit_session_start` | 对话开始 | `collector.start_async()` |
+| `emit_retrieval` | 检索完成 | `collector.record_retrieval()` |
+| `emit_key_facts` | 提取关键事实 | `collector.record_memory_write()` |
+| `emit_response` | 回复生成完成 | `collector.record(EVIDENCE, ...)` |
+| `emit_session_end` | 对话结束 | `collector.finish_async()` |
 
-### 接入方式
+### 运行模式
 
-在评估平台启动时注册 hooks 实现：
-
-```python
-from agent_hooks import AgentHooks, register
-
-class EvalHooks(AgentHooks):
-    async def on_session_start(self, goal, session_id, context):
-        # 评估平台采集逻辑
-        ...
-
-    async def on_retrieval(self, query, results, duration_ms):
-        # 记录检索结果
-        ...
-
-    async def on_session_end(self, session_id):
-        # 结束评估
-        ...
-
-register(EvalHooks())
-```
-
-wiki-agent 默认使用空操作 hooks，独立运行时零开销。
+- **评估平台运行中**：SDK 自动推送轨迹数据到平台（HTTP 或进程内直写）
+- **评估平台未运行**：SDK 自动缓冲到本地，不阻塞 Agent 运行
+- **EVAL_ENABLED=false**：所有操作静默跳过，零开销
 
 ---
 
