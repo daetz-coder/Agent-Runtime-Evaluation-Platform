@@ -559,6 +559,12 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
 
     if not user_confirmed:
         print("[Wiki Agent] 用户取消操作")
+        # 记录 REPLAN（用户取消 = 改变计划）
+        collector.record_replan(
+            reason="用户取消了知识库操作",
+            new_plan="跳过 CRUD，返回对话结果",
+            trigger="user_cancel",
+        )
         return {
             **state,
             "action_result": {"status": "cancelled", "message": "用户取消"},
@@ -791,6 +797,10 @@ async def run_chat_stream(
         "retrieved_context": None,
     }
 
+    # 保存 task_id 到 config，供 resume 时 attach
+    _collector = get_collector()
+    _task_id = _collector.task_id
+
     async def _run_graph():
         try:
             result = await graph.ainvoke(initial_state, config)
@@ -814,8 +824,15 @@ async def run_chat_stream(
                 break
             yield event
     finally:
-        # 无论正常结束还是客户端断开，都确保 flush 评估轨迹
-        await emit_session_end(session_id or "")
+        # 检查 graph 是否被 interrupt 暂停（task 仍在运行）
+        if task.done():
+            # 正常结束或异常 → 结束 session
+            await emit_session_end(session_id or "")
+        else:
+            # interrupt 暂停 → flush 步骤但不结束 task
+            # resume 时会 attach 到同一个 task 并结束
+            _collector._flush(block=True)
+            logger.info("[Wiki Agent] HITL interrupt, task %s paused, waiting for resume", _task_id)
         if not task.done():
             task.cancel()
             try:
@@ -874,8 +891,20 @@ async def resume_and_execute(
     *,
     session_id: str | None = None,
 ) -> dict:
-    """从 checkpoint 恢复，执行或取消知识库操作"""
+    """从 checkpoint 恢复，执行或取消知识库操作。
+
+    通过 collector.attach() 将后续步骤附加到第一次请求创建的 task 上，
+    确保 HITL 流程的完整轨迹（search→respond→decide→execute）记录在同一个 task 中。
+    """
     graph = await get_wiki_graph()
+
+    # 从 LangGraph checkpoint 恢复时，需要 attach 到第一次请求创建的 task
+    # thread_id 作为 dedupe_key，让 collector attach 到正确的 task
+    collector = get_collector()
+    if not collector.task_id:
+        # 新请求没有 session，需要 attach 到已有 task
+        # 通过 thread_id 关联（第一次请求把 thread_id 存在 task context 中）
+        collector.start(f"resume:{thread_id}", {"thread_id": thread_id, "mode": "resume"})
 
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
