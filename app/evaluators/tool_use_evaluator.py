@@ -52,18 +52,8 @@ TOOL_USE_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
    - 例如：读取文件后是否正确分析了内容？
    - Agent 是否在失败后迭代改进，还是过早放弃？
 
-## 输出格式
-返回 JSON 对象，feedback 字段请用中文：
-{{
-    "selection_quality": <分数>,
-    "parameter_accuracy": <分数>,
-    "result_utilization": <分数>,
-    "overall": <加权平均>,
-    "feedback": "<详细评估反馈（中文）>",
-    "inefficient_calls": [
-        {{"tool": "<工具名>", "issue": "<问题描述>", "suggestion": "<改进建议>"}}
-    ]
-}}
+## 输出要求
+请直接调用 output 函数返回评估结果。feedback 字段请用中文。
 """
 
 
