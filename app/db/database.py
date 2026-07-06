@@ -58,7 +58,6 @@ async def get_db() -> AsyncSession:
 async def init_db() -> None:
     """Initialize database by running Alembic migrations to head."""
     # Register all ORM models so metadata is populated
-    from app.api.workspace import AuditLog, Workspace, WorkspaceMember  # noqa: F401
     from app.db.models import AgentTask, AgentTrajectory, Evaluation  # noqa: F401
 
     await _run_alembic_upgrade()

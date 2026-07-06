@@ -44,7 +44,7 @@ class AgentTask(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     workspace_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("workspaces.id"), nullable=True, index=True
+        String(36), nullable=True, index=True
     )
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

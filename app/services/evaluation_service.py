@@ -43,18 +43,18 @@ class EvaluationService:
         self.db = db
 
     @staticmethod
-    def _eval_dashboard_cache_key(workspace_id: Optional[str]) -> str:
-        return f"eval_dashboard:{workspace_id or 'all'}"
+    def _eval_dashboard_cache_key() -> str:
+        return "eval_dashboard:all"
 
-    async def _invalidate_eval_caches(self, task_id: str, workspace_id: Optional[str] = None) -> None:
+    async def _invalidate_eval_caches(self, task_id: str) -> None:
         """Invalidate report/task/dashboard caches after eval lifecycle changes."""
         from app.core.cache import cache_delete, cache_delete_pattern
 
         await cache_delete_pattern("report:*")
         await cache_delete(f"task:{task_id}")
         await cache_delete(f"trajectory:{task_id}")
-        await cache_delete(self._dashboard_cache_key(workspace_id))
-        await cache_delete(self._eval_dashboard_cache_key(workspace_id))
+        await cache_delete(self._dashboard_cache_key())
+        await cache_delete(self._eval_dashboard_cache_key())
 
     @classmethod
     async def try_claim_stream(cls, evaluation_id: str, ttl: int = 600) -> bool:
@@ -81,8 +81,8 @@ class EvaluationService:
                 cls._local_stream_claims.discard(evaluation_id)
 
     @staticmethod
-    def _dashboard_cache_key(workspace_id: Optional[str]) -> str:
-        return f"dashboard:{workspace_id or 'all'}:counters"
+    def _dashboard_cache_key() -> str:
+        return "dashboard:all:counters"
 
     async def _fail_evaluation(
         self,
@@ -95,16 +95,15 @@ class EvaluationService:
         evaluation.status = EvaluationStatus.FAILED
         task.status = previous_status
         await self.db.flush()
-        await self._invalidate_eval_caches(task_id, task.workspace_id)
+        await self._invalidate_eval_caches(task_id)
 
     async def abort_pending_evaluation(
         self,
         eval_id: str,
         task_id: str,
-        workspace_id: Optional[str] = None,
     ) -> None:
         """Mark a stuck IN_PROGRESS evaluation as failed (background/Celery cleanup)."""
-        task = await self._get_task_model(task_id, workspace_id=workspace_id)
+        task = await self._get_task_model(task_id)
         if not task:
             return
 
@@ -132,20 +131,16 @@ class EvaluationService:
     async def create_task(
         self,
         task_data: TaskCreate,
-        workspace_id: Optional[str] = None,
     ) -> TaskResponse:
         """Create a new agent task."""
         task_id = task_data.id or str(uuid.uuid4())
 
         existing = await self._get_task_model(task_id)
         if existing:
-            if existing.workspace_id != workspace_id:
-                raise ValueError(f"Task {task_id} already exists in a different workspace scope")
             return self._task_to_response(existing)
 
         task = AgentTask(
             id=task_id,
-            workspace_id=workspace_id,
             goal=task_data.goal,
             context=task_data.context,
             status=TaskStatus.PENDING,
@@ -157,11 +152,11 @@ class EvaluationService:
 
         from app.core.cache import cache_delete
 
-        await cache_delete(self._dashboard_cache_key(workspace_id))
+        await cache_delete(self._dashboard_cache_key())
 
         return self._task_to_response(task)
 
-    async def get_task(self, task_id: str, workspace_id: Optional[str] = None) -> Optional[TaskResponse]:
+    async def get_task(self, task_id: str) -> Optional[TaskResponse]:
         """Get task by ID."""
         from app.core.cache import cache_get, cache_set
 
@@ -169,11 +164,9 @@ class EvaluationService:
         cached = await cache_get(cache_key)
         if cached is not None:
             response = TaskResponse(**cached)
-            if workspace_id and response.workspace_id != workspace_id:
-                return None
             return response
 
-        task = await self._get_task_model(task_id, workspace_id=workspace_id)
+        task = await self._get_task_model(task_id)
         if not task:
             return None
 
@@ -185,10 +178,9 @@ class EvaluationService:
         self,
         task_id: str,
         task_data,
-        workspace_id: Optional[str] = None,
     ) -> Optional[TaskResponse]:
         """Update an existing task."""
-        task = await self._get_task_model(task_id, workspace_id=workspace_id)
+        task = await self._get_task_model(task_id)
         if not task:
             return None
 
@@ -207,8 +199,7 @@ class EvaluationService:
         from app.core.cache import cache_delete
 
         await cache_delete(f"task:{task_id}")
-        await cache_delete(self._dashboard_cache_key(workspace_id))
-        await cache_delete(self._dashboard_cache_key(task.workspace_id))
+        await cache_delete(self._dashboard_cache_key())
 
         return self._task_to_response(task)
 
@@ -216,10 +207,9 @@ class EvaluationService:
         self,
         task_id: str,
         steps: List[Dict[str, Any]],
-        workspace_id: Optional[str] = None,
     ) -> bool:
         """Add trajectory steps to a task."""
-        task = await self._get_task_model(task_id, workspace_id=workspace_id)
+        task = await self._get_task_model(task_id)
         if not task:
             return False
 
@@ -274,14 +264,13 @@ class EvaluationService:
         self,
         task_id: str,
         stream_mode: bool = False,
-        workspace_id: Optional[str] = None,
     ) -> Tuple[Optional[EvaluationResponse], bool]:
         """Create an evaluation record (IN_PROGRESS) without running the graph.
 
         Returns:
-            Tuple of (response, created_new) — created_new is False when reusing IN_PROGRESS.
+            Tuple of (response, created_new) -- created_new is False when reusing IN_PROGRESS.
         """
-        task = await self._get_task_model(task_id, workspace_id=workspace_id)
+        task = await self._get_task_model(task_id)
         if not task:
             return None, False
 
@@ -337,11 +326,10 @@ class EvaluationService:
         self,
         task_id: str,
         context: Optional[Dict[str, Any]] = None,
-        workspace_id: Optional[str] = None,
         evaluation_id: Optional[str] = None,
     ) -> Optional[EvaluationResponse]:
         """Run evaluation for a task."""
-        task = await self._get_task_model(task_id, workspace_id=workspace_id)
+        task = await self._get_task_model(task_id)
         if not task:
             return None
 
@@ -355,7 +343,7 @@ class EvaluationService:
             if not evaluation or evaluation.task_id != task_id:
                 return None
             if evaluation.status == EvaluationStatus.COMPLETED:
-                return await self.get_evaluation(evaluation_id, workspace_id=workspace_id)
+                return await self.get_evaluation(evaluation_id)
             if evaluation.status != EvaluationStatus.IN_PROGRESS:
                 return None
         else:
@@ -414,7 +402,7 @@ class EvaluationService:
             }
 
             # Run evaluation graph (parallel if configured)
-            use_parallel = getattr(settings, "EVAL_PARALLEL", True)  # 默认并行
+            use_parallel = getattr(settings, "EVAL_PARALLEL", True)
             with tracer.start_as_current_span("evaluation") as eval_span:
                 eval_span.set_attribute("parallel", use_parallel)
                 if use_parallel:
@@ -460,14 +448,9 @@ class EvaluationService:
     async def get_evaluation(
         self,
         eval_id: str,
-        workspace_id: Optional[str] = None,
     ) -> Optional[EvaluationResponse]:
         """Get evaluation by ID."""
         query = select(Evaluation).where(Evaluation.id == eval_id)
-        if workspace_id:
-            query = query.join(AgentTask, Evaluation.task_id == AgentTask.id).where(
-                AgentTask.workspace_id == workspace_id
-            )
         result = await self.db.execute(query)
         evaluation = result.scalar_one_or_none()
 
@@ -515,7 +498,6 @@ class EvaluationService:
         skip: int = 0,
         limit: int = 100,
         status: Optional[str] = None,
-        workspace_id: Optional[str] = None,
         min_score: Optional[float] = None,
         max_score: Optional[float] = None,
     ) -> tuple[List[EvaluationListItem], int]:
@@ -523,8 +505,6 @@ class EvaluationService:
         from sqlalchemy import func as sql_func
 
         def _apply_filters(query):
-            if workspace_id:
-                query = query.where(AgentTask.workspace_id == workspace_id)
             if status:
                 try:
                     query = query.where(Evaluation.status == EvaluationStatus(status))
@@ -576,15 +556,13 @@ class EvaluationService:
         ]
         return items, total
 
-    async def get_evaluations_dashboard(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_evaluations_dashboard(self) -> Dict[str, Any]:
         """Aggregate evaluation counters for list page stats."""
         from sqlalchemy import func as sql_func
 
         count_base = select(sql_func.count()).select_from(Evaluation).join(
             AgentTask, Evaluation.task_id == AgentTask.id
         )
-        if workspace_id:
-            count_base = count_base.where(AgentTask.workspace_id == workspace_id)
         total = (await self.db.execute(count_base)).scalar_one()
 
         status_counts: Dict[str, int] = {s.value: 0 for s in EvaluationStatus}
@@ -593,8 +571,6 @@ class EvaluationService:
             .join(AgentTask, Evaluation.task_id == AgentTask.id)
             .group_by(Evaluation.status)
         )
-        if workspace_id:
-            status_query = status_query.where(AgentTask.workspace_id == workspace_id)
         for status, count in (await self.db.execute(status_query)).all():
             status_counts[status.value if hasattr(status, "value") else str(status)] = count
 
@@ -603,8 +579,6 @@ class EvaluationService:
             .join(AgentTask, Evaluation.task_id == AgentTask.id)
             .where(Evaluation.overall_score.isnot(None))
         )
-        if workspace_id:
-            avg_query = avg_query.where(AgentTask.workspace_id == workspace_id)
         average_score = round(float((await self.db.execute(avg_query)).scalar_one() or 0), 1)
 
         return {"total": total, "status_counts": status_counts, "average_score": average_score}
@@ -622,10 +596,9 @@ class EvaluationService:
     async def get_trajectory(
         self,
         task_id: str,
-        workspace_id: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """Get trajectory steps for a task."""
-        task = await self._get_task_model(task_id, workspace_id=workspace_id)
+        task = await self._get_task_model(task_id)
         if not task:
             return None
         return await self._get_trajectory(task_id)
@@ -634,7 +607,6 @@ class EvaluationService:
         self,
         skip: int = 0,
         limit: int = 100,
-        workspace_id: Optional[str] = None,
         status: Optional[str] = None,
         search: Optional[str] = None,
     ) -> tuple[List[TaskResponse], int]:
@@ -642,8 +614,6 @@ class EvaluationService:
         from sqlalchemy import func as sql_func
 
         def _apply_filters(query):
-            if workspace_id:
-                query = query.where(AgentTask.workspace_id == workspace_id)
             if status:
                 try:
                     query = query.where(AgentTask.status == TaskStatus(status))
@@ -671,9 +641,9 @@ class EvaluationService:
         items, _ = await self.list_tasks_with_count(skip=skip, limit=limit)
         return items
 
-    async def delete_task(self, task_id: str, workspace_id: Optional[str] = None) -> bool:
+    async def delete_task(self, task_id: str) -> bool:
         """Delete a task and all its trajectory and evaluation records (cascade)."""
-        task = await self._get_task_model(task_id, workspace_id=workspace_id)
+        task = await self._get_task_model(task_id)
         if not task:
             return False
         await self.db.delete(task)
@@ -683,18 +653,13 @@ class EvaluationService:
 
         await cache_delete(f"task:{task_id}")
         await cache_delete(f"trajectory:{task_id}")
-        await cache_delete(self._dashboard_cache_key(workspace_id))
-        await cache_delete(self._dashboard_cache_key(task.workspace_id))
+        await cache_delete(self._dashboard_cache_key())
 
         return True
 
-    async def delete_evaluation(self, eval_id: str, workspace_id: Optional[str] = None) -> bool:
+    async def delete_evaluation(self, eval_id: str) -> bool:
         """Delete a single evaluation record."""
         query = select(Evaluation).where(Evaluation.id == eval_id)
-        if workspace_id:
-            query = query.join(AgentTask, Evaluation.task_id == AgentTask.id).where(
-                AgentTask.workspace_id == workspace_id
-            )
         result = await self.db.execute(query)
         evaluation = result.scalar_one_or_none()
         if not evaluation:
@@ -704,18 +669,15 @@ class EvaluationService:
         await self.db.delete(evaluation)
         await self.db.flush()
         if task:
-            await self._invalidate_eval_caches(task_id, task.workspace_id)
+            await self._invalidate_eval_caches(task_id)
         return True
 
     async def _get_task_model(
         self,
         task_id: str,
-        workspace_id: Optional[str] = None,
     ) -> Optional[AgentTask]:
         """Get task ORM model by ID."""
         query = select(AgentTask).where(AgentTask.id == task_id)
-        if workspace_id:
-            query = query.where(AgentTask.workspace_id == workspace_id)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
@@ -815,7 +777,7 @@ class EvaluationService:
 
         await self.db.flush()
 
-        await self._invalidate_eval_caches(task.id, task.workspace_id)
+        await self._invalidate_eval_caches(task.id)
 
         return EvaluationResponse(
             id=evaluation.id,
@@ -900,7 +862,7 @@ class EvaluationService:
         if llm_suggestions:
             return llm_suggestions[:6]
 
-        # ── Hardcoded fallback ──
+        # Hardcoded fallback
         recommendations: List[str] = []
         labels = {
             "planning": "改进规划：执行前补充关键步骤、依赖关系和验收标准。",

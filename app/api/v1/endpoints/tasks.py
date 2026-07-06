@@ -4,13 +4,11 @@ Task management endpoints.
 
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.workspace import AuditAction, WorkspaceRole, add_audit_log
-from app.api.workspace_context import WorkspaceContext, get_workspace_context, require_role, resolve_task_workspace_id
 from app.core.cache import cache_get, cache_set
 from app.core.config import settings
 from app.db.database import get_db
@@ -24,29 +22,20 @@ router = APIRouter()
 @router.post("/", response_model=TaskResponse, status_code=201)
 async def create_task(
     task_data: TaskCreate,
-    request: Request,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """Create a new agent task."""
-    require_role(ctx, WorkspaceRole.EVALUATOR)
-    ws_id = resolve_task_workspace_id(ctx, request)
     service = EvaluationService(db)
-    task = await service.create_task(task_data, workspace_id=ws_id)
-    if ws_id:
-        await add_audit_log(db, ws_id, ctx.user_id, AuditAction.TASK_CREATED, "task", task.id)
+    task = await service.create_task(task_data)
     return task
 
 
 @router.get("/dashboard")
 async def get_tasks_dashboard(
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """Get task dashboard counters and recent tasks."""
-    require_role(ctx, WorkspaceRole.VIEWER)
-    ws_filter = ctx.filter_workspace_id()
-    cache_key = EvaluationService._dashboard_cache_key(ws_filter)
+    cache_key = EvaluationService._dashboard_cache_key(None)
 
     cached = await cache_get(cache_key)
     if cached is not None:
@@ -55,9 +44,6 @@ async def get_tasks_dashboard(
     else:
         count_query = select(func.count()).select_from(AgentTask)
         status_query = select(AgentTask.status, func.count(AgentTask.id)).group_by(AgentTask.status)
-        if ws_filter:
-            count_query = count_query.where(AgentTask.workspace_id == ws_filter)
-            status_query = status_query.where(AgentTask.workspace_id == ws_filter)
 
         total_result = await db.execute(count_query)
         total_tasks = total_result.scalar_one()
@@ -72,8 +58,6 @@ async def get_tasks_dashboard(
         )
 
     recent_query = select(AgentTask).order_by(AgentTask.created_at.desc()).limit(5)
-    if ws_filter:
-        recent_query = recent_query.where(AgentTask.workspace_id == ws_filter)
     recent_result = await db.execute(recent_query)
     recent_tasks = recent_result.scalars().all()
 
@@ -101,12 +85,10 @@ async def list_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """List all tasks."""
-    require_role(ctx, WorkspaceRole.VIEWER)
     service = EvaluationService(db)
-    tasks, total = await service.list_tasks_with_count(skip=skip, limit=limit, workspace_id=ctx.filter_workspace_id())
+    tasks, total = await service.list_tasks_with_count(skip=skip, limit=limit)
     return JSONResponse(
         content=[t.model_dump(mode="json") for t in tasks],
         headers={"X-Total-Count": str(total)},
@@ -118,7 +100,6 @@ async def add_trajectory(
     task_id: str,
     steps: List[TrajectoryStep],
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Add trajectory steps to an existing task.
@@ -126,17 +107,11 @@ async def add_trajectory(
     Used by the Dashboard, SDK HTTP transport, and external Agent integrations
     that capture their own runtime trace.
     """
-    require_role(ctx, WorkspaceRole.EVALUATOR)
     service = EvaluationService(db)
     steps_data = [step.model_dump() for step in steps]
-    success = await service.add_trajectory(task_id, steps_data, workspace_id=ctx.filter_workspace_id())
+    success = await service.add_trajectory(task_id, steps_data)
     if not success:
         raise HTTPException(status_code=404, detail="Task not found")
-    ws_id = ctx.filter_workspace_id() or ctx.workspace_id
-    if ws_id:
-        await add_audit_log(
-            db, ws_id, ctx.user_id, AuditAction.TRAJECTORY_ADDED, "task", task_id, {"steps": len(steps)}
-        )
     return {"message": f"Added {len(steps)} trajectory steps", "task_id": task_id}
 
 
@@ -145,17 +120,12 @@ async def update_task(
     task_id: str,
     task_data: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """Update an existing task."""
-    require_role(ctx, WorkspaceRole.EVALUATOR)
     service = EvaluationService(db)
-    task = await service.update_task(task_id, task_data, workspace_id=ctx.filter_workspace_id())
+    task = await service.update_task(task_id, task_data)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    ws_id = ctx.filter_workspace_id() or ctx.workspace_id
-    if ws_id:
-        await add_audit_log(db, ws_id, ctx.user_id, AuditAction.TASK_UPDATED, "task", task_id)
     return task
 
 
@@ -163,12 +133,10 @@ async def update_task(
 async def get_trajectory(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """Get execution trajectory for a task."""
-    require_role(ctx, WorkspaceRole.VIEWER)
     service = EvaluationService(db)
-    trajectory = await service.get_trajectory(task_id, workspace_id=ctx.filter_workspace_id())
+    trajectory = await service.get_trajectory(task_id)
     if trajectory is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"task_id": task_id, "steps": trajectory}
@@ -178,12 +146,10 @@ async def get_trajectory(
 async def get_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """Get task by ID."""
-    require_role(ctx, WorkspaceRole.VIEWER)
     service = EvaluationService(db)
-    task = await service.get_task(task_id, workspace_id=ctx.filter_workspace_id())
+    task = await service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
@@ -193,15 +159,10 @@ async def get_task(
 async def delete_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """Delete a task and all its trajectory and evaluation records."""
-    require_role(ctx, WorkspaceRole.ADMIN)
     service = EvaluationService(db)
-    deleted = await service.delete_task(task_id, workspace_id=ctx.filter_workspace_id())
+    deleted = await service.delete_task(task_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
-    ws_id = ctx.filter_workspace_id() or ctx.workspace_id
-    if ws_id:
-        await add_audit_log(db, ws_id, ctx.user_id, AuditAction.TASK_DELETED, "task", task_id)
     return {"message": "Task deleted", "task_id": task_id}

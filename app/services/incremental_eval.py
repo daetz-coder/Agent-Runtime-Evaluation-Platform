@@ -50,7 +50,6 @@ class IncrementalEvalService:
         base_eval_id: str,
         head_task_id: str,
         force_dims: Optional[List[str]] = None,
-        workspace_id: Optional[str] = None,
     ) -> Tuple[str, List[str], List[str], TrajectoryDiffResponse, str, Optional[float]]:
         """
         Run an incremental evaluation.
@@ -58,8 +57,7 @@ class IncrementalEvalService:
         Args:
             base_eval_id: Previous evaluation to reuse scores from.
             head_task_id: New task with updated trajectory.
-            force_dims: Override — force re-evaluate these dimensions.
-            workspace_id: For access control.
+            force_dims: Override -- force re-evaluate these dimensions.
 
         Returns:
             Tuple of (evaluation_id, reused_dims, re_evaluated_dims, diff_summary).
@@ -67,7 +65,7 @@ class IncrementalEvalService:
         async with async_session_factory() as db:
             from sqlalchemy.orm import selectinload
 
-            # ── Fetch base evaluation with eager-loaded task ──
+            # Fetch base evaluation with eager-loaded task
             base_eval = await db.get(
                 Evaluation,
                 base_eval_id,
@@ -76,15 +74,10 @@ class IncrementalEvalService:
             if not base_eval or base_eval.status != EvaluationStatus.COMPLETED:
                 raise ValueError(f"Base evaluation {base_eval_id} not found or not completed")
 
-            # ── Fetch head task + trajectory ──
+            # Fetch head task + trajectory
             head_task = await db.get(AgentTask, head_task_id)
             if not head_task:
                 raise ValueError(f"Head task {head_task_id} not found")
-
-            if workspace_id:
-                base_ws = base_eval.task.workspace_id if base_eval.task else None
-                if base_ws != workspace_id or head_task.workspace_id != workspace_id:
-                    raise ValueError("Evaluation or task not found in this workspace")
 
             head_traj = await self._get_trajectory(db, head_task_id)
             base_traj = await self._get_trajectory(db, base_eval.task_id)
@@ -184,9 +177,8 @@ class IncrementalEvalService:
             await cache_delete_pattern("report:*")
             await cache_delete(f"task:{head_task_id}")
             await cache_delete(f"trajectory:{head_task_id}")
-            ws_id = head_task.workspace_id
-            await cache_delete(f"dashboard:{ws_id or 'all'}:counters")
-            await cache_delete(f"eval_dashboard:{ws_id or 'all'}")
+            await cache_delete("dashboard:all:counters")
+            await cache_delete("eval_dashboard:all")
 
             return eval_id, reused_dims, re_eval_dims, diff, new_eval.status.value, new_eval.overall_score
 

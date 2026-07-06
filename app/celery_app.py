@@ -5,7 +5,6 @@ Replaces FastAPI BackgroundTasks with a reliable, distributed task queue.
 Features:
   - Automatic retry on transient failures (LLM timeout, DB errors)
   - Concurrency control (limit simultaneous evaluation tasks)
-  - Task priority (VIP workspaces get higher priority)
   - Dead letter tracking (failed tasks logged with full context)
 
 Usage:
@@ -14,13 +13,12 @@ Usage:
 
   # From code:
   from app.celery_app import run_evaluation_task
-  result = run_evaluation_task.delay(task_id, workspace_id)
+  result = run_evaluation_task.delay(task_id, eval_id)
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from celery import Celery
 from celery.signals import worker_process_init
@@ -29,7 +27,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# ── Celery App ────────────────────────────────────────────────
+# Celery App
 
 celery_app = Celery(
     "agent_eval",
@@ -67,7 +65,7 @@ celery_app.conf.update(
 )
 
 
-# ── Worker Initialization ─────────────────────────────────────
+# Worker Initialization
 
 
 @worker_process_init.connect
@@ -88,7 +86,7 @@ def init_worker(**kwargs):
     logger.info("Celery worker ready")
 
 
-# ── Task Definitions ──────────────────────────────────────────
+# Task Definitions
 
 
 @celery_app.task(
@@ -102,7 +100,6 @@ def run_evaluation_task(
     self,
     task_id: str,
     eval_id: str,
-    workspace_id: Optional[str] = None,
 ) -> dict:
     """
     Run evaluation for an existing task with trajectory.
@@ -127,7 +124,7 @@ def run_evaluation_task(
     try:
         loop = asyncio.new_event_loop()
         result = loop.run_until_complete(
-            _run_evaluation_async(task_id, eval_id, workspace_id)
+            _run_evaluation_async(task_id, eval_id)
         )
         loop.close()
 
@@ -145,10 +142,10 @@ def run_evaluation_task(
         # Retry on transient errors
         if self.request.retries < self.max_retries:
             raise self.retry(exc=exc, countdown=15 * (self.request.retries + 1))
-        # Final failure — mark evaluation as failed so clients don't poll forever
+        # Final failure -- mark evaluation as failed so clients don't poll forever
         loop = asyncio.new_event_loop()
         try:
-            loop.run_until_complete(_abort_evaluation_async(task_id, eval_id, workspace_id))
+            loop.run_until_complete(_abort_evaluation_async(task_id, eval_id))
         finally:
             loop.close()
         return {"task_id": task_id, "eval_id": eval_id, "status": "failed", "error": str(exc)}
@@ -157,7 +154,6 @@ def run_evaluation_task(
 async def _run_evaluation_async(
     task_id: str,
     eval_id: str,
-    workspace_id: Optional[str] = None,
 ):
     """Async wrapper for evaluation service."""
     from app.db.database import async_session_factory
@@ -167,7 +163,6 @@ async def _run_evaluation_async(
         service = EvaluationService(db)
         result = await service.run_evaluation(
             task_id=task_id,
-            workspace_id=workspace_id,
             evaluation_id=eval_id,
         )
         await db.commit()
@@ -177,7 +172,6 @@ async def _run_evaluation_async(
 async def _abort_evaluation_async(
     task_id: str,
     eval_id: str,
-    workspace_id: Optional[str] = None,
 ) -> None:
     """Mark a stuck evaluation as failed after Celery exhausts retries."""
     from app.db.database import async_session_factory
@@ -185,11 +179,11 @@ async def _abort_evaluation_async(
 
     async with async_session_factory() as db:
         service = EvaluationService(db)
-        await service.abort_pending_evaluation(eval_id, task_id, workspace_id=workspace_id)
+        await service.abort_pending_evaluation(eval_id, task_id)
         await db.commit()
 
 
-# ── Webhook Notification ──────────────────────────────────────
+# Webhook Notification
 
 
 def _notify_webhook(task_id: str, eval_id: str, result) -> None:

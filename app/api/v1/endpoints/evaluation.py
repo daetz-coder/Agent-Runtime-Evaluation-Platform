@@ -12,8 +12,6 @@ from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Qu
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.workspace import AuditAction, WorkspaceRole, add_audit_log
-from app.api.workspace_context import WorkspaceContext, get_workspace_context, require_role
 from app.core.config import settings
 from app.db.database import async_session_factory, get_db
 from app.models.schemas import (
@@ -35,18 +33,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _create_task_checked(
-    service: EvaluationService,
-    task_data,
-    workspace_id: Optional[str],
-):
-    """Create task or raise HTTP 409 on cross-workspace id conflict."""
-    try:
-        return await service.create_task(task_data, workspace_id=workspace_id)
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-
-
 @router.get("/", response_model=List[EvaluationListItem])
 async def list_evaluations(
     skip: int = Query(0, ge=0),
@@ -55,20 +41,16 @@ async def list_evaluations(
     min_score: Optional[float] = None,
     max_score: Optional[float] = None,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """List evaluations with pagination."""
-    require_role(ctx, WorkspaceRole.VIEWER)
     service = EvaluationService(db)
     evaluations, total = await service.list_evaluations_with_count(
         skip=skip,
         limit=limit,
         status=status,
-        workspace_id=ctx.filter_workspace_id(),
         min_score=min_score,
         max_score=max_score,
     )
-    # 通过 response header 返回总数
     from fastapi.responses import JSONResponse
 
     return JSONResponse(
@@ -80,18 +62,15 @@ async def list_evaluations(
 @router.get("/dashboard")
 async def get_evaluations_dashboard(
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """Aggregate evaluation stats for list page (not limited to current page)."""
-    require_role(ctx, WorkspaceRole.VIEWER)
     service = EvaluationService(db)
-    return await service.get_evaluations_dashboard(workspace_id=ctx.filter_workspace_id())
+    return await service.get_evaluations_dashboard()
 
 
 async def _run_evaluation_background(
     task_id: str,
     eval_id: str,
-    workspace_id: Optional[str] = None,
 ):
     """Background task: run evaluation graph and persist results."""
     try:
@@ -100,7 +79,6 @@ async def _run_evaluation_background(
             result = await service.run_evaluation(
                 task_id=task_id,
                 context=None,
-                workspace_id=workspace_id,
                 evaluation_id=eval_id,
             )
             await db.commit()
@@ -114,7 +92,7 @@ async def _run_evaluation_background(
         try:
             async with async_session_factory() as db:
                 service = EvaluationService(db)
-                await service.abort_pending_evaluation(eval_id, task_id, workspace_id=workspace_id)
+                await service.abort_pending_evaluation(eval_id, task_id)
                 await db.commit()
         except Exception as cleanup_err:
             logger.error("Failed to abort evaluation %s: %s", eval_id, cleanup_err)
@@ -138,7 +116,6 @@ async def run_evaluation(
     request: EvaluationRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Run evaluation for a task (truly async).
@@ -150,34 +127,19 @@ async def run_evaluation(
     When use_stream=false (default), evaluation runs in background — poll GET /evaluations/{id}.
     When use_stream=true, call POST /evaluations/stream from the client for live progress.
     """
-    require_role(ctx, WorkspaceRole.EVALUATOR)
-    ws_filter = ctx.filter_workspace_id()
-
-    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
-
-    try:
-        await enforce_workspace_quotas(db, ws_filter)
-    except QuotaExceeded as e:
-        raise HTTPException(status_code=429, detail=str(e))
-
     service = EvaluationService(db)
 
-    task = await service.get_task(request.task_id, workspace_id=ws_filter)
+    task = await service.get_task(request.task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     evaluation, created_new = await service.create_evaluation(
         request.task_id,
         stream_mode=request.use_stream,
-        workspace_id=ws_filter,
     )
 
     if not evaluation:
         raise HTTPException(status_code=500, detail="Evaluation failed to start")
-
-    ws_id = ws_filter or ctx.workspace_id
-    if ws_id and created_new:
-        await add_audit_log(db, ws_id, ctx.user_id, AuditAction.EVAL_CREATED, "evaluation", evaluation.id)
 
     await db.commit()
 
@@ -189,7 +151,6 @@ async def run_evaluation(
             run_evaluation_task.delay(
                 request.task_id,
                 evaluation.id,
-                workspace_id=ws_filter,
             )
         except Exception as exc:
             logger.warning(
@@ -199,18 +160,14 @@ async def run_evaluation(
                 _run_evaluation_background,
                 request.task_id,
                 evaluation.id,
-                ws_filter,
             )
 
     return evaluation
 
 
 @router.get("/settings")
-async def get_eval_settings(
-    ctx: WorkspaceContext = Depends(get_workspace_context),
-):
-    """返回评估公开配置（不含密钥）。"""
-    require_role(ctx, WorkspaceRole.VIEWER)
+async def get_eval_settings():
+    """Return evaluation public config (no secrets)."""
     return {
         "default_provider": settings.DEFAULT_LLM_PROVIDER,
         "parallel_enabled": settings.EVAL_PARALLEL,
@@ -224,7 +181,6 @@ async def compare_evaluations(
     base_evaluation_id: str,
     head_evaluation_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Compare trajectories between two evaluations.
@@ -232,8 +188,6 @@ async def compare_evaluations(
     Returns step-by-step diff showing added/removed/changed steps.
     Useful for understanding what changed between two agent runs.
     """
-    require_role(ctx, WorkspaceRole.VIEWER)
-    ws_filter = ctx.filter_workspace_id()
     from app.db.models import AgentTask, AgentTrajectory, Evaluation
     from app.services.diff_service import DiffService
 
@@ -247,12 +201,6 @@ async def compare_evaluations(
 
     base_task = await db.get(AgentTask, base_eval.task_id)
     head_task = await db.get(AgentTask, head_eval.task_id)
-
-    if ws_filter:
-        if not base_task or base_task.workspace_id != ws_filter:
-            raise HTTPException(status_code=404, detail="Base evaluation not found")
-        if not head_task or head_task.workspace_id != ws_filter:
-            raise HTTPException(status_code=404, detail="Head evaluation not found")
 
     async def _get_traj(task_id: str) -> list:
         r = await db.execute(
@@ -286,16 +234,14 @@ async def compare_evaluations(
 async def get_evaluation(
     evaluation_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Get evaluation by ID.
 
     - **evaluation_id**: UUID of the evaluation
     """
-    require_role(ctx, WorkspaceRole.VIEWER)
     service = EvaluationService(db)
-    evaluation = await service.get_evaluation(evaluation_id, workspace_id=ctx.filter_workspace_id())
+    evaluation = await service.get_evaluation(evaluation_id)
 
     if not evaluation:
         raise HTTPException(status_code=404, detail="Evaluation not found")
@@ -308,7 +254,6 @@ async def quick_evaluation(
     task_id: str = Body(..., embed=True),
     context: Optional[Dict[str, Any]] = Body(None, embed=True),
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Quick evaluation endpoint (synchronous).
@@ -319,22 +264,13 @@ async def quick_evaluation(
     Note: This runs synchronously and may take some time.
     Use the async endpoint for better performance.
     """
-    require_role(ctx, WorkspaceRole.EVALUATOR)
-    ws_filter = ctx.filter_workspace_id()
-    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
-
-    try:
-        await enforce_workspace_quotas(db, ws_filter)
-    except QuotaExceeded as e:
-        raise HTTPException(status_code=429, detail=str(e))
-
     service = EvaluationService(db)
 
-    task = await service.get_task(task_id, workspace_id=ws_filter)
+    task = await service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    evaluation = await service.run_evaluation(task_id=task_id, context=context, workspace_id=ws_filter)
+    evaluation = await service.run_evaluation(task_id=task_id, context=context)
 
     if not evaluation:
         raise HTTPException(status_code=500, detail="Evaluation failed")
@@ -347,33 +283,23 @@ async def batch_evaluation(
     background_tasks: BackgroundTasks,
     task_ids: Annotated[List[str], Body(embed=True)],
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
-    批量评估多个任务（异步）。
+    Batch evaluation for multiple tasks (async).
 
-    - **task_ids**: 任务 ID 列表
+    - **task_ids**: List of task IDs
     """
-    require_role(ctx, WorkspaceRole.EVALUATOR)
     if len(task_ids) > 50:
         raise HTTPException(status_code=400, detail="Batch size cannot exceed 50 task IDs")
-    ws_filter = ctx.filter_workspace_id()
-
-    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
 
     service = EvaluationService(db)
     results = []
     for task_id in task_ids:
-        task = await service.get_task(task_id, workspace_id=ws_filter)
+        task = await service.get_task(task_id)
         if not task:
             results.append({"task_id": task_id, "status": "not_found"})
             continue
-        try:
-            await enforce_workspace_quotas(db, ws_filter)
-        except QuotaExceeded as e:
-            results.append({"task_id": task_id, "status": "quota_exceeded", "detail": str(e)})
-            continue
-        evaluation, created_new = await service.create_evaluation(task_id, workspace_id=ws_filter)
+        evaluation, created_new = await service.create_evaluation(task_id)
         if not evaluation:
             results.append({"task_id": task_id, "status": "failed"})
             continue
@@ -381,7 +307,7 @@ async def batch_evaluation(
             try:
                 from app.celery_app import run_evaluation_task
 
-                run_evaluation_task.delay(task_id, evaluation.id, workspace_id=ws_filter)
+                run_evaluation_task.delay(task_id, evaluation.id)
             except Exception as exc:
                 logger.warning(
                     "Celery dispatch failed (%s), falling back to BackgroundTasks", exc
@@ -390,7 +316,6 @@ async def batch_evaluation(
                     _run_evaluation_background,
                     task_id,
                     evaluation.id,
-                    ws_filter,
                 )
         results.append(
             {
@@ -406,12 +331,11 @@ async def batch_evaluation(
 async def evaluation_stream(
     request: StreamEvaluationRequest,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
-    SSE 流式评估 — 每个评估器完成时实时推送分数，可选持久化到 evaluation_id。
+    SSE streaming evaluation -- emits scores live as each evaluator completes.
 
-    事件类型:
+    Event types:
     - progress: {dimension, score, progress, total}
     - result: {scores, overall}
     - error: {message}
@@ -430,18 +354,8 @@ async def evaluation_stream(
     )
     from app.models.schemas import TrajectoryStep as TS
 
-    require_role(ctx, WorkspaceRole.EVALUATOR)
-    ws_filter = ctx.filter_workspace_id()
-
-    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
-
-    try:
-        await enforce_workspace_quotas(db, ws_filter)
-    except QuotaExceeded as e:
-        raise HTTPException(status_code=429, detail=str(e))
-
     service = EvaluationService(db)
-    task = await service.get_task(request.task_id, workspace_id=ws_filter)
+    task = await service.get_task(request.task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -672,34 +586,23 @@ async def consensus_evaluation(
     task_id: str = Body(..., embed=True),
     include_all: bool = Body(False, embed=True),
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
-    多模型共识评估 — DeepSeek + OpenAI + Anthropic 独立评分。
+    Multi-model consensus evaluation -- DeepSeek + OpenAI + Anthropic independently score.
 
-    - **task_id**: 任务 UUID
-    - **include_all**: 是否返回所有 6 个维度的共识结果
+    - **task_id**: Task UUID
+    - **include_all**: Whether to return consensus results for all 6 dimensions
 
-    返回均值 (mean_score)、标准差 (std_score，一致性指标，越小越可信)、各模型分数。
+    Returns mean score, std score (consistency indicator, lower = more trustworthy), and per-model scores.
     """
     from app.evaluators.consensus import ConsensusEvaluator
 
-    require_role(ctx, WorkspaceRole.EVALUATOR)
-    ws_filter = ctx.filter_workspace_id()
-
-    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
-
-    try:
-        await enforce_workspace_quotas(db, ws_filter)
-    except QuotaExceeded as e:
-        raise HTTPException(status_code=429, detail=str(e))
-
     service = EvaluationService(db)
-    task = await service.get_task(task_id, workspace_id=ws_filter)
+    task = await service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # 获取轨迹步骤
+    # Get trajectory steps
     from app.db.models import AgentTrajectory
 
     result = await db.execute(
@@ -740,16 +643,14 @@ async def consensus_evaluation(
 async def delete_evaluation(
     evaluation_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Delete an evaluation record.
 
     - **evaluation_id**: UUID of the evaluation
     """
-    require_role(ctx, WorkspaceRole.ADMIN)
     service = EvaluationService(db)
-    deleted = await service.delete_evaluation(evaluation_id, workspace_id=ctx.filter_workspace_id())
+    deleted = await service.delete_evaluation(evaluation_id)
 
     if not deleted:
         raise HTTPException(status_code=404, detail="Evaluation not found")
@@ -764,7 +665,6 @@ async def delete_evaluation(
 async def get_evaluation_replay(
     evaluation_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Get step-by-step replay data for an evaluation.
@@ -772,13 +672,11 @@ async def get_evaluation_replay(
     Returns each trajectory step with LLM raw prompt/response,
     enabling the frontend replay debugger.
     """
-    require_role(ctx, WorkspaceRole.VIEWER)
-    ws_filter = ctx.filter_workspace_id()
     from app.db.models import Evaluation
     from app.services.replay_service import ReplayService
 
     service_check = EvaluationService(db)
-    if not await service_check.get_evaluation(evaluation_id, workspace_id=ws_filter):
+    if not await service_check.get_evaluation(evaluation_id):
         raise HTTPException(status_code=404, detail="Evaluation not found")
 
     evaluation = await db.get(Evaluation, evaluation_id)
@@ -824,21 +722,18 @@ async def get_evaluation_judge_raw(
     evaluation_id: str,
     dimension: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Get raw judge LLM prompt and response for evaluation dimensions.
 
-    - **dimension**: Optional — one of planning/tactical/tool_use/memory/replan/retrieval.
+    - **dimension**: Optional -- one of planning/tactical/tool_use/memory/replan/retrieval.
       Omit to get all dimensions with available judge raw data.
     """
-    require_role(ctx, WorkspaceRole.VIEWER)
-    ws_filter = ctx.filter_workspace_id()
     from app.db.models import Evaluation
     from app.services.judge_service import JudgeService
 
     service_check = EvaluationService(db)
-    if not await service_check.get_evaluation(evaluation_id, workspace_id=ws_filter):
+    if not await service_check.get_evaluation(evaluation_id):
         raise HTTPException(status_code=404, detail="Evaluation not found")
 
     evaluation = await db.get(Evaluation, evaluation_id)
@@ -856,10 +751,9 @@ async def get_evaluation_judge_raw(
 async def incremental_evaluation(
     request: IncrementalEvalRequest,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
-    Run an incremental evaluation — only re-evaluate dimensions affected by changes.
+    Run an incremental evaluation -- only re-evaluate dimensions affected by changes.
 
     Compares the head task's trajectory against the base evaluation's trajectory,
     detects what changed, and re-evaluates only the affected dimensions.
@@ -867,16 +761,6 @@ async def incremental_evaluation(
 
     Use ``force_dimensions`` to override and force specific dimensions to re-evaluate.
     """
-    require_role(ctx, WorkspaceRole.EVALUATOR)
-    ws_filter = ctx.filter_workspace_id()
-
-    from app.services.quota import QuotaExceeded, enforce_workspace_quotas
-
-    try:
-        await enforce_workspace_quotas(db, ws_filter)
-    except QuotaExceeded as e:
-        raise HTTPException(status_code=429, detail=str(e))
-
     from app.services.incremental_eval import IncrementalEvalService
 
     service = IncrementalEvalService()
@@ -885,7 +769,6 @@ async def incremental_evaluation(
             base_eval_id=request.base_evaluation_id,
             head_task_id=request.head_task_id,
             force_dims=request.force_dimensions,
-            workspace_id=ctx.filter_workspace_id(),
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -911,7 +794,6 @@ async def check_regression(
     head_evaluation_id: str,
     include_diff: bool = True,
     db: AsyncSession = Depends(get_db),
-    ctx: WorkspaceContext = Depends(get_workspace_context),
 ):
     """
     Compare two evaluations and detect score regressions.
@@ -920,8 +802,6 @@ async def check_regression(
     a trajectory diff explaining *why* the regression occurred.
     Useful for CI gate: block PRs that degrade agent performance.
     """
-    require_role(ctx, WorkspaceRole.VIEWER)
-    ws_filter = ctx.filter_workspace_id()
     from app.services.regression_detection import RegressionDetectionService
 
     service = RegressionDetectionService()
@@ -930,7 +810,6 @@ async def check_regression(
             base_eval_id=base_evaluation_id,
             head_eval_id=head_evaluation_id,
             include_diff=include_diff,
-            workspace_id=ws_filter,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -953,4 +832,3 @@ async def check_regression(
         },
         "diff": report.diff.model_dump() if report.diff else None,
     }
-

@@ -9,9 +9,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import settings
 from app.db.database import Base
-# 导入所有模型以触发 metadata 注册
+# Import all models to trigger metadata registration
 from app.db.models import AgentTask, AgentTrajectory, Evaluation  # noqa: F401
-from app.api.workspace import Workspace, WorkspaceMember, AuditLog  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
