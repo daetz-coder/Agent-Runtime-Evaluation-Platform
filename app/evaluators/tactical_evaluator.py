@@ -1,10 +1,10 @@
 """
-Tactical Evaluator
+战术决策评估器
 
-Evaluates the quality of next-action decisions:
-- Relevance: Is the action relevant to current state?
-- Efficiency: Is the action efficient?
-- Correctness: Is the action correct?
+评估 Agent 下一步行动决策的质量：
+- 相关性 (Relevance)：行动是否与当前状态相关？
+- 效率 (Efficiency)：行动是否高效？
+- 正确性 (Correctness)：行动是否正确？
 """
 
 from typing import Any, Dict, List, Optional
@@ -63,7 +63,7 @@ TACTICAL_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
 
 
 class TacticalEvaluator(BaseEvaluator):
-    """Evaluates tactical decision quality of agent execution."""
+    """评估 Agent 执行过程中的战术决策质量。"""
 
     WEIGHTS = {
         "relevance": 0.35,
@@ -78,15 +78,15 @@ class TacticalEvaluator(BaseEvaluator):
         context: Optional[Dict[str, Any]] = None,
     ) -> TacticalScore:
         """
-        Evaluate tactical decisions.
+        评估战术决策质量。
 
         Args:
-            goal: The original goal/objective
-            trajectory: List of agent execution steps
-            context: Additional context
+            goal: 用户的原始目标
+            trajectory: Agent 执行步骤列表
+            context: 附加上下文
 
         Returns:
-            TacticalScore with detailed evaluation
+            包含详细评估结果的 TacticalScore
         """
         if not trajectory:
             return TacticalScore(
@@ -97,17 +97,17 @@ class TacticalEvaluator(BaseEvaluator):
                 feedback="No trajectory steps provided for evaluation.",
             )
 
-        # Extract actions (non-plan steps)
+        # 提取行动步骤（排除计划步骤）
         actions = self._extract_actions(trajectory)
         current_state = self._determine_current_state(trajectory)
 
-        # Format actions for evaluation
+        # 格式化行动步骤用于评估
         actions_text = self._format_actions(actions)
 
-        # Create prompt
+        # 创建提示词
         prompt = ChatPromptTemplate.from_template(TACTICAL_EVALUATION_PROMPT)
 
-        # Get LLM evaluation (with Redis caching)
+        # 获取 LLM 评估结果（带 Redis 缓存）
         chain = prompt | self.llm
         response = await self._invoke_llm_cached(
             chain,
@@ -119,13 +119,13 @@ class TacticalEvaluator(BaseEvaluator):
             },
         )
 
-        # Parse response
+        # 解析响应
         scores = self._parse_scores(response.content)
 
-        # Calculate weighted overall score
+        # 计算加权总分
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
-        # Extract LLM suggestions from problematic_actions
+        # 从有问题的行动中提取 LLM 建议
         llm_suggestions = []
         problematic = scores.get("problematic_actions") or []
         if isinstance(problematic, list):
@@ -143,7 +143,7 @@ class TacticalEvaluator(BaseEvaluator):
         )
 
     def _extract_actions(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract action steps (excluding plans)."""
+        """提取行动步骤（排除计划步骤）。"""
         return [
             {
                 "step": step.step_number,
@@ -156,11 +156,11 @@ class TacticalEvaluator(BaseEvaluator):
         ]
 
     def _determine_current_state(self, trajectory: List[TrajectoryStep]) -> str:
-        """Determine the current state from trajectory."""
+        """根据轨迹确定当前状态。"""
         if not trajectory:
             return "Initial state"
 
-        # Look at recent steps to determine state
+        # 查看最近的步骤以确定状态
         recent_steps = trajectory[-3:] if len(trajectory) >= 3 else trajectory
         state_parts = []
 
@@ -194,7 +194,7 @@ class TacticalEvaluator(BaseEvaluator):
         return " -> ".join(state_parts) if state_parts else "In progress"
 
     def _format_actions(self, actions: List[Dict[str, Any]]) -> str:
-        """Format actions into readable text."""
+        """将行动步骤格式化为可读文本。"""
         lines = []
         for action in actions:
             step_num = action["step"]
@@ -258,7 +258,7 @@ class TacticalEvaluator(BaseEvaluator):
         return "\n".join(lines) if lines else "No actions recorded"
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
-        """Parse LLM response into scores dictionary."""
+        """将 LLM 响应解析为评分字典。"""
         parsed = self._parse_json_from_llm(content)
         if parsed is not None:
             return parsed

@@ -1,10 +1,10 @@
 """
-Replan Evaluator
+重规划评估器
 
-Evaluates the quality of replanning decisions:
-- Trigger Appropriateness: Was replan triggered at the right time?
-- Adaptation Quality: How well was the plan adapted?
-- Learning from Failure: Did the agent learn from failures?
+评估 Agent 重规划决策的质量：
+- 触发适当性 (Trigger Appropriateness)：重规划是否在合适的时间触发？
+- 适应质量 (Adaptation Quality)：计划调整得如何？
+- 失败中学习 (Learning from Failure)：Agent 是否从失败中学习？
 """
 
 from typing import Any, Dict, List, Optional
@@ -69,7 +69,7 @@ REPLAN_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feed
 
 
 class ReplanEvaluator(BaseEvaluator):
-    """Evaluates replanning quality of agent execution."""
+    """评估 Agent 执行过程中的重规划质量。"""
 
     WEIGHTS = {
         "trigger_appropriateness": 0.35,
@@ -84,31 +84,31 @@ class ReplanEvaluator(BaseEvaluator):
         context: Optional[Dict[str, Any]] = None,
     ) -> ReplanScore:
         """
-        Evaluate replanning quality.
+        评估重规划质量。
 
         Args:
-            goal: The original goal/objective
-            trajectory: List of agent execution steps
-            context: Additional context
+            goal: 用户的原始目标
+            trajectory: Agent 执行步骤列表
+            context: 附加上下文
 
         Returns:
-            ReplanScore with detailed evaluation
+            包含详细评估结果的 ReplanScore
         """
-        # Extract replan events and failures
+        # 提取重规划事件和失败事件
         replan_events = self._extract_replans(trajectory)
         failures = self._extract_failures(trajectory)
 
-        # Detect potential replan opportunities
+        # 检测潜在的重规划时机
         missed_opportunities = self._detect_missed_replans(trajectory)
 
-        # Format trajectory for evaluation (including failure events)
+        # 格式化轨迹用于评估（包含失败事件）
         trajectory_text = self._format_trajectory_for_replan(trajectory)
         if failures:
             trajectory_text += "\n\n## Failure Events (Independent Records)\n"
             trajectory_text += self._format_failure_events(failures)
         replan_events_text = self._format_replan_events(replan_events)
 
-        # If no replans and no missed opportunities, return default score
+        # 如果没有重规划且没有错过的时机，返回默认分数
         if not replan_events and not missed_opportunities:
             return ReplanScore(
                 applicable=False,
@@ -120,10 +120,10 @@ class ReplanEvaluator(BaseEvaluator):
                 feedback="不适用：Agent 顺利完成，无需重规划。",
             )
 
-        # Create prompt
+        # 创建提示词
         prompt = ChatPromptTemplate.from_template(REPLAN_EVALUATION_PROMPT)
 
-        # Get LLM evaluation (with Redis caching)
+        # 获取 LLM 评估结果（带 Redis 缓存）
         chain = prompt | self.llm
         response = await self._invoke_llm_cached(
             chain,
@@ -135,13 +135,13 @@ class ReplanEvaluator(BaseEvaluator):
             },
         )
 
-        # Parse response
+        # 解析响应
         scores = self._parse_scores(response.content)
 
-        # Calculate weighted overall score
+        # 计算加权总分
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
-        # Extract LLM suggestions from missed replan opportunities
+        # 从错过的重规划时机中提取 LLM 建议
         llm_suggestions = scores.get("suggestions") or []
         if not llm_suggestions:
             missed = scores.get("missed_replan_opportunities") or []
@@ -160,13 +160,13 @@ class ReplanEvaluator(BaseEvaluator):
         )
 
     def _detect_missed_replans(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Detect situations where replanning should have occurred but didn't."""
+        """检测本应触发重规划但未触发的情况。"""
         missed = []
         consecutive_failures = 0
         replan_count = 0
 
         for i, step in enumerate(trajectory):
-            # Track consecutive failures from tool_call observations
+            # 跟踪工具调用观察结果中的连续失败
             if step.action_type == "tool_call":
                 obs = (step.observation or "").lower()
                 if any(keyword in obs for keyword in ["error", "failed", "not found", "exception"]):
@@ -174,16 +174,16 @@ class ReplanEvaluator(BaseEvaluator):
                 else:
                     consecutive_failures = 0
 
-            # Track failures from dedicated failure events
+            # 跟踪专用失败事件中的连续失败
             if step.action_type == "failure":
                 consecutive_failures += 1
 
-            # Track replans
+            # 跟踪重规划事件
             if step.action_type == "replan":
                 replan_count += 1
-                consecutive_failures = 0  # Reset after replan
+                consecutive_failures = 0  # 重规划后重置计数
 
-            # Detect missed replan opportunity
+            # 检测错过的重规划时机
             if consecutive_failures >= 5 and replan_count == 0:
                 missed.append(
                     {
@@ -195,7 +195,7 @@ class ReplanEvaluator(BaseEvaluator):
         return missed
 
     def _format_trajectory_for_replan(self, trajectory: List[TrajectoryStep]) -> str:
-        """Format trajectory focusing on replan-relevant information."""
+        """格式化轨迹，重点关注与重规划相关的信息。"""
         lines = []
         consecutive_failures = 0
 
@@ -247,7 +247,7 @@ class ReplanEvaluator(BaseEvaluator):
         return "\n".join(lines)
 
     def _format_replan_events(self, replan_events: List[Dict[str, Any]]) -> str:
-        """Format replan events for evaluation."""
+        """格式化重规划事件用于评估。"""
         if not replan_events:
             return "No replan events detected."
 
@@ -261,7 +261,7 @@ class ReplanEvaluator(BaseEvaluator):
         return "\n".join(lines)
 
     def _format_failure_events(self, failures: List[Dict[str, Any]]) -> str:
-        """Format failure events for evaluation."""
+        """格式化失败事件用于评估。"""
         if not failures:
             return "No failure events recorded."
 
@@ -287,7 +287,7 @@ class ReplanEvaluator(BaseEvaluator):
         return "\n".join(lines) if lines else "No failure events recorded"
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
-        """Parse LLM response into scores dictionary."""
+        """将 LLM 响应解析为评分字典。"""
         parsed = self._parse_json_from_llm(content)
         if parsed is not None:
             return parsed

@@ -91,6 +91,14 @@ class RetrievalEvaluator(BaseEvaluator):
         """评估 RAG 检索质量。
 
         从 trajectory 中提取 retrieval 动作和最终回答进行评估。
+
+        Args:
+            goal: 用户的原始目标
+            trajectory: Agent 执行步骤列表
+            context: 附加上下文
+
+        Returns:
+            包含详细评估结果的 RetrievalScore
         """
         # 提取检索结果
         retrievals = [
@@ -140,7 +148,7 @@ class RetrievalEvaluator(BaseEvaluator):
                 },
             )
             scores = self._parse_scores(response.content)
-            # Populate llm_suggestions from missing_info
+            # 从 missing_info 中填充 llm_suggestions
             missing_info = scores.get("missing_info") or []
             if isinstance(missing_info, list):
                 scores["llm_suggestions"] = [

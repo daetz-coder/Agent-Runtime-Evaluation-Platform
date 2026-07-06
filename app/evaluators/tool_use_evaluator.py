@@ -1,10 +1,10 @@
 """
-Tool Use Evaluator
+工具使用评估器
 
-Evaluates the quality of tool selection and usage:
-- Selection Quality: Was the right tool chosen?
-- Parameter Accuracy: Were the parameters correct?
-- Result Utilization: Were tool results used effectively?
+评估 Agent 工具选择和使用的质量：
+- 选择质量 (Selection Quality)：是否选择了正确的工具？
+- 参数准确性 (Parameter Accuracy)：工具参数是否正确？
+- 结果利用 (Result Utilization)：工具结果是否被有效利用？
 """
 
 from typing import Any, Dict, List, Optional
@@ -58,7 +58,7 @@ TOOL_USE_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
 
 
 class ToolUseEvaluator(BaseEvaluator):
-    """Evaluates tool usage quality of agent execution."""
+    """评估 Agent 执行过程中的工具使用质量。"""
 
     WEIGHTS = {
         "selection_quality": 0.40,
@@ -73,17 +73,17 @@ class ToolUseEvaluator(BaseEvaluator):
         context: Optional[Dict[str, Any]] = None,
     ) -> ToolUseScore:
         """
-        Evaluate tool usage quality.
+        评估工具使用质量。
 
         Args:
-            goal: The original goal/objective
-            trajectory: List of agent execution steps
-            context: Additional context
+            goal: 用户的原始目标
+            trajectory: Agent 执行步骤列表
+            context: 附加上下文
 
         Returns:
-            ToolUseScore with detailed evaluation
+            包含详细评估结果的 ToolUseScore
         """
-        # Extract tool calls and tool results from trajectory
+        # 从轨迹中提取工具调用和工具结果
         tool_calls = self._extract_tool_calls(trajectory)
         tool_results = self._extract_tool_results(trajectory)
 
@@ -98,20 +98,20 @@ class ToolUseEvaluator(BaseEvaluator):
                 feedback="不适用：轨迹中没有工具调用记录。",
             )
 
-        # Format tool calls for evaluation (including tool results)
+        # 格式化工具调用用于评估（包含工具结果）
         tool_calls_text = self._format_tool_calls(tool_calls)
 
-        # Format execution results from trajectory (real sandbox results)
+        # 格式化轨迹中的执行结果（真实沙箱执行结果）
         execution_results_text = "No tool results recorded"
         if tool_results:
             execution_results_text = self._format_tool_results(tool_results)
 
-        # Create prompt + structured output chain
+        # 创建提示词 + 结构化输出链
         prompt = ChatPromptTemplate.from_template(TOOL_USE_EVALUATION_PROMPT)
         structured_llm = self.llm.with_structured_output(ToolUseEvaluationResult)
         chain = prompt | structured_llm
 
-        # Get LLM evaluation (with structured output + retry)
+        # 获取 LLM 评估结果（结构化输出 + 重试机制）
         result = await self._invoke_structured_llm(
             chain,
             {
@@ -127,10 +127,10 @@ class ToolUseEvaluator(BaseEvaluator):
         # Pydantic model 直接使用
         scores = result.model_dump() if isinstance(result, ToolUseEvaluationResult) else result
 
-        # Calculate weighted overall score
+        # 计算加权总分
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
-        # Extract LLM suggestions from inefficient_calls
+        # 从低效调用中提取 LLM 建议
         llm_suggestions = []
         inefficient = scores.get("inefficient_calls") or []
         if isinstance(inefficient, list):
@@ -148,7 +148,7 @@ class ToolUseEvaluator(BaseEvaluator):
         )
 
     def _format_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> str:
-        """Format tool calls into readable text."""
+        """将工具调用格式化为可读文本。"""
         lines = []
         for call in tool_calls:
             step = call.get("step", "?")
@@ -165,7 +165,7 @@ class ToolUseEvaluator(BaseEvaluator):
         return "\n".join(lines)
 
     def _format_tool_results(self, tool_results: List[Dict[str, Any]]) -> str:
-        """Format tool results into readable text."""
+        """将工具执行结果格式化为可读文本。"""
         lines = []
         for result in tool_results:
             step = result.get("step", "?")

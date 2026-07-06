@@ -1,11 +1,11 @@
 """
-Planning Quality Evaluator
+规划质量评估器
 
-Evaluates the quality of agent planning:
-- Coverage: Are key milestones included?
-- Ordering: Is the sequence logical?
-- Granularity: Is the level of detail appropriate?
-- Completeness: Is the plan complete?
+评估 Agent 规划的质量：
+- 覆盖率 (Coverage)：是否包含了关键里程碑？
+- 顺序性 (Ordering)：步骤顺序是否合理？
+- 粒度 (Granularity)：细节程度是否适当？
+- 完整性 (Completeness)：计划是否完整？
 """
 
 from typing import Any, Dict, List, Optional
@@ -67,7 +67,7 @@ PLANNING_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
 
 
 class PlanningEvaluator(BaseEvaluator):
-    """Evaluates planning quality of agent execution."""
+    """评估 Agent 执行过程中的规划质量。"""
 
     WEIGHTS = {
         "coverage": 0.3,
@@ -83,17 +83,17 @@ class PlanningEvaluator(BaseEvaluator):
         context: Optional[Dict[str, Any]] = None,
     ) -> PlanningScore:
         """
-        Evaluate planning quality.
+        评估规划质量。
 
         Args:
-            goal: The original goal/objective
-            trajectory: List of agent execution steps
-            context: Additional context
+            goal: 用户的原始目标
+            trajectory: Agent 执行步骤列表
+            context: 附加上下文
 
         Returns:
-            PlanningScore with detailed evaluation
+            包含详细评估结果的 PlanningScore
         """
-        # Extract plan and plan_update from trajectory
+        # 从轨迹中提取计划和计划更新
         plans = self._extract_plans(trajectory)
         plan_updates = self._extract_plan_updates(trajectory)
 
@@ -107,16 +107,16 @@ class PlanningEvaluator(BaseEvaluator):
                 feedback="No planning steps found in trajectory. Agent did not create an explicit plan.",
             )
 
-        # Format plan for evaluation (including plan updates)
+        # 格式化计划用于评估（包含计划更新）
         plan_text = self._format_plan(plans)
         if plan_updates:
             plan_text += "\n\n## Plan Updates (Dynamic Adjustments)\n"
             plan_text += self._format_plan_updates(plan_updates)
 
-        # Create prompt
+        # 创建提示词
         prompt = ChatPromptTemplate.from_template(PLANNING_EVALUATION_PROMPT)
 
-        # Get LLM evaluation (with Redis caching)
+        # 获取 LLM 评估结果（带 Redis 缓存）
         chain = prompt | self.llm
         response = await self._invoke_llm_cached(
             chain,
@@ -127,13 +127,13 @@ class PlanningEvaluator(BaseEvaluator):
             },
         )
 
-        # Parse response
+        # 解析响应
         scores = self._parse_scores(response.content)
 
-        # Calculate weighted overall score
+        # 计算加权总分
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
-        # Extract LLM suggestions (falls back to hardcoded if not present)
+        # 提取 LLM 建议（无建议时返回空列表）
         llm_suggestions = scores.get("suggestions") or []
 
         return PlanningScore(
@@ -147,7 +147,7 @@ class PlanningEvaluator(BaseEvaluator):
         )
 
     def _format_plan(self, plans: List[Dict[str, Any]]) -> str:
-        """Format plan steps into readable text."""
+        """将计划步骤格式化为可读文本。"""
         if not plans:
             return "No plan provided"
 
@@ -162,7 +162,7 @@ class PlanningEvaluator(BaseEvaluator):
                         else:
                             lines.append(f"{j}. {step}")
                 else:
-                    # No structured steps — format the plan goal/content directly
+                    # 没有结构化步骤，直接格式化计划的目标/内容
                     goal_text = plan.get("goal", "") or plan.get("plan", "") or plan.get("content", "")
                     if goal_text:
                         if plan.get("plan") and plan.get("plan") != goal_text:
@@ -179,7 +179,7 @@ class PlanningEvaluator(BaseEvaluator):
         return "\n".join(lines) if lines else "No structured plan data found"
 
     def _format_plan_updates(self, plan_updates: List[Dict[str, Any]]) -> str:
-        """Format plan updates into readable text."""
+        """将计划更新格式化为可读文本。"""
         lines = []
         for update in plan_updates:
             step = update.get("step", "?")
@@ -202,12 +202,12 @@ class PlanningEvaluator(BaseEvaluator):
         return "\n".join(lines) if lines else "No plan updates"
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
-        """Parse LLM response into scores dictionary."""
+        """将 LLM 响应解析为评分字典。"""
         parsed = self._parse_json_from_llm(content)
         if parsed is not None:
             return parsed
 
-        # Fallback: return default scores with feedback
+        # 回退方案：返回默认分数及反馈内容
         return {
             "coverage": 50,
             "ordering": 50,

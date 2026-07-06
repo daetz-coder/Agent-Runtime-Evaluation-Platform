@@ -1,5 +1,5 @@
 """
-Base evaluator class for all evaluation dimensions.
+所有评估维度的基类模块。
 
 支持的 action_type：
 - plan / plan_update       — 规划输出
@@ -31,25 +31,32 @@ logger = logging.getLogger(__name__)
 
 
 class BaseEvaluator(ABC):
-    """Base class for all evaluators."""
+    """所有评估器的抽象基类，提供 LLM 调用、轨迹解析和评分等通用能力。"""
 
     def __init__(self, llm: Optional[BaseChatModel] = None):
-        """Initialize evaluator with optional LLM override."""
+        """初始化评估器，可选传入自定义 LLM 实例。
+
+        参数:
+            llm: 可选的 LLM 模型实例，若不传则使用默认配置创建。
+        """
         self.llm = llm or self._get_default_llm()
-        # Store raw judge data for the transparency panel
+        # 保存最近一次 LLM 裁判的原始数据，用于透明度面板展示
         self._last_judge_raw: Optional[Dict[str, Any]] = None
         self._judge_raw_history: List[Dict[str, Any]] = []
 
     def get_last_judge_raw(self) -> Optional[Dict[str, Any]]:
-        """Return raw judge prompt/response from the most recent LLM call."""
+        """返回最近一次 LLM 调用的原始 prompt/response 数据。"""
         return self._last_judge_raw
 
     def get_judge_raw_history(self) -> List[Dict[str, Any]]:
-        """Return all judge raw entries from this evaluation."""
+        """返回本次评估中所有 LLM 调用的原始数据记录。"""
         return list(self._judge_raw_history)
 
     def _get_default_llm(self) -> BaseChatModel:
-        """Get default LLM based on configuration."""
+        """根据配置文件中的 DEFAULT_LLM_PROVIDER 创建默认 LLM 实例。
+
+        支持的供应商：anthropic、deepseek、glm（智谱）、qwen（通义千问）、openai。
+        """
         provider = settings.DEFAULT_LLM_PROVIDER.lower()
 
         if provider == "anthropic":
@@ -74,14 +81,14 @@ class BaseEvaluator(ABC):
                 temperature=0,
             )
         elif provider == "qwen":
-            # Qwen DashScope is OpenAI-compatible
+            # 通义千问 DashScope 接口兼容 OpenAI 协议
             return ChatOpenAI(
                 model=settings.QWEN_MODEL,
                 openai_api_key=settings.QWEN_API_KEY,
                 openai_api_base=settings.QWEN_BASE_URL,
                 temperature=0,
             )
-        else:  # openai
+        else:  # openai（默认供应商）
             return ChatOpenAI(
                 model=settings.DEFAULT_LLM_MODEL,
                 openai_api_key=settings.OPENAI_API_KEY,
@@ -95,33 +102,33 @@ class BaseEvaluator(ABC):
         trajectory: List[TrajectoryStep],
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Evaluate agent behavior.
+        """评估智能体行为（抽象方法，子类必须实现）。
 
-        Args:
-            goal: The original goal/objective
-            trajectory: List of agent execution steps
-            context: Additional context for evaluation
+        参数:
+            goal: 原始目标/任务描述
+            trajectory: 智能体执行步骤列表
+            context: 评估所需的额外上下文信息
 
-        Returns:
-            Dictionary containing scores and feedback
+        返回:
+            包含评分和反馈的字典
         """
         pass
 
     @staticmethod
     def _parse_json_from_llm(content: str) -> Optional[Dict[str, Any]]:
-        """Robustly extract a JSON object from an LLM response.
+        """从 LLM 返回的文本中稳健地提取 JSON 对象。
 
-        Tries three strategies in order:
-        1. Extract from ``json ... `` fenced code block.
-        2. Balanced-brace extraction from the first ``{``.
-        3. Greedy first-``{`` to last-``}`` (legacy fallback).
+        按顺序尝试三种策略：
+        1. 从 ``json ... `` 围栏代码块中提取
+        2. 从第一个 ``{`` 开始做花括号平衡匹配提取
+        3. 贪心匹配第一个 ``{`` 到最后一个 ``}``（兜底方案）
 
-        Returns None if no valid JSON can be parsed.
+        返回:
+            解析成功返回字典，无法解析返回 None。
         """
         import json as _json
 
-        # Strategy 1: fenced code block
+        # 策略 1：从围栏代码块中提取 JSON
         match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
         if match:
             try:
@@ -129,7 +136,7 @@ class BaseEvaluator(ABC):
             except _json.JSONDecodeError:
                 pass
 
-        # Strategy 2: balanced braces
+        # 策略 2：花括号平衡匹配
         start = content.find("{")
         if start != -1:
             depth = 0
@@ -144,7 +151,7 @@ class BaseEvaluator(ABC):
                         except _json.JSONDecodeError:
                             break
 
-        # Strategy 3: greedy fallback (legacy)
+        # 策略 3：贪心兜底（兼容旧版格式）
         start = content.find("{")
         end = content.rfind("}") + 1
         if start != -1 and end > start:
@@ -160,12 +167,12 @@ class BaseEvaluator(ABC):
         trajectory: List[TrajectoryStep],
         compress: bool = True,
     ) -> str:
-        """Format trajectory steps into readable text.
+        """将轨迹步骤格式化为可读文本。
 
-        Args:
-            trajectory: List of trajectory steps.
-            compress: If True (default), run through the 4-stage compression
-                      pipeline. Set to False to get raw full-concatenation output.
+        参数:
+            trajectory: 轨迹步骤列表。
+            compress: 为 True（默认）时，使用 4 阶段压缩管线处理；
+                      为 False 时返回原始完整拼接输出。
         """
         if compress:
             compressor = TrajectoryCompressor()
@@ -174,7 +181,7 @@ class BaseEvaluator(ABC):
 
     @staticmethod
     def _format_trajectory_raw(trajectory: List[TrajectoryStep]) -> str:
-        """Full concatenation — no compression (opt-out fallback)."""
+        """完整拼接轨迹步骤，不进行压缩（压缩关闭时的兜底方案）。"""
         lines = []
         for step in trajectory:
             lines.append(f"Step {step.step_number} [{step.action_type}]:")
@@ -185,27 +192,27 @@ class BaseEvaluator(ABC):
         return "\n".join(lines)
 
     def _extract_plans(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract planning steps from trajectory.
-        
-        Skips "ghost plans" that are just {goal, context} without any structured
-        plan content — these are task-creation artifacts, not actual plans.
+        """从轨迹中提取规划步骤。
+
+        会跳过"幽灵计划"——即仅包含 {goal, context} 而没有实际计划内容的条目，
+        这些是任务创建时的附带产物，并非真正的规划。
         """
         plans = []
         for step in trajectory:
             if step.action_type == "plan":
                 detail = step.action_detail
                 if isinstance(detail, dict):
-                    # A real plan must have at least one of: steps, milestones, plan content
+                    # 真正的计划至少包含 steps、milestones、plan、content 之一
                     has_structure = any(
                         detail.get(k) for k in ("steps", "milestones", "plan", "content")
                     )
                     if not has_structure and set(detail.keys()).issubset({"goal", "context"}):
-                        continue  # Ghost plan — skip
+                        continue  # 幽灵计划，跳过
                 plans.append(detail)
         return plans
 
     def _extract_tool_calls(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract tool call steps from trajectory."""
+        """从轨迹中提取工具调用步骤。"""
         return [
             {
                 "step": step.step_number,
@@ -218,7 +225,7 @@ class BaseEvaluator(ABC):
         ]
 
     def _extract_replans(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract replanning events from trajectory."""
+        """从轨迹中提取重规划事件。"""
         return [
             {
                 "step": step.step_number,
@@ -230,7 +237,7 @@ class BaseEvaluator(ABC):
         ]
 
     def _extract_plan_updates(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract plan update events from trajectory."""
+        """从轨迹中提取计划更新事件。"""
         return [
             {
                 "step": step.step_number,
@@ -244,7 +251,7 @@ class BaseEvaluator(ABC):
         ]
 
     def _extract_tool_results(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract tool result events from trajectory."""
+        """从轨迹中提取工具执行结果事件。"""
         return [
             {
                 "step": step.step_number,
@@ -259,7 +266,7 @@ class BaseEvaluator(ABC):
         ]
 
     def _extract_memory_events(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract memory read/write events from trajectory."""
+        """从轨迹中提取记忆读写事件。"""
         return [
             {
                 "step": step.step_number,
@@ -276,7 +283,7 @@ class BaseEvaluator(ABC):
         ]
 
     def _extract_state_changes(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract state change events from trajectory."""
+        """从轨迹中提取状态变化事件。"""
         return [
             {
                 "step": step.step_number,
@@ -289,7 +296,7 @@ class BaseEvaluator(ABC):
         ]
 
     def _extract_failures(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract failure events from trajectory."""
+        """从轨迹中提取失败/异常事件。"""
         return [
             {
                 "step": step.step_number,
@@ -304,7 +311,7 @@ class BaseEvaluator(ABC):
         ]
 
     def _extract_retrievals(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract knowledge retrieval events from trajectory."""
+        """从轨迹中提取知识检索事件。"""
         return [
             {
                 "step": step.step_number,
@@ -319,7 +326,7 @@ class BaseEvaluator(ABC):
         ]
 
     def _extract_evidence(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """Extract evidence pool events from trajectory."""
+        """从轨迹中提取证据池事件。"""
         return [
             {
                 "step": step.step_number,
@@ -334,7 +341,7 @@ class BaseEvaluator(ABC):
         ]
 
     def _calculate_weighted_score(self, scores: Dict[str, float], weights: Dict[str, float]) -> float:
-        """Calculate weighted average score."""
+        """根据各维度分数和权重计算加权平均分。"""
         total_weight = sum(weights.values())
         weighted_sum = sum(scores.get(k, 0) * v for k, v in weights.items())
         return weighted_sum / total_weight if total_weight > 0 else 0
@@ -408,27 +415,25 @@ class BaseEvaluator(ABC):
             )
 
     async def _invoke_llm_cached(self, chain, inputs: Dict[str, Any]) -> Any:
-        """
-        Invoke an LLM chain with Redis caching.
+        """调用 LLM 链并支持 Redis 缓存。
 
-        If CACHE_LLM_RESPONSES is enabled and a cached response exists for the
-        same prompt, return the cached content without calling the LLM.
-        Otherwise, invoke the chain and cache the result.
+        若 CACHE_LLM_RESPONSES 开启且缓存中存在相同 prompt 的响应，
+        则直接返回缓存内容而不调用 LLM；否则调用链并将结果写入缓存。
 
-        Args:
-            chain: A LangChain runnable (prompt | llm).
-            inputs: The input dict for the prompt template.
+        参数:
+            chain: LangChain runnable（prompt | llm）。
+            inputs: prompt 模板的输入字典。
 
-        Returns:
-            The LLM response object (with .content attribute).
+        返回:
+            LLM 响应对象（包含 .content 属性）。
         """
         if not settings.CACHE_LLM_RESPONSES:
             return await chain.ainvoke(inputs)
 
         from app.core.cache import cache_hgetall, cache_hset, hash_prompt
 
-        # Build a deterministic cache key from evaluator name + model + prompt content
-        # NOTE: model_name is critical — without it, multi-model consensus would share a single cache entry
+        # 基于评估器名称 + 模型名 + prompt 内容构建确定性缓存键
+        # 注意：model_name 至关重要——缺少它会导致多模型共识共享同一条缓存记录
         evaluator_name = type(self).__name__
         model_name = getattr(self.llm, "model_name", "unknown")
         prompt_text = json.dumps(inputs, sort_keys=True, default=str)
@@ -439,12 +444,12 @@ class BaseEvaluator(ABC):
 
         start_time = time.monotonic()
 
-        # Check cache
+        # 查询缓存
         cached = await cache_hgetall(cache_key)
         if cached and "response" in cached:
-            logger.debug("LLM cache hit: %s", cache_key)
+            logger.debug("LLM 缓存命中: %s", cache_key)
             latency_ms = (time.monotonic() - start_time) * 1000
-            # Store judge raw for cache hits too
+            # 缓存命中时也需要保存裁判原始数据
             self._last_judge_raw = {
                 "prompt": prompt_text[:10000],
                 "response": cached["response"],
@@ -454,18 +459,18 @@ class BaseEvaluator(ABC):
                 "cached": True,
             }
             self._judge_raw_history.append(self._last_judge_raw)
-            # Reconstruct a minimal response object with .content
+            # 构造最小响应对象，模拟 LangChain AIMessage.content
             return _CachedLLMResponse(content=cached["response"])
 
-        # Cache miss — call LLM
-        logger.debug("LLM cache miss: %s", cache_key)
+        # 缓存未命中，调用 LLM
+        logger.debug("LLM 缓存未命中: %s", cache_key)
         start_time = time.monotonic()
         response = await chain.ainvoke(inputs)
         latency_ms = (time.monotonic() - start_time) * 1000
 
-        # Store raw judge data for transparency
+        # 保存裁判原始数据，用于透明度面板展示
         self._last_judge_raw = {
-            "prompt": prompt_text[:10000],  # cap to avoid huge payloads
+            "prompt": prompt_text[:10000],  # 截断避免过大载荷
             "response": response.content[:10000],
             "model": model_name,
             "latency_ms": latency_ms,
@@ -474,7 +479,7 @@ class BaseEvaluator(ABC):
         }
         self._judge_raw_history.append(self._last_judge_raw)
 
-        # Store in cache
+        # 写入缓存
         await cache_hset(
             cache_key,
             mapping={
@@ -489,7 +494,7 @@ class BaseEvaluator(ABC):
 
 
 class _CachedLLMResponse:
-    """Minimal response wrapper for cached LLM output (mimics LangChain AIMessage.content)."""
+    """缓存命中时使用的最小响应包装类，模拟 LangChain AIMessage.content 接口。"""
 
     def __init__(self, content: str):
         self.content = content

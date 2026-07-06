@@ -1,4 +1,4 @@
-"""Shared scoring helpers for dimension applicability and weighted overall scores."""
+"""各评估维度的适用性判断与加权总分计算工具函数。"""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ from typing import Any, Mapping, Optional
 
 
 def is_applicable(dimension_result: Any) -> bool:
-    """Return whether a dimension should participate in overall scoring.
+    """判断某个评估维度是否应参与总分计算。
 
-    Non-Mapping results (None, int, str, etc.) indicate the dimension was
-    not evaluated or failed, so they are NOT applicable.
+    非 Mapping 类型的结果（None、int、str 等）表示该维度未被评估或评估失败，
+    因此不适用（返回 False）。
     """
     if not isinstance(dimension_result, Mapping):
         return False
@@ -17,7 +17,7 @@ def is_applicable(dimension_result: Any) -> bool:
 
 
 def dimension_score(dimension_result: Any) -> Optional[float]:
-    """Extract a dimension score, returning None for non-applicable dimensions."""
+    """提取某个评估维度的分数，不适用的维度返回 None。"""
     if not is_applicable(dimension_result):
         return None
     if isinstance(dimension_result, Mapping):
@@ -32,10 +32,10 @@ def weighted_overall(
     dimension_results: Mapping[str, Any],
     weights: Mapping[str, float],
 ) -> float:
-    """Compute weighted overall over applicable dimensions only.
+    """仅对适用的维度计算加权总分。
 
-    Non-applicable dimensions are excluded from both numerator and denominator.
-    Remaining weights are normalized so the score stays on a 0-100 scale.
+    不适用的维度会从分子和分母中同时剔除，
+    剩余权重会被归一化，使最终分数保持在 0-100 区间。
     """
     numerator = 0.0
     denominator = 0.0
@@ -54,5 +54,5 @@ def score_values(
     dimension_results: Mapping[str, Any],
     weights: Mapping[str, float],
 ) -> dict[str, Optional[float]]:
-    """Return per-dimension score values, using None for non-applicable dimensions."""
+    """返回各维度的分数值，不适用的维度对应值为 None。"""
     return {dimension: dimension_score(dimension_results.get(dimension)) for dimension in weights}

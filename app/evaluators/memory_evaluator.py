@@ -1,10 +1,10 @@
 """
-Memory Evaluator
+记忆质量评估器
 
-Evaluates the quality of agent memory:
-- Retention: Are key facts retained?
-- Relevance: Is recalled information relevant?
-- Consistency: Is memory consistent with context?
+评估 Agent 记忆的质量：
+- 保持力 (Retention)：关键事实是否被保留？
+- 相关性 (Relevance)：回忆的信息是否相关？
+- 一致性 (Consistency)：记忆是否与上下文一致？
 """
 
 from typing import Any, Dict, List, Optional
@@ -62,7 +62,7 @@ MEMORY_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feed
 
 
 class MemoryEvaluator(BaseEvaluator):
-    """Evaluates memory quality of agent execution."""
+    """评估 Agent 执行过程中的记忆质量。"""
 
     WEIGHTS = {
         "retention": 0.45,
@@ -77,15 +77,15 @@ class MemoryEvaluator(BaseEvaluator):
         context: Optional[Dict[str, Any]] = None,
     ) -> MemoryScore:
         """
-        Evaluate memory quality.
+        评估记忆质量。
 
         Args:
-            goal: The original goal/objective
-            trajectory: List of agent execution steps
-            context: Additional context (should include key_facts)
+            goal: 用户的原始目标
+            trajectory: Agent 执行步骤列表
+            context: 附加上下文（应包含 key_facts）
 
         Returns:
-            MemoryScore with detailed evaluation
+            包含详细评估结果的 MemoryScore
         """
         if not trajectory:
             return MemoryScore(
@@ -96,27 +96,27 @@ class MemoryEvaluator(BaseEvaluator):
                 feedback="No trajectory steps provided for memory evaluation.",
             )
 
-        # Extract key facts from context
+        # 从上下文中提取关键事实
         key_facts = context.get("key_facts", []) if context else []
         if not key_facts:
             key_facts = self._infer_key_facts(goal, trajectory)
 
-        # Extract memory events (explicit reads/writes)
+        # 提取记忆事件（显式的读/写操作）
         memory_events = self._extract_memory_events(trajectory)
 
-        # Format trajectory for evaluation
+        # 格式化轨迹用于评估
         trajectory_text = self._format_trajectory(trajectory)
         key_facts_text = self._format_key_facts(key_facts)
 
-        # Append explicit memory events if available
+        # 追加显式记忆事件（如有）
         if memory_events:
             trajectory_text += "\n\n## Explicit Memory Events\n"
             trajectory_text += self._format_memory_events(memory_events)
 
-        # Create prompt
+        # 创建提示词
         prompt = ChatPromptTemplate.from_template(MEMORY_EVALUATION_PROMPT)
 
-        # Get LLM evaluation (with Redis caching)
+        # 获取 LLM 评估结果（带 Redis 缓存）
         chain = prompt | self.llm
         response = await self._invoke_llm_cached(
             chain,
@@ -128,13 +128,13 @@ class MemoryEvaluator(BaseEvaluator):
             },
         )
 
-        # Parse response
+        # 解析响应
         scores = self._parse_scores(response.content)
 
-        # Calculate weighted overall score
+        # 计算加权总分
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
-        # Extract LLM suggestions (from suggestions field or forgotten_facts)
+        # 提取 LLM 建议（来自 suggestions 字段或 forgotten_facts）
         llm_suggestions = scores.get("suggestions") or []
         if not llm_suggestions:
             forgotten = scores.get("forgotten_facts") or []
@@ -153,13 +153,13 @@ class MemoryEvaluator(BaseEvaluator):
         )
 
     def _infer_key_facts(self, goal: str, trajectory: List[TrajectoryStep]) -> List[str]:
-        """Infer key facts that should be remembered from trajectory."""
+        """从轨迹中推断应被记住的关键事实。"""
         key_facts = []
 
-        # Look for facts mentioned in early steps
+        # 在前几个步骤中查找提到的事实
         for step in trajectory[:10]:
             if step.observation:
-                # Extract potential key facts from observations
+                # 从观察结果中提取潜在的关键事实
                 obs = step.observation.lower()
                 if "jwt" in obs:
                     key_facts.append("Project uses JWT for authentication")
@@ -170,7 +170,7 @@ class MemoryEvaluator(BaseEvaluator):
                 if "database" in obs or "postgres" in obs:
                     key_facts.append("Uses PostgreSQL database")
 
-        # Add goal-related facts
+        # 添加与目标相关的事实
         goal_lower = goal.lower()
         if "auth" in goal_lower or "login" in goal_lower:
             key_facts.append("Task involves authentication")
@@ -180,7 +180,7 @@ class MemoryEvaluator(BaseEvaluator):
         return key_facts if key_facts else ["No specific key facts identified"]
 
     def _format_key_facts(self, key_facts: List[str]) -> str:
-        """Format key facts into readable text."""
+        """将关键事实格式化为可读文本。"""
         if not key_facts:
             return "No key facts provided"
 
@@ -191,7 +191,7 @@ class MemoryEvaluator(BaseEvaluator):
         return "\n".join(lines)
 
     def _format_memory_events(self, memory_events: List[Dict[str, Any]]) -> str:
-        """Format memory events into readable text."""
+        """将记忆事件格式化为可读文本。"""
         lines = []
         for event in memory_events:
             step = event.get("step", "?")
@@ -219,7 +219,7 @@ class MemoryEvaluator(BaseEvaluator):
         return "\n".join(lines) if lines else "No memory events recorded"
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
-        """Parse LLM response into scores dictionary."""
+        """将 LLM 响应解析为评分字典。"""
         parsed = self._parse_json_from_llm(content)
         if parsed is not None:
             return parsed
