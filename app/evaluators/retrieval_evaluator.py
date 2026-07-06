@@ -19,6 +19,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from app.evaluators.base import BaseEvaluator
+from app.evaluators.eval_schemas import RetrievalEvaluationResult
 from app.models.schemas import TrajectoryStep
 
 logger = logging.getLogger(__name__)
@@ -151,24 +152,34 @@ class RetrievalEvaluator(BaseEvaluator):
             for i, d in enumerate(retrieval_docs[:10])
         )
 
+        # 创建提示词 + 结构化输出链
         prompt = ChatPromptTemplate.from_template(RETRIEVAL_EVAL_PROMPT)
-        chain = prompt | self.llm
+        structured_llm = self.llm.with_structured_output(RetrievalEvaluationResult)
+        chain = prompt | structured_llm
+
         try:
-            response = await self._invoke_llm_cached(
+            # 获取 LLM 评估结果（结构化输出 + 重试机制）
+            result = await self._invoke_structured_llm(
                 chain,
                 {
                     "goal": goal,
                     "retrieved_docs": docs_text,
                     "final_answer": final_answer or "No final answer found",
                 },
+                schema_class=RetrievalEvaluationResult,
+                max_retries=3,
             )
-            scores = self._parse_scores(response.content)
+
+            # Pydantic model 直接使用
+            scores = result.model_dump() if isinstance(result, RetrievalEvaluationResult) else result
+
             # 从 missing_info 中填充 llm_suggestions
             missing_info = scores.get("missing_info") or []
-            if isinstance(missing_info, list):
-                scores["llm_suggestions"] = [
-                    f"信息缺口：{info}" for info in missing_info if isinstance(info, str)
-                ]
+            llm_suggestions = [
+                f"信息缺口：{info}" for info in missing_info if isinstance(info, str)
+            ]
+            scores["llm_suggestions"] = llm_suggestions
+
             return RetrievalScore(**scores)
         except Exception as e:
             logger.error("Retrieval evaluation failed: %s", e)
@@ -178,7 +189,7 @@ class RetrievalEvaluator(BaseEvaluator):
             )
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
-        """解析 LLM 返回的 JSON。"""
+        """解析 LLM 返回的 JSON（仅用于 fallback 场景）。"""
         data = self._parse_json_from_llm(content)
         if data is not None:
             try:

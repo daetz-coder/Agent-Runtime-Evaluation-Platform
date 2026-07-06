@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
+from app.evaluators.eval_schemas import MemoryEvaluationResult
 from app.models.schemas import MemoryScore, TrajectoryStep
 
 MEMORY_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、forgotten_facts、inconsistencies）。你是一位 AI Agent 记忆质量评估专家。
@@ -131,12 +132,13 @@ class MemoryEvaluator(BaseEvaluator):
             trajectory_text += "\n\n## Explicit Memory Events\n"
             trajectory_text += self._format_memory_events(memory_events)
 
-        # 创建提示词
+        # 创建提示词 + 结构化输出链
         prompt = ChatPromptTemplate.from_template(MEMORY_EVALUATION_PROMPT)
+        structured_llm = self.llm.with_structured_output(MemoryEvaluationResult)
+        chain = prompt | structured_llm
 
-        # 获取 LLM 评估结果（带 Redis 缓存）
-        chain = prompt | self.llm
-        response = await self._invoke_llm_cached(
+        # 获取 LLM 评估结果（结构化输出 + 重试机制）
+        result = await self._invoke_structured_llm(
             chain,
             {
                 "goal": goal,
@@ -144,22 +146,23 @@ class MemoryEvaluator(BaseEvaluator):
                 "key_facts": key_facts_text,
                 "context": context or "No additional context provided.",
             },
+            schema_class=MemoryEvaluationResult,
+            max_retries=3,
         )
 
-        # 解析响应
-        scores = self._parse_scores(response.content)
+        # Pydantic model 直接使用
+        scores = result.model_dump() if isinstance(result, MemoryEvaluationResult) else result
 
         # 计算加权总分
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
-        # 提取 LLM 建议（来自 suggestions 字段或 forgotten_facts）
-        llm_suggestions = scores.get("suggestions") or []
-        if not llm_suggestions:
-            forgotten = scores.get("forgotten_facts") or []
-            if isinstance(forgotten, list):
-                for fact in forgotten:
-                    if isinstance(fact, str):
-                        llm_suggestions.append(f"需关注已遗忘的关键信息：{fact}")
+        # 提取 LLM 建议（来自 forgotten_facts）
+        llm_suggestions = []
+        forgotten = scores.get("forgotten_facts") or []
+        if isinstance(forgotten, list):
+            for fact in forgotten:
+                if isinstance(fact, str):
+                    llm_suggestions.append(f"需关注已遗忘的关键信息：{fact}")
 
         return MemoryScore(
             retention=scores.get("retention", 0),

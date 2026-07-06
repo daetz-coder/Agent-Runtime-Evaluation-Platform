@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
+from app.evaluators.eval_schemas import PlanningEvaluationResult
 from app.models.schemas import PlanningScore, TrajectoryStep
 
 PLANNING_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、missing_milestones、suggestions）。你是一位 AI Agent 规划质量评估专家。
@@ -136,22 +137,25 @@ class PlanningEvaluator(BaseEvaluator):
             plan_text += "\n\n## Plan Updates (Dynamic Adjustments)\n"
             plan_text += self._format_plan_updates(plan_updates)
 
-        # 创建提示词
+        # 创建提示词 + 结构化输出链
         prompt = ChatPromptTemplate.from_template(PLANNING_EVALUATION_PROMPT)
+        structured_llm = self.llm.with_structured_output(PlanningEvaluationResult)
+        chain = prompt | structured_llm
 
-        # 获取 LLM 评估结果（带 Redis 缓存）
-        chain = prompt | self.llm
-        response = await self._invoke_llm_cached(
+        # 获取 LLM 评估结果（结构化输出 + 重试机制）
+        result = await self._invoke_structured_llm(
             chain,
             {
                 "goal": goal,
                 "plan": plan_text,
                 "context": context or "No additional context provided.",
             },
+            schema_class=PlanningEvaluationResult,
+            max_retries=3,
         )
 
-        # 解析响应
-        scores = self._parse_scores(response.content)
+        # Pydantic model 直接使用
+        scores = result.model_dump() if isinstance(result, PlanningEvaluationResult) else result
 
         # 计算加权总分
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
@@ -225,12 +229,11 @@ class PlanningEvaluator(BaseEvaluator):
         return "\n".join(lines) if lines else "No plan updates"
 
     def _parse_scores(self, content: str) -> Dict[str, Any]:
-        """将 LLM 响应解析为评分字典。"""
+        """将 LLM 响应解析为评分字典（仅用于 fallback 场景）。"""
         parsed = self._parse_json_from_llm(content)
         if parsed is not None:
             return parsed
 
-        # 回退方案：返回默认分数及反馈内容
         return {
             "coverage": 50,
             "ordering": 50,

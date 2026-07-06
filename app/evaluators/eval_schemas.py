@@ -20,6 +20,21 @@ class InefficientCall(BaseModel):
     suggestion: str = Field(description="改进建议，提供更优的调用方式")
 
 
+class ProblematicAction(BaseModel):
+    """有问题的行动记录，用于标记战术决策中的问题。"""
+
+    step: int = Field(description="步骤号")
+    issue: str = Field(description="问题描述")
+    suggestion: str = Field(description="改进建议")
+
+
+class ReplanOpportunity(BaseModel):
+    """重规划时机记录（错过或不必要的）。"""
+
+    step: int = Field(description="步骤号")
+    reason: str = Field(description="原因说明")
+
+
 class ToolUseEvaluationResult(BaseModel):
     """工具使用评估器（ToolUseEvaluator）的结构化输出。
 
@@ -46,6 +61,8 @@ class PlanningEvaluationResult(BaseModel):
     completeness: int = Field(ge=0, le=100, description="完整性分数：计划是否包含了所有必要要素")
     overall: int = Field(ge=0, le=100, description="加权总分")
     feedback: str = Field(description="详细评估反馈")
+    missing_milestones: List[str] = Field(default_factory=list, description="缺失的关键步骤列表")
+    suggestions: List[str] = Field(default_factory=list, description="改进建议列表")
 
 
 class TacticalEvaluationResult(BaseModel):
@@ -59,6 +76,7 @@ class TacticalEvaluationResult(BaseModel):
     correctness: int = Field(ge=0, le=100, description="正确性分数：动作执行是否正确无误")
     overall: int = Field(ge=0, le=100, description="加权总分")
     feedback: str = Field(description="详细评估反馈")
+    problematic_actions: List[ProblematicAction] = Field(default_factory=list, description="有问题的行动列表")
 
 
 class MemoryEvaluationResult(BaseModel):
@@ -72,6 +90,8 @@ class MemoryEvaluationResult(BaseModel):
     consistency: int = Field(ge=0, le=100, description="一致性分数：记忆内容是否存在前后矛盾")
     overall: int = Field(ge=0, le=100, description="加权总分")
     feedback: str = Field(description="详细评估反馈")
+    forgotten_facts: List[str] = Field(default_factory=list, description="被遗忘的重要事实列表")
+    inconsistencies: List[str] = Field(default_factory=list, description="记忆不一致列表")
 
 
 class ReplanEvaluationResult(BaseModel):
@@ -85,6 +105,8 @@ class ReplanEvaluationResult(BaseModel):
     learning_from_failure: int = Field(ge=0, le=100, description="失败学习分数：是否从之前的失败中汲取了教训")
     overall: int = Field(ge=0, le=100, description="加权总分")
     feedback: str = Field(description="详细评估反馈")
+    missed_replan_opportunities: List[ReplanOpportunity] = Field(default_factory=list, description="应触发但未触发的重规划时机")
+    unnecessary_replans: List[ReplanOpportunity] = Field(default_factory=list, description="不必要的重规划记录")
 
 
 class RetrievalEvaluationResult(BaseModel):
@@ -99,7 +121,7 @@ class RetrievalEvaluationResult(BaseModel):
     overall: int = Field(ge=0, le=100, description="加权总分")
     feedback: str = Field(description="详细评估反馈")
     hallucination_detected: bool = Field(default=False, description="是否检测到模型产生了幻觉（无依据的编造）")
-    missing_info: Optional[str] = Field(default=None, description="缺失信息描述：指出检索中未能覆盖的关键内容")
+    missing_info: List[str] = Field(default_factory=list, description="信息缺口列表")
 
 
 # ── Schema 注册表：评估器名称 → 对应的 Pydantic 输出 Schema ──

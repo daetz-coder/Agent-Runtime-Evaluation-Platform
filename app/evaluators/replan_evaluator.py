@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.evaluators.base import BaseEvaluator
+from app.evaluators.eval_schemas import ReplanEvaluationResult
 from app.models.schemas import ReplanScore, TrajectoryStep
 
 REPLAN_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、missed_replan_opportunities、unnecessary_replans）。你是一位 AI Agent 重规划决策评估专家。
@@ -135,12 +136,13 @@ class ReplanEvaluator(BaseEvaluator):
                 feedback="不适用：Agent 顺利完成，无需重规划。",
             )
 
-        # 创建提示词
+        # 创建提示词 + 结构化输出链
         prompt = ChatPromptTemplate.from_template(REPLAN_EVALUATION_PROMPT)
+        structured_llm = self.llm.with_structured_output(ReplanEvaluationResult)
+        chain = prompt | structured_llm
 
-        # 获取 LLM 评估结果（带 Redis 缓存）
-        chain = prompt | self.llm
-        response = await self._invoke_llm_cached(
+        # 获取 LLM 评估结果（结构化输出 + 重试机制）
+        result = await self._invoke_structured_llm(
             chain,
             {
                 "goal": goal,
@@ -148,22 +150,23 @@ class ReplanEvaluator(BaseEvaluator):
                 "replan_events": replan_events_text,
                 "context": context or "No additional context provided.",
             },
+            schema_class=ReplanEvaluationResult,
+            max_retries=3,
         )
 
-        # 解析响应
-        scores = self._parse_scores(response.content)
+        # Pydantic model 直接使用
+        scores = result.model_dump() if isinstance(result, ReplanEvaluationResult) else result
 
         # 计算加权总分
         overall = self._calculate_weighted_score(scores, self.WEIGHTS)
 
         # 从错过的重规划时机中提取 LLM 建议
-        llm_suggestions = scores.get("suggestions") or []
-        if not llm_suggestions:
-            missed = scores.get("missed_replan_opportunities") or []
-            if isinstance(missed, list):
-                for opp in missed:
-                    if isinstance(opp, dict) and opp.get("reason"):
-                        llm_suggestions.append(opp["reason"])
+        llm_suggestions = []
+        missed = scores.get("missed_replan_opportunities") or []
+        if isinstance(missed, list):
+            for opp in missed:
+                if isinstance(opp, dict) and opp.get("reason"):
+                    llm_suggestions.append(opp["reason"])
 
         return ReplanScore(
             trigger_appropriateness=scores.get("trigger_appropriateness", 0),
