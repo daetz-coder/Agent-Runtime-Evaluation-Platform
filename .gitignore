@@ -67,3 +67,16 @@ frontend/.vite/
 cv_docs/
 output/
 .agents/
+example/resume/
+
+# Interview prep (personal, not for public repo)
+docs/interview/
+docs/interview-prep-guide.md
+docs/interview_questions_agent_dev.md
+docs/info.md
+docs/learning-roadmap.md
+
+# Outdated files
+sandbox.Dockerfile
+scripts/generate_interview_answers.py
+scripts/interview_answer_bank.py
