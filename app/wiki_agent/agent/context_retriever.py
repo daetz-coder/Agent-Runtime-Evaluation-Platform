@@ -8,6 +8,7 @@ External KB      → hybrid_search（知识库检索）
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -112,7 +113,7 @@ async def retrieve_context(
 
     # ②b 兜底：如果改写查询全部无结果，用原始查询再搜一次
     if not wiki_results and user_message:
-        fallback_results = search_tools.hybrid_search(user_message, limit=3, enable_rerank=False)
+        fallback_results = await asyncio.to_thread(search_tools.hybrid_search, user_message, limit=3, enable_rerank=False)
         for r in fallback_results:
             path = r.get("path", "")
             if path and path not in seen_paths:

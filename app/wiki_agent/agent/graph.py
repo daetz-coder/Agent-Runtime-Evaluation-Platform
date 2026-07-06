@@ -608,20 +608,22 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
 
     try:
         if action == "create":
-            result = crud_tools.create_knowledge(
+            result = await asyncio.to_thread(
+                crud_tools.create_knowledge,
                 title=decision.get("title", ""),
                 content=decision.get("content", ""),
                 category=decision.get("category", ""),
                 tags=decision.get("tags") or [],
             )
         elif action == "update":
-            result = crud_tools.update_knowledge(
+            result = await asyncio.to_thread(
+                crud_tools.update_knowledge,
                 path=decision.get("path", ""),
                 content=decision.get("content"),
                 tags=decision.get("tags"),
             )
         elif action == "delete":
-            result = crud_tools.delete_knowledge(decision.get("path", ""))
+            result = await asyncio.to_thread(crud_tools.delete_knowledge, decision.get("path", ""))
 
         duration_ms = (_time.monotonic() - tool_start) * 1000
 
@@ -691,13 +693,15 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
             try:
                 retry_start = _time.monotonic()
                 if alternative_action == "update":
-                    result = crud_tools.update_knowledge(
+                    result = await asyncio.to_thread(
+                        crud_tools.update_knowledge,
                         path=decision.get("path", ""),
                         content=decision.get("content"),
                         tags=decision.get("tags"),
                     )
                 elif alternative_action == "create":
-                    result = crud_tools.create_knowledge(
+                    result = await asyncio.to_thread(
+                        crud_tools.create_knowledge,
                         title=decision.get("title", ""),
                         content=decision.get("content", ""),
                         category=decision.get("category", ""),

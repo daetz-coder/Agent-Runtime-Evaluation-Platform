@@ -9,6 +9,7 @@ Pipeline:
 
 from __future__ import annotations
 
+import asyncio
 import json as _json
 import re
 from enum import Enum
@@ -471,7 +472,7 @@ async def rewrite_query(
     print(f"[QueryRewrite] 分类: {query_type.value} (query: {working_query})")
 
     # Step 4: 相似度校验
-    validated = SimilarityValidator.validate(working_query, rewritten, threshold)
+    validated = await asyncio.to_thread(SimilarityValidator.validate, working_query, rewritten, threshold)
 
     # 去重 + 限制数量
     seen = set()
