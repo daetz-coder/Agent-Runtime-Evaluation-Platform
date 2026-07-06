@@ -18,7 +18,7 @@ def test_proxy_llm():
     from langchain_openai import ChatOpenAI
 
     from sdk.adapters.llm_proxy import create_proxy_llm
-    from app.collectors import get_collector
+    from sdk.collector import get_collector
 
     collector = get_collector()
 
