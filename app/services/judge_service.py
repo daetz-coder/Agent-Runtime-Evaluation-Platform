@@ -8,7 +8,7 @@ LLM and what raw response came back, making scores explainable.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from app.db.models import Evaluation
 from app.models.schemas import DIMENSION_NAMES, JudgeRawData

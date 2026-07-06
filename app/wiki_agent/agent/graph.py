@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import uuid
@@ -16,7 +17,6 @@ import aiosqlite
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableConfig
-from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import Command, interrupt
@@ -29,6 +29,8 @@ from app.wiki_agent.agent.tools import crud_tools
 from app.wiki_agent.config import settings
 from sdk.collector import ActionType, get_collector
 from app.wiki_agent.session import store as session_store
+
+logger = logging.getLogger(__name__)
 
 _CHECKPOINT_DB = os.path.join(os.path.dirname(settings.DB_PATH), "checkpoints.db")
 os.makedirs(os.path.dirname(_CHECKPOINT_DB), exist_ok=True)
@@ -427,7 +429,7 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
             "memory_results": ctx.user_facts + ctx.session_facts,
             "chat_history_count": len(chat_history),
         },
-        context=f"Query: {user_message[:100]}, complexity: {complexity.value if 'complexity' in dir() else 'unknown'}",
+        context=f"Query: {user_message[:100]}",
     )
 
     # 记录 PLAN_UPDATE（基于检索结果的真正规划）
@@ -797,7 +799,6 @@ async def run_chat_stream(
     session_id: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """经 LangGraph 运行完整对话流，产出 SSE 事件 dict"""
-    total_start = asyncio.get_running_loop().time()
     graph = await get_wiki_graph()
     thread_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()

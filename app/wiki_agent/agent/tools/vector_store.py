@@ -113,7 +113,7 @@ class MilvusVectorStore:
         except Exception as exc:
             # gRPC GOAWAY 错误可重试
             if "GOAWAY" in str(exc) or "ENHANCE_YOUR_CALM" in str(exc):
-                print(f"[Milvus] gRPC GOAWAY during delete, resetting connection...")
+                print("[Milvus] gRPC GOAWAY during delete, resetting connection...")
                 self._client = None
             return 0
 

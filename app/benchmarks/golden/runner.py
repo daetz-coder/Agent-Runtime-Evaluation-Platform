@@ -13,11 +13,10 @@ import asyncio
 import logging
 import sys
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app.benchmarks.golden import GOLDEN_SUITE, GoldenCase
 from app.graphs.evaluation_graph import evaluate_parallel
-from app.models.schemas import TrajectoryStep
 
 logger = logging.getLogger(__name__)
 

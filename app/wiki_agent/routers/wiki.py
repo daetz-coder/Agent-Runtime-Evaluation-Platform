@@ -13,7 +13,6 @@ from app.wiki_agent.config import settings
 from app.wiki_agent.wiki import git_service, service
 from app.wiki_agent.wiki.schemas import (
     CategoryInfo,
-    EntryIndexItem,
     TagInfo,
     WikiBacklink,
     WikiCommit,

@@ -11,12 +11,10 @@ Retrieval Quality Evaluator — 第 6 评估维度
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
 
 from app.evaluators.base import BaseEvaluator
 from app.evaluators.eval_schemas import RetrievalEvaluationResult

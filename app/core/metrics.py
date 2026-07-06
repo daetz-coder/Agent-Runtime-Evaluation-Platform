@@ -19,7 +19,7 @@ Usage:
 
 from __future__ import annotations
 
-from prometheus_client import Counter, Gauge, Histogram, Info
+from prometheus_client import Counter, Histogram, Info
 
 # ── Evaluation Metrics ────────────────────────────────────────
 

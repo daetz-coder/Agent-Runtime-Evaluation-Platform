@@ -504,7 +504,6 @@ def get_categories() -> list[CategoryInfo]:
 
 def get_entry_index() -> dict[str, list[EntryIndexItem]]:
     """按首字母分组返回词条索引"""
-    import unicodedata
 
     index: dict[str, list[EntryIndexItem]] = {}
 

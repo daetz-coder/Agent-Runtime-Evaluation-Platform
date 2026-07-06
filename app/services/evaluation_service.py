@@ -13,7 +13,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.metrics import EVALUATION_COUNT, EVALUATION_SCORE
 from app.core.tracing import get_tracer
 from app.db.models import AgentTask, AgentTrajectory, Evaluation, EvaluationStatus, TaskStatus
 from app.evaluators.scoring import dimension_score, score_values, weighted_overall

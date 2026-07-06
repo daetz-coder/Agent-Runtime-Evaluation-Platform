@@ -8,7 +8,6 @@ External KB      → hybrid_search（知识库检索）
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -56,7 +55,7 @@ async def retrieve_context(
 ) -> RetrievedContext:
     """统一检索四路记忆，返回 RetrievedContext。"""
     import asyncio
-    from app.wiki_agent.agent.tools.query_rewriter import QueryComplexity, classify_complexity
+    from app.wiki_agent.agent.tools.query_rewriter import QueryComplexity
 
     loop = asyncio.get_running_loop()
 

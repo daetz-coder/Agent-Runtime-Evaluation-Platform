@@ -8,7 +8,7 @@ and assembles a chronological replay view for debugging agent behavior.
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List
 
 from app.db.models import Evaluation
 from app.models.schemas import LLMTraceInfo, ReplayResponse

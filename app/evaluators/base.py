@@ -486,7 +486,7 @@ class BaseEvaluator(ABC):
         # 最终兜底：返回零分 + 错误信息
         return schema_class(
             **{k: 0 for k in schema_class.model_fields if k != "feedback"},
-            feedback=f"评估输出解析失败",
+            feedback="评估输出解析失败",
         )
 
     async def _invoke_llm_cached(self, chain, inputs: Dict[str, Any]) -> Any:
