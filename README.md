@@ -7,40 +7,126 @@
 ![Vue 3](https://img.shields.io/badge/Vue_3-v3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-v0.3-1C3C5C?logo=langchain&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-v5.7-3178C6?logo=typescript&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7.2-DC382D?logo=redis&logoColor=white)
-![LangChain](https://img.shields.io/badge/LangChain-v0.3-1C3C5C?logo=chainlink&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-FF6B6B?logo=sqlalchemy&logoColor=white)
 ![Milvus](https://img.shields.io/badge/Milvus-2.4-00A98F)
-![Element Plus](https://img.shields.io/badge/Element_Plus-409EFF?logo=elementor&logoColor=white)
 ![ECharts](https://img.shields.io/badge/ECharts-5.5-AA344D)
-![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 </div>
 
-AI Agent 运行时全维度质量评估平台。对 Agent 的规划、战术决策、工具使用、记忆保持、重规划、RAG 检索质量六个维度进行量化评估。基于 LangGraph 编排、LLM-as-Judge 评分、FastAPI + Vue 3 全栈交付。
+**AI Agent 运行时全维度质量评估平台。** 对 Agent 的规划、战术决策、工具使用、记忆保持、重规划、RAG 检索质量六个维度进行量化评估。基于 LangGraph 编排、LLM-as-Judge 评分、FastAPI + Vue 3 全栈交付。
 
-## 项目定位
-
-```
-❌ 不是 Prompt Evaluation（评估 Agent 最终输出文本质量）
-✅ Agent Runtime Evaluation（评估 Agent 运行时的行为质量）
-```
-
-评估 Agent 在真实任务中每一步的决策质量，而非仅看最终结果。覆盖 14 种轨迹动作类型（plan / tool_call / replan / retrieval / think / memory_write / failure 等），对每一步进行独立评分。
+> **❌ 不是 Prompt Evaluation**（评估最终输出文本质量）
+> **✅ 是 Agent Runtime Evaluation**（评估 Agent 运行时每一步的决策质量）
 
 ---
 
-- [快速开始](#快速开始)
-- [技术栈](#技术栈)
-- [关键特性](#关键特性)
-- [核心指标](#核心指标)
-- [系统架构](#系统架构)
-- [评估体系](#评估体系)
-- [API 概览](#api-概览)
-- [项目结构](#项目结构)
-- [相关文档](#相关文档)
+## 核心指标
+
+| 指标 | 数值 |
+|------|------|
+| 评估维度 × 子指标 | 6 × 3~4 = 20 项 |
+| 轨迹动作类型 | 14 种（Pydantic Schema 约束） |
+| SDK 接入模式 | 3 种（Instrument / Proxy / Callback） |
+| 单次全评估耗时 | 15~30s（6 评估器 asyncio.gather 并行） |
+| 检索基准（Wiki Agent） | Top-1: **75%**, MRR: **0.825** |
+| 综合分单调递减验证 | **93.1 → 20.0** |
+
+---
+
+## 系统架构
+
+```
+┌─────────────┐     ┌───────────────────┐     ┌──────────────────┐
+│   Frontend  │────▶│   FastAPI Server   │◀────│   SDK Collector  │
+│  (Vue 3 +   │◀────│  (Async 全链路)    │     │  (Pydantic Schema)│
+│   ECharts)  │     │                   │     └──────────────────┘
+└─────────────┘     ├───────────────────┤
+                    │   Evaluators × 6  │
+                    │   (LLM-as-Judge)  │
+                    ├───────────────────┤     ┌──────────────────┐
+                    │   Redis Cache     │     │   SQLite / PG    │
+                    │   (可选，优雅降级) │     │   (任务/轨迹/评估)│
+                    └───────────────────┘     └──────────────────┘
+```
+
+两个核心子系统：
+
+| 子系统 | 说明 |
+|--------|------|
+| **评估引擎** | 6 个并行 LLM-as-Judge 评估器 + 多模型共识 + 4 阶段轨迹压缩 |
+| **Wiki Agent** | RAG 知识库问答（四级混合检索 + Query 改写 + 双层记忆 + HITL CRUD） |
+
+---
+
+## 评估体系
+
+| 维度 | 权重 | 子指标 | 评估器 |
+|------|------|--------|--------|
+| 规划质量（Planning） | 20% | 覆盖率、顺序性、粒度、完整性 | `planning_evaluator.py` |
+| 战术决策（Tactical） | 20% | 相关性、效率、正确性 | `tactical_evaluator.py` |
+| 工具使用（Tool Use） | 15% | 选择质量、参数准确性、结果利用 | `tool_use_evaluator.py` |
+| 记忆保持（Memory） | 15% | 保持力、相关性、一致性 | `memory_evaluator.py` |
+| 重规划（Replan） | 15% | 触发适当性、适应质量、学习能力 | `replan_evaluator.py` |
+| 检索质量（Retrieval） | 15% | 相关性、证据准确性、覆盖度 + 幻觉检测 | `retrieval_evaluator.py` |
+
+- 质量等级：优秀 ≥ 80 · 良好 ≥ 60 · 一般 ≥ 40 · 较差 < 40
+- 维度不适用时自动标记并从加权总分中剔除（权重重新归一化）
+
+---
+
+## 关键特性
+
+| 特性 | 说明 |
+|------|------|
+| **Pydantic Schema SDK** | 14 种 ActionType 各有独立 Pydantic 模型，field\_validator 自动截断，构造即类型安全 |
+| **6 维评估体系** | 20 项子指标，含幻觉检测，适用性自动标记 |
+| **多模型共识** | DeepSeek / GLM-4 / Qwen-Plus 独立评分 → 均值 ± 标准差，跨模型一致性量化 |
+| **4 阶段轨迹压缩** | 重要性过滤 → Think 截断 → 滑动窗口 → 格式化，降低 LLM token 消耗 |
+| **SSE 流式评估** | 实时推送评估进度，支持批量 / 增量 / 回归检测 |
+| **增量评估** | Trajectory Diff 检测变化维度，只重算受影响项，节省约 2/3 时间 |
+| **回归检测** | 自动对比基线分数，发现退化维度并告警 |
+| **Replay 调试器** | 回放每步 LLM 原始 Prompt / Response / Model / Latency |
+| **全链路 Async** | FastAPI + SQLAlchemy + Redis 全异步，sync I/O 通过 asyncio.to\_thread 桥接 |
+| **优雅降级** | Redis / Celery 不可用时自动降级，核心功能不受影响 |
+
+---
+
+## 技术栈
+
+| 类别 | 技术 | 用途 |
+|------|------|------|
+| 后端框架 | FastAPI + Uvicorn | REST API + SSE 实时流，全异步 |
+| Agent 编排 | LangGraph + LangChain | Agent 状态图、评估工作流 |
+| AI 模型 | DeepSeek / GLM / Qwen / OpenAI | LLM 推理 + LLM-as-Judge 评估裁判 |
+| 向量检索 | Milvus + BM25 + RRF + Cross-Encoder | 四级混合检索 |
+| 数据库 | SQLAlchemy Async + SQLite / PostgreSQL | 持久化存储，Alembic 迁移 |
+| 缓存 | Redis（可选，优雅降级） | LLM 响应缓存、报表聚合、限流 |
+| 任务队列 | Celery（可选，优雅降级） | 异步评估任务，指数退避重试 |
+| 前端 | Vue 3 + TypeScript + Element Plus + ECharts | 管理面板与可视化图表 |
+| SDK | Python SDK（Pydantic + httpx） | 零侵入轨迹采集，3 种接入模式 |
+
+---
+
+## 接入方式
+
+```python
+# LangGraph 项目 — 一行接入
+from sdk import instrument_langgraph
+graph = instrument_langgraph(build_graph())
+
+# LangChain 项目 — 替换 LLM 创建
+from sdk import create_proxy_llm
+llm = create_proxy_llm(ChatOpenAI(model="gpt-4"))
+
+# 任意项目 — 手动记录
+from sdk.collector import get_collector
+collector = get_collector()
+collector.start("任务目标", context={...})
+collector.record_tool_call("search", input={...}, output=result)
+collector.finish(auto_run=True)
+```
 
 ---
 
@@ -62,160 +148,24 @@ cd frontend && npm run dev
 
 访问 http://localhost:3000 查看仪表盘，http://localhost:8000/docs 查看 API 文档。
 
-> 详细安装与配置说明见 [快速开始指南](docs/getting_started.md)。支持 Windows `start.bat` 一键启动、Docker Compose 部署、以及 PostgreSQL 生产部署。
-
----
-
-## 技术栈
-
-| 类别 | 技术 | 用途 |
-|------|------|------|
-| 后端框架 | FastAPI + Uvicorn | REST API + SSE 实时流，全异步 |
-| Agent 编排 | LangGraph + LangChain | Agent ReAct 循环、评估工作流 |
-| AI 模型 | DeepSeek / GLM / Qwen / OpenAI / Anthropic | LLM 推理 + LLM-as-Judge 评估裁判 |
-| 向量检索 | Milvus Lite + BM25 (RRF) | RAG 知识库混合检索（向量 + 关键词） |
-| 数据库 | SQLAlchemy Async + SQLite / PostgreSQL | 持久化存储，Alembic 迁移管理 |
-| 缓存 | Redis（可选，优雅降级） | LLM 响应缓存、报表聚合、接口限流 |
-| 前端 | Vue 3 + TypeScript + Element Plus + ECharts | 管理面板与可视化图表 |
-| 可观测性 | OpenTelemetry + Prometheus + structlog | 链路追踪、指标监控、结构化日志 |
-| 任务队列 | Celery（可选，优雅降级） | 异步评估任务，指数退避重试 |
-| SDK | Python SDK（httpx + langchain-core） | 零侵入轨迹采集，支持 LangGraph 自动采集和手动记录 |
-
----
-
-## 关键特性
-
-| 特性 | 说明 |
-|------|------|
-| **SDK 评测** | 外部 SDK 埋点轨迹评测 |
-| **6 维评分体系** | Planning / Tactical / Tool Use / Memory / Replan / Retrieval，含 20 项子指标 |
-| **适用性标记** | 维度不适用时自动标记并从综合评分剔除（如无工具调用时 Tool Use 标记为 N/A） |
-| **多模型共识** | 跨厂商（DeepSeek + GLM + Qwen）独立评分，LLM 缓存按模型名隔离 |
-| **增量评估** | Trajectory Diff 检测变化维度，只重算受影响项，节省约 2/3 时间 |
-| **回归检测** | 自动对比基线分数，发现退化维度并告警 |
-| **SSE 流式评测** | 实时推送 Agent 执行步骤 + 6 维评估进度 |
-| **Replay 调试器** | 回放 Agent 每步 LLM 原始 Prompt / Response / Model / Latency |
-| **Judge 透明面板** | 公开每个维度的评分依据（原始 Judge Prompt / Response 可查） |
-| **LLM 生成建议** | 改进建议由 LLM 基于具体错误场景生成，非硬编码模板 |
-| **Trajectory Diff** | 步骤级对比两次 Agent 运行差异（added / removed / changed） |
-| **Golden Test Suite** | 4 条黄金轨迹 + 预期分数范围，保障评估器修改不引入回归 |
-| **Wiki Agent** | 基于 Milvus + BM25 混合检索 + BGE ReRank 的 RAG 知识库问答系统 |
-| **OpenTelemetry** | 全链路 Span 树，支持导出到 Jaeger / Zipkin 可视化 |
-| **优雅降级** | Redis / Celery / Docker 不可用时均自动降级，核心功能不受影响 |
-
----
-
-## 核心指标
-
-| 指标 | 数值 |
-|------|------|
-| 评估维度 × 子指标 | 6 × 3~4 = 20 项 |
-| 轨迹动作类型 | 14 种（plan / tool_call / replan / retrieval / think / memory_write / failure 等） |
-| 接入模式 | 3 种（LangGraph Instrument / LLM Proxy / Callback） |
-| 单次全评估耗时 | 15~30s（6 评估器并行 asyncio.gather） |
-| 检索基准（Wiki Agent） | Hybrid Top-1: 75%, MRR: 0.825（20 条查询） |
-
-> 以上数据来源 `scripts/benchmark_*.py` 和 `scripts/eval_*.py`，基于真实 LLM 调用。
-
----
-
-## 系统架构
-
-```
-Frontend (Vue 3) ──REST/SSE──▶ Backend (FastAPI) ◀── SDK (HTTP)
-                                    │
-                              ┌─────┴─────┐
-                              │           │
-                         Redis Cache   6 Evaluators
-                        (可选降级)    (LLM-as-Judge)
-                              │           │
-                              └─────┬─────┘
-                                    │
-                              ┌─────┴─────┐
-                              │  Database  │
-                              │ SQLite/PG  │
-                              └───────────┘
-```
-
-平台包含两个核心子系统：
-
-| 子系统 | 说明 |
-|--------|------|
-| **评估引擎** | 6 个并行 LLM-as-Judge 评估器，对轨迹进行多维度评分 |
-| **Wiki Agent** | 基于 RAG 的知识库问答 Agent，形成"运行-评估-改进"闭环 |
-
-> 详细架构说明见 [架构文档](docs/architecture.md)，设计思路见 [设计文档](docs/design.md)。
-
----
-
-## 评估体系
-
-| 维度 | 权重 | 子指标 | 评估器 |
-|------|------|--------|--------|
-| 规划质量（Planning） | 20% | 覆盖率、顺序性、粒度、完整性 | `planning_evaluator.py` |
-| 战术决策（Tactical） | 20% | 相关性、效率、正确性 | `tactical_evaluator.py` |
-| 工具使用（Tool Use） | 15% | 选择质量、参数准确性、结果利用 | `tool_use_evaluator.py` |
-| 记忆保持（Memory） | 15% | 保持力、相关性、一致性 | `memory_evaluator.py` |
-| 重规划（Replan） | 15% | 触发适当性、适应质量、学习能力 | `replan_evaluator.py` |
-| 检索质量（Retrieval） | 15% | 相关性、证据准确性、覆盖度 + 幻觉检测 | `retrieval_evaluator.py` |
-
-- 质量等级：优秀 ≥ 80 · 良好 ≥ 60 · 一般 ≥ 40 · 较差 < 40
-- 维度不适用时自动标记并从加权总分中剔除（权重重新归一化）
-- 评估器实现见 `app/evaluators/`，评分模型定义见 `app/models/schemas.py`
-
----
-
-## 接入方式
-
-平台提供 3 种接入方式，适配不同类型的 Agent 项目：
-
-| 方式 | 适用场景 | 侵入性 | 推荐度 |
-|------|----------|--------|--------|
-| **LangGraph Instrument** | LangGraph 项目 | 一行代码，零侵入 | ⭐⭐⭐ |
-| **LLM Proxy** | LangChain 系框架 | 替换 LLM 创建，零侵入 | ⭐⭐⭐ |
-| **Callback** | 需要细粒度控制 | 注入 callback handler | ⭐⭐ |
-
-**LangGraph 项目**推荐用 SDK 自动采集（[集成指南](docs/adapters.md)）：
-
-```python
-from sdk import instrument_langgraph
-graph = instrument_langgraph(build_graph())  # 一行接入
-```
-
----
-
-## API 概览
-
-| 分组 | 前缀 | 主要功能 |
-|------|------|----------|
-| 评估 | `/api/v1/evaluations/` | 创建评估、流式评估、共识评估、增量评估、批量评估 |
-| 任务 | `/api/v1/tasks/` | 任务 CRUD、轨迹提交 |
-| 报告 | `/api/v1/reports/` | 评分摘要、趋势分析、维度统计、迭代对比 |
-| 基准 | `/api/v1/benchmark/` | 单调性基准测试 |
-| 运维 | `/api/v1/system/` | 健康检查、Prometheus 指标 |
-| 知识库 | `/api/wiki/*` | 页面 CRUD、搜索、自动标签、ZIP 导出 |
-| 对话 | `/api/chat/*` | SSE 流式对话、HITL 确认、会话管理 |
-
-> 完整 API 参考见 [API 文档](docs/api.md)，包含请求/响应示例、SSE 事件类型。
-
 ---
 
 ## 项目结构
 
 ```
 app/                        # 后端应用
-├── evaluators/             # 6 个评估器 + 共识评估 + 评分工具
+├── evaluators/             # 6 个评估器 + 共识评估 + 轨迹压缩 + 评分工具
 ├── graphs/                 # LangGraph 评估工作流（串行 / 并行 / 增量）
-├── services/               # 业务逻辑层（evaluation / replay / judge / diff / incremental）
+├── services/               # 业务逻辑层（evaluation / replay / judge / diff）
 ├── core/                   # 基础设施（config / cache / tracing / logging / metrics）
-├── api/                    # REST API + 中间件（auth / rate_limit / correlation_id）
-├── wiki_agent/             # Wiki Agent 子系统（RAG 检索 / 对话 / 知识库管理）
+├── api/                    # REST API + 中间件（rate_limit / correlation_id）
+├── wiki_agent/             # Wiki Agent（RAG 检索 / 对话 / 记忆 / 知识库管理）
 ├── models/                 # Pydantic schema 定义
 └── db/                     # SQLAlchemy ORM + Alembic 迁移
 
 frontend/                   # Vue 3 前端（dashboard / evaluations / analytics / wiki）
-sdk/                        # 独立 SDK 包（LangGraph 自动采集 + 手动记录）
-scripts/                    # 校准脚本（benchmark / 检索评估 / 面试题生成）
+sdk/                        # 独立 SDK 包（Pydantic Schema + 3 种 Adapter + 手动记录）
+scripts/                    # 基准测试脚本（benchmark / 检索评估）
 tests/                      # pytest 单元测试与 Golden Test Suite
 docs/                       # 文档
 ```
@@ -226,13 +176,8 @@ docs/                       # 文档
 
 | 文档 | 内容 |
 |------|------|
-| [快速开始指南](docs/getting_started.md) | 环境要求、安装步骤、启动方式、配置参考 |
-| [架构文档](docs/architecture.md) | 系统架构、组件说明、数据流、可观测性 |
-| [设计文档](docs/design.md) | 设计思路、评估体系、缓存策略、关键要点 |
-| [开发者指南](docs/developer_guide.md) | 本地开发、调试工具、CI 门禁、版本追踪 |
+| [架构文档](docs/architecture.md) | 系统架构、组件说明、数据流 |
 | [API 文档](docs/api.md) | 全部 REST 端点、请求/响应示例、SSE 事件类型 |
-| [SDK 集成指南](docs/adapters.md) | SDK 集成方式、配置选项、工作原理 |
-| [端口配置](docs/ports.md) | 服务端口、常用地址、一键启动 |
-| [项目约定](docs/conventions.md) | 编码规范、Git 流程、开发命令参考 |
+| [SDK 文档](sdk/README.md) | 轨迹采集 SDK API、14 种 ActionType、容错机制 |
+| [开发者指南](docs/developer_guide.md) | 本地开发、调试工具、版本追踪 |
 | [前端文档](frontend/README.md) | Vue 3 前端技术栈、页面功能说明 |
-| [SDK 文档](sdk/README.md) | 轨迹采集 SDK API、14 种 Action Type、容错机制 |
