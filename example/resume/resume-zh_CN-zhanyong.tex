@@ -1,0 +1,71 @@
+% !TEX TS-program = xelatex
+% !TEX encoding = UTF-8 Unicode
+% !Mode:: "TeX:UTF-8"
+
+\documentclass{resume}
+\usepackage{zh_CN-Adobefonts_external}
+\usepackage{linespacing_fix}
+\usepackage[colorlinks=true,linkcolor=blue,urlcolor=blue]{hyperref}
+
+% PDF 书签安全处理：将排版命令替换为可打印文本
+\pdfstringdefDisableCommands{%
+  \def\hfill{\space}%
+  \def\quad{\space}%
+  \def\textbf#1{#1}%
+  \def\textit#1{#1}%
+}
+
+\begin{document}
+\pagenumbering{gobble}
+
+\name{詹勇}
+
+\centerline{\rmfamily\large{ (+86) 188-5660-3434 \textperiodcentered\  3446914219@qq.com}}
+\centerline{\rmfamily\large{ \href{https://github.com/daetz-coder}{GitHub: daetz-coder} \textperiodcentered\ \href{https://blog.csdn.net/daetz-coder}{CSDN: daetz-coder}}}
+\vspace{0.7ex}
+
+\section{个人简介}
+专注 \textbf{AI~Agent 工程化}的硕士研究生，擅长从零搭建 LLM 应用全栈并交付完整产品。独立完成 Agent Runtime 评估平台（六维 LLM-as-Judge + 多模型共识）和智能知识库系统（四级混合检索 + Query 改写），核心指标 Top-1=\textbf{75\%}、综合分 \textbf{93.1}。深入掌握 LangGraph 编排、Async 架构与全链路可观测性。
+
+\section{教育背景}
+\datedsubsection{\textbf{浙江理工大学}, 计算机技术硕士（在读）}{2024.9 - 至今}
+\ 一等优秀奖学金(1次)，二等优秀奖学金(1次)
+\datedsubsection{\textbf{嘉兴大学}, 软件工程学士}{2020.9 - 2024.6}
+\ 校级优秀毕业生，浙江省政府奖学金(1次)，学习优秀奖学金(6次)
+
+\section{学术成果}
+\begin{itemize}[parsep=0.1ex,topsep=0ex]
+  \item \textbf{Yong Zhan}, Xiangyang Li, et al. ``W-MSTC: A Window Based Multi-Scale Temporal Cross Attention Method for Few-Shot Modulation Recognition,'' \textit{IEEE Communications Letters}, 2025.（\textbf{第一作者}, SCIE）
+  \item Congyuan Xu, \textbf{Yong Zhan}, et al. ``Multimodal Fusion Based Few-Shot Network Intrusion Detection System,'' \textit{Scientific Reports}, 2025.（\textbf{第二作者}, SCIE）
+\end{itemize}
+
+\section{技术能力}
+\begin{itemize}[parsep=0.1ex,topsep=0ex]
+  \item \textbf{AI Agent 系统}: LangGraph 编排、HITL 人机协作、LLM-as-Judge 评估、Multi-Model Consensus、Pydantic Schema 驱动开发
+  \item \textbf{RAG 检索增强}: Milvus 向量库、BM25 关键词、RRF 融合与 Cross-Encoder 重排、Query Rewrite Pipeline
+  \item \textbf{工程工具链}: Python / FastAPI / Async I/O / SQLAlchemy / Redis / Celery / Vue3 / ECharts / Docker / Git
+\end{itemize}
+
+\section{项目经历}
+\datedsubsection{\textbf{Wiki-Agent：AI 驱动的智能知识库系统} \quad \textit{LangGraph / FastAPI / Vue3 / Milvus}}{2025.3 - 至今}
+\begin{itemize}[parsep=0.15ex,topsep=0ex]
+  \item \textbf{Query 改写 Pipeline}：LLM 单次完成复杂度分级+改写，多轮指代消解+上下文补齐，余弦校验(0.7)兜底回退，解决意图模糊导致检索命中率低的问题
+  \item \textbf{四级混合检索}：Milvus 语义 + BM25 关键词 $\rightarrow$ RRF 融合(k=60) $\rightarrow$ Cross-Encoder 重排，Top-1=\textbf{75\%} / MRR=\textbf{0.825}；多 query 并行 + 文档级去重保障结果多样性
+  \item \textbf{4-Node StateGraph 编排}：search $\rightarrow$ respond $\rightarrow$ decide $\rightarrow$ execute 条件路由，HITL CRUD + Checkpoint 恢复，SDK 采集 14 种轨迹用于全链路追踪
+\end{itemize}
+
+\datedsubsection{\textbf{Agent Runtime Evaluation Platform：AI Agent 运行时质量评估平台} \quad \textit{Python / FastAPI / LangGraph / Vue3}}{2025.5 - 至今}
+\begin{itemize}[parsep=0.15ex,topsep=0ex]
+  \item \textbf{六维评估体系量化 Agent 质量}：17 项子指标(含幻觉检测)覆盖规划/战术/工具/记忆/重规划/检索，加权聚合+四档标定；6 评估器 asyncio.gather 并行(\textbf{15-30s})，4 阶段轨迹压缩降 token，综合分单调递减 \textbf{93.1 $\rightarrow$ 20.0} 验证有效性
+  \item \textbf{Pydantic Schema 驱动 SDK}：14 种 ActionType 独立模型+field\_validator 自动校验，构造即类型安全；三种接入模式(Instrument/Proxy/Callback)，全链路 Async；Redis+Celery 异步派发，ECharts 雷达图+Monotonicity Benchmark 产品化输出
+\end{itemize}
+
+
+\section{个人特质}
+\begin{itemize}[parsep=0.1ex,topsep=0ex]
+  \item 具备从零到一交付完整产品的能力：两个项目均独立搭建前后端、测试与部署全流程
+  \item 习惯数据驱动决策：每个项目均构建 Benchmark 与回归验证机制保障迭代质量
+  \item 硕士阶段快速掌握 AI 工程栈并独立交付两套完整系统，具备强自驱力与快速学习能力
+\end{itemize}
+
+\end{document}
