@@ -2,7 +2,6 @@
 Resource quota enforcement for multi-tenant workspaces.
 
 Checks workspace quotas before allowing operations:
-  - sandbox_quota: max concurrent sandbox sessions
   - max_steps_per_eval: max agent steps per evaluation
   - eval_count_limit_monthly: max evaluations per month
   - storage_limit_mb: max workspace file storage
@@ -11,7 +10,6 @@ Usage:
     from app.services.quota import QuotaService, QuotaExceeded
     quota = QuotaService(db)
     await quota.check_eval_limit(workspace_id)
-    await quota.check_sandbox_quota(workspace_id)
 """
 
 from __future__ import annotations
@@ -20,16 +18,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import func, select, type_coerce
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.types import JSON
 
 from app.api.workspace import Workspace
 from app.db.models import AgentTask, Evaluation
 
 logger = logging.getLogger(__name__)
-
-SANDBOX_EVAL_MODE = "sandbox"
 
 
 class QuotaExceeded(Exception):
@@ -94,47 +89,14 @@ class QuotaService:
                 requested_steps,
             )
 
-    async def check_sandbox_quota(self, workspace_id: Optional[str]) -> None:
-        """Check if workspace has reached its concurrent sandbox limit."""
-        ws = await self.get_workspace(workspace_id)
-        if not ws or ws.sandbox_quota <= 0:
-            return
-
-        from app.db.models import TaskStatus
-
-        bind = self.db.get_bind()
-        if bind.dialect.name == "sqlite":
-            eval_mode_expr = func.json_extract(type_coerce(AgentTask.context, JSON), "$.eval_mode")
-        else:
-            eval_mode_expr = AgentTask.context["eval_mode"].as_string()
-
-        result = await self.db.execute(
-            select(func.count())
-            .select_from(AgentTask)
-            .where(
-                AgentTask.workspace_id == workspace_id,
-                AgentTask.status == TaskStatus.RUNNING,
-                AgentTask.context.isnot(None),
-                eval_mode_expr == SANDBOX_EVAL_MODE,
-            )
-        )
-        running = result.scalar_one()
-
-        if running >= ws.sandbox_quota:
-            raise QuotaExceeded("sandbox_quota", ws.sandbox_quota, running)
-
-
 async def enforce_workspace_quotas(
     db: AsyncSession,
     workspace_id: Optional[str],
     *,
-    sandbox: bool = False,
     max_steps: Optional[int] = None,
 ) -> None:
     """Run workspace quota checks; raises QuotaExceeded on violation."""
     quota = QuotaService(db)
     await quota.check_eval_limit(workspace_id)
-    if sandbox:
-        await quota.check_sandbox_quota(workspace_id)
     if max_steps is not None and max_steps > 0:
         await quota.check_max_steps(workspace_id, max_steps)

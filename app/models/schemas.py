@@ -139,10 +139,6 @@ class ToolUseScore(BaseModel):
     overall: float = Field(..., ge=0, le=100, description="Overall tool use score")
     feedback: str = Field(..., description="Detailed feedback")
     llm_suggestions: List[str] = Field(default_factory=list, description="LLM-generated improvement suggestions")
-    sandbox_results: Optional[List[Dict[str, Any]]] = Field(
-        default=None,
-        description="Sandbox execution results (None = sandbox disabled or no code detected)",
-    )
 
 
 class MemoryScore(BaseModel):
