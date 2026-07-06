@@ -68,8 +68,7 @@ TOOL_USE_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
 | 75   | 大部分结果被有效利用，仅 1 次未充分利用（如看到了线索但未深挖） |
 | 100  | 每次工具结果都被充分利用：读取后分析、失败后诊断、数据驱动后续决策 |
 
-## 输出要求
-请直接调用 output 函数返回评估结果。feedback 字段请用中文。
+feedback 字段请用中文。inefficient_calls 列出低效工具调用（含 tool、issue、suggestion）。
 """
 
 

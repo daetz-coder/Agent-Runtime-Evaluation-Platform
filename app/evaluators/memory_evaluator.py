@@ -66,17 +66,7 @@ Agent 的记忆在整个执行过程中是否一致？是否存在矛盾？
 | 75   | 基本一致，仅 1 处表述模糊导致轻微歧义 |
 | 100  | 完全一致：所有记忆条目前后吻合，零矛盾，信息传递准确无误 |
 
-## 输出格式
-返回 JSON 对象，feedback 字段请用中文：
-{{
-    "retention": <分数>,
-    "relevance": <分数>,
-    "consistency": <分数>,
-    "overall": <加权平均>,
-    "feedback": "<详细评估反馈（中文）>",
-    "forgotten_facts": ["被遗忘的重要事实列表"],
-    "inconsistencies": ["记忆不一致列表"]
-}}
+feedback 字段请用中文。forgotten_facts 列出被遗忘的关键事实，inconsistencies 列出记忆矛盾。
 """
 
 

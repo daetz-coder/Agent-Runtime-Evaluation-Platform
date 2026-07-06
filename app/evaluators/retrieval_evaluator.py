@@ -72,17 +72,7 @@ RETRIEVAL_EVAL_PROMPT = """你必须用中文输出所有内容（包括 feedbac
 | 75   | 大部分信息存在，仅 1-2 个次要信息点缺失 |
 | 100  | 检索文档包含回答问题所需的全部信息，零信息缺口 |
 
-## 输出格式
-返回 JSON 对象，feedback 字段请用中文：
-{{
-    "relevance": <分数>,
-    "evidence_accuracy": <分数>,
-    "coverage": <分数>,
-    "overall": <三个维度的加权平均>,
-    "feedback": "<详细评估反馈（中文）>",
-    "hallucination_detected": <true/false>,
-    "missing_info": ["信息缺口列表"]
-}}
+feedback 字段请用中文。hallucination_detected 标记是否检测到幻觉，missing_info 列出信息缺口。
 """
 
 

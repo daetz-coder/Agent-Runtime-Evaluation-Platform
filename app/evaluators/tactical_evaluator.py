@@ -66,18 +66,7 @@ TACTICAL_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
 | 75   | 行动基本正确，仅 1 处小瑕疵（如修复方向对但方法不是最优） |
 | 100  | 每步行动都符合专家判断：先分析再行动、正确解读错误信息、选择最优方案 |
 
-## 输出格式
-返回 JSON 对象，feedback 字段请用中文：
-{{
-    "relevance": <分数>,
-    "efficiency": <分数>,
-    "correctness": <分数>,
-    "overall": <加权平均>,
-    "feedback": "<详细评估反馈（中文）>",
-    "problematic_actions": [
-        {{"step": <步骤号>, "issue": "<问题描述>", "suggestion": "<改进建议>"}}
-    ]
-}}
+feedback 字段请用中文。problematic_actions 列出有问题的行动（含 step、issue、suggestion）。
 """
 
 

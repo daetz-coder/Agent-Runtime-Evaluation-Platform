@@ -75,18 +75,7 @@ PLANNING_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
 | 75   | 考虑了大部分边界情况，仅缺少 1 个次要的异常处理 |
 | 100  | 完整覆盖所有方面：happy path + 错误处理 + 边界情况 + 明确的完成标准 |
 
-## 输出格式
-返回 JSON 对象，feedback 字段请用中文：
-{{
-    "coverage": <分数>,
-    "ordering": <分数>,
-    "granularity": <分数>,
-    "completeness": <分数>,
-    "overall": <加权平均>,
-    "feedback": "<详细的评估反馈（中文）>",
-    "missing_milestones": ["缺失的关键步骤列表"],
-    "suggestions": ["改进建议列表"]
-}}
+feedback 字段请用中文。missing_milestones 列出缺失的关键步骤，suggestions 列出改进建议。
 """
 
 
