@@ -4324,3 +4324,100 @@ collector.record("tool_result", success=True, duration_ms=120)
 
 ---
 
+
+---
+
+# 补充：最近代码改动（2026-07-06 更新）
+
+> 以下内容补充源文档中未覆盖的最近改动。
+
+---
+
+## 补充 1：graph.py 关键修复
+
+### 问题 1：logger 未定义（F821）
+
+`graph.py` 中使用了 `logger.info(...)` 但未导入 logging 模块。
+
+```python
+# 修复前
+from __future__ import annotations
+import asyncio
+import os
+import re
+
+# 修复后
+from __future__ import annotations
+import asyncio
+import logging
+import os
+import re
+
+logger = logging.getLogger(__name__)
+```
+
+### 问题 2：complexity 变量未定义（F821）
+
+```python
+# 修复前（line 432）
+context=f"Query: {user_message[:100]}, complexity: {complexity.value if 'complexity' in dir() else 'unknown'}",
+# ❌ 'complexity' in dir() 检查的是模块级命名空间，不是局部变量，永远为 False
+
+# 修复后
+context=f"Query: {user_message[:100]}",
+```
+
+### 问题 3：ChatOpenAI 未使用导入（F401）
+
+```python
+# 修复前
+from langchain_openai import ChatOpenAI  # 导入了但从未使用
+
+# 修复后
+# 已移除
+```
+
+### 问题 4：total_start 未使用变量（F841）
+
+```python
+# 修复前
+async def run_chat_stream(...):
+    total_start = asyncio.get_running_loop().time()  # 赋值后从未使用
+    graph = await get_wiki_graph()
+
+# 修复后
+async def run_chat_stream(...):
+    graph = await get_wiki_graph()
+```
+
+---
+
+## 补充 2：Lint 检查结果
+
+全项目 F 系列检查通过：
+
+```
+$ ruff check app/ --select F
+All checks passed!
+```
+
+修复的文件（16 个）：
+
+| 文件 | 修复内容 |
+|------|----------|
+| `graph.py` | +logging, +logger, -ChatOpenAI, -complexity, -total_start |
+| `eval_schemas.py` | -unused Any, Dict, Optional |
+| `retrieval_evaluator.py` | -unused json, BaseModel, Field |
+| `context_retriever.py` | -duplicate asyncio, -unused classify_complexity |
+| `settings.py` | -unused Depends |
+| `runner.py` | -unused Tuple, TrajectoryStep |
+| `metrics.py` | -unused Gauge |
+| `diff_service.py` | -unused Optional |
+| `evaluation_service.py` | -unused EVALUATION_COUNT, EVALUATION_SCORE |
+| `judge_service.py` | -unused List |
+| `replay_service.py` | -unused Optional |
+| `env_monitor.py` | -unused field |
+| `wiki.py` | -unused EntryIndexItem |
+| `service.py` | -unused unicodedata |
+| `vector_store.py` | f-string without placeholders |
+| `base.py` | f-string without placeholders |

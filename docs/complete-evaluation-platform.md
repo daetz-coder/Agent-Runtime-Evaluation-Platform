@@ -4721,3 +4721,219 @@ SDK 在构造时通过 Pydantic `field_validator` 自动截断过长字段，构
 
 ---
 
+
+---
+
+# 补充：最近代码改动（2026-07-06 更新）
+
+> 以下内容补充源文档中未覆盖的最近改动。
+
+---
+
+## 补充 1：Structured Output 三级降级策略
+
+### 背景
+
+DeepSeek 全系列模型（deepseek-chat、deepseek-reasoner、deepseek-v4-flash）**不支持** `with_structured_output`（function calling），API 返回 400 错误：`'This response_format type is unavailable now'`。
+
+### 三级降级实现（`base.py`）
+
+```python
+async def _invoke_structured_llm(self, chain, inputs, schema_class, max_retries=3, prompt=None):
+    """三级降级策略。"""
+    # 策略 1：with_structured_output（API 级 function calling，GPT-4/Claude 支持）
+    result = await self._try_structured_output(chain, inputs, schema_class, max_retries)
+    if result is not None:
+        return result
+
+    # 策略 2：PydanticOutputParser（prompt 注入 JSON Schema，DeepSeek 等模型可用）
+    if prompt is not None:
+        result = await self._try_pydantic_parser(prompt, inputs, schema_class, max_retries)
+        if result is not None:
+            return result
+
+    # 策略 3：手动 JSON 解析（最后兜底）
+    return await self._try_manual_parse(chain, inputs, schema_class)
+```
+
+### 策略 1：with_structured_output
+
+```python
+async def _try_structured_output(self, chain, inputs, schema_class, max_retries):
+    for attempt in range(max_retries):
+        try:
+            result = await chain.ainvoke(inputs)
+            if isinstance(result, schema_class):
+                return result
+            if isinstance(result, dict):
+                return schema_class.model_validate(result)
+        except Exception as e:
+            # 检测 API 不支持的情况，立即降级
+            if "response_format" in str(e).lower() or "unavailable" in str(e).lower():
+                logger.warning("Model does not support structured output, falling back to PydanticOutputParser")
+                return None  # 立即降级，不浪费重试次数
+    return None
+```
+
+### 策略 2：PydanticOutputParser
+
+```python
+async def _try_pydantic_parser(self, prompt, inputs, schema_class, max_retries):
+    from langchain_core.output_parsers import PydanticOutputParser
+    parser = PydanticOutputParser(pydantic_object=schema_class)
+
+    # 注入 format_instructions 到 inputs
+    parser_inputs = dict(inputs)
+    parser_inputs["format_instructions"] = parser.get_format_instructions()
+
+    for attempt in range(max_retries):
+        chain = prompt | self.llm | parser  # prompt | llm | parser
+        result = await chain.ainvoke(parser_inputs)
+        if isinstance(result, schema_class):
+            return result
+    return None
+```
+
+### 策略 3：手动 JSON 解析（兜底）
+
+```python
+async def _try_manual_parse(self, chain, inputs, schema_class):
+    response = await self._invoke_llm_cached(chain, inputs)
+    scores = self._parse_json_from_llm(response.content)
+    if scores:
+        return schema_class.model_validate(scores)
+    # 最终兜底：返回零分
+    return schema_class(**{k: 0 for k in schema_class.model_fields if k != "feedback"},
+                        feedback="评估输出解析失败")
+```
+
+### 测试验证
+
+```
+Testing deepseek-chat...
+INFO: HTTP Request: POST .../chat/completions "HTTP/1.1 400 Bad Request"
+WARNING: Model does not support structured output, falling back to PydanticOutputParser
+INFO: HTTP Request: POST .../chat/completions "HTTP/1.1 200 OK"
+INFO: PydanticOutputParser succeeded on attempt 1
+Overall: 47.5
+OK
+```
+
+---
+
+## 补充 2：评分锚点（0/25/50/75/100）
+
+所有 6 个评估器的 prompt 已补充显式评分锚点。以 Planning - Coverage 为例：
+
+```
+### 1. 覆盖率 (Coverage, 0-100)
+计划是否覆盖了所有必要里程碑？是否遗漏了关键步骤？
+
+| 分数 | 锚点表现 |
+|------|----------|
+| 0    | 完全没有规划，或计划与目标毫无关系 |
+| 25   | 仅覆盖了目标的 1-2 个方面，遗漏了超过一半的关键步骤 |
+| 50   | 覆盖了主要步骤，但遗漏了 2-3 个关键里程碑（如缺少测试、缺少错误处理） |
+| 75   | 覆盖了绝大部分里程碑，仅遗漏 1 个次要步骤 |
+| 100  | 完整覆盖所有必要里程碑，包括分析、实现、测试、文档、边界情况 |
+```
+
+每个维度 3-4 个子指标，每个子指标都有独立的 5 档锚点表。
+
+---
+
+## 补充 3：Pydantic Schema 新增诊断字段
+
+### 新增辅助模型（`eval_schemas.py`）
+
+```python
+class ProblematicAction(BaseModel):
+    """有问题的行动记录。"""
+    step: int = Field(description="步骤号")
+    issue: str = Field(description="问题描述")
+    suggestion: str = Field(description="改进建议")
+
+class ReplanOpportunity(BaseModel):
+    """重规划时机记录。"""
+    step: int = Field(description="步骤号")
+    reason: str = Field(description="原因说明")
+```
+
+### 更新后的 Schema
+
+| Schema | 新增字段 |
+|--------|----------|
+| `PlanningEvaluationResult` | `missing_milestones: List[str]`, `suggestions: List[str]` |
+| `TacticalEvaluationResult` | `problematic_actions: List[ProblematicAction]` |
+| `MemoryEvaluationResult` | `forgotten_facts: List[str]`, `inconsistencies: List[str]` |
+| `ReplanEvaluationResult` | `missed_replan_opportunities: List[ReplanOpportunity]`, `unnecessary_replans: List[ReplanOpportunity]` |
+| `RetrievalEvaluationResult` | `hallucination_detected: bool`, `missing_info: List[str]` |
+
+---
+
+## 补充 4：Prompt 中的 format_instructions 注入
+
+所有评估器的 prompt 末尾添加了 `{format_instructions}` 变量：
+
+```python
+# 评估器 prompt 末尾
+feedback 字段请用中文。missing_milestones 列出缺失的关键步骤，suggestions 列出改进建议。
+
+{format_instructions}
+```
+
+评估器调用时传入默认空值：
+
+```python
+result = await self._invoke_structured_llm(
+    chain,
+    {
+        "goal": goal,
+        "plan": plan_text,
+        "context": context or "No additional context provided.",
+        "format_instructions": "",  # PydanticOutputParser 降级时会覆盖
+    },
+    schema_class=PlanningEvaluationResult,
+    max_retries=3,
+    prompt=prompt,  # 用于 PydanticOutputParser 降级
+)
+```
+
+- `with_structured_output` 路径：`format_instructions=""`（不需要）
+- `PydanticOutputParser` 路径：自动覆盖为 `parser.get_format_instructions()`（注入 JSON Schema）
+
+---
+
+## 补充 5：文件重组
+
+| 原位置 | 新位置 | 原因 |
+|--------|--------|------|
+| `download_reranker.py` | `scripts/download_reranker.py` | 工具脚本归入 scripts/ |
+| `example_evaluation.py` | `example/example_evaluation.py` | 示例归入 example/ |
+| `start.bat` | 已删除 | 与 Makefile 功能重复 |
+| `sandbox.Dockerfile` | 已删除 | Sandbox 功能已移除 |
+| `example/resume/` | 已从 git 移除 | 个人文件 |
+| `docs/interview/` | 已从 git 移除 | 面试准备文件 |
+
+`.gitignore` 更新：
+
+```gitignore
+# Interview prep (personal, not for public repo)
+docs/interview/
+docs/interview-prep-guide.md
+docs/interview_questions_agent_dev.md
+docs/info.md
+docs/learning-roadmap.md
+
+# Outdated files
+sandbox.Dockerfile
+start.bat
+docs/1-Multi-Task.md
+scripts/generate_interview_answers.py
+scripts/interview_answer_bank.py
+
+# Empty or local-only directories
+agent-skills/
+example/wiki-agent/
+example/resume/
+```
