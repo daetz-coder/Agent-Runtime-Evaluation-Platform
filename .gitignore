@@ -78,5 +78,15 @@ docs/learning-roadmap.md
 
 # Outdated files
 sandbox.Dockerfile
+start.bat
+docs/1-Multi-Task.md
 scripts/generate_interview_answers.py
 scripts/interview_answer_bank.py
+
+# Empty or local-only directories
+agent-skills/
+example/wiki-agent/knowledge/
+example/wiki-agent/models/
+example/wiki-agent/fix/
+example/wiki-agent/chroma/
+example/wiki-agent/chroma_db/
