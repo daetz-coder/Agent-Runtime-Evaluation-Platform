@@ -3,8 +3,8 @@ Celery application configuration and task definitions.
 
 Replaces FastAPI BackgroundTasks with a reliable, distributed task queue.
 Features:
-  - Automatic retry on transient failures (LLM timeout, Docker errors)
-  - Concurrency control (limit simultaneous sandbox sessions)
+  - Automatic retry on transient failures (LLM timeout, DB errors)
+  - Concurrency control (limit simultaneous evaluation tasks)
   - Task priority (VIP workspaces get higher priority)
   - Dead letter tracking (failed tasks logged with full context)
 
@@ -49,8 +49,8 @@ celery_app.conf.update(
     # Task execution
     task_acks_late=True,  # Ack after completion (not before)
     task_reject_on_worker_lost=True,  # Re-queue on worker crash
-    task_time_limit=settings.AGENT_TIMEOUT + 120,  # Hard kill after timeout + buffer
-    task_soft_time_limit=settings.AGENT_TIMEOUT + 60,  # Soft timeout (raises SoftTimeLimitExceeded)
+    task_time_limit=720,  # Hard kill after 12 min
+    task_soft_time_limit=660,  # Soft timeout (raises SoftTimeLimitExceeded)
     # Retry
     task_default_retry_delay=10,  # Default retry delay (seconds)
     # Concurrency control
@@ -109,7 +109,6 @@ def run_evaluation_task(
 
     Retries on:
       - LLM provider errors (transient)
-      - Docker connection issues
       - Database connection errors
 
     Does NOT retry on:
