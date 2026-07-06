@@ -619,14 +619,10 @@ class TrajectoryCollector:
             input_data: 节点输入（状态快照）
             output_data: 节点输出（执行结果）
         """
-        self.record(
-            ActionType.NODE_EXECUTE,
-            {
-                "node_name": node_name,
-                "input": _short(input_data),
-                "output": _short(output_data),
-            },
-        )
+        from sdk.schemas import NodeExecuteDetail
+
+        detail = NodeExecuteDetail(node_name=node_name, input=_short(input_data), output=_short(output_data))
+        self.record(ActionType.NODE_EXECUTE, detail.model_dump())
 
     def record_tool_call(
         self, tool_name: str, tool_input: Any = None, tool_output: Any = None, duration_ms: Optional[float] = None
@@ -634,20 +630,15 @@ class TrajectoryCollector:
         """记录工具调用。
 
         参数:
-            tool_name: 工具名称（如 "sandbox", "search_code"）
+            tool_name: 工具名称
             tool_input: 工具输入参数
             tool_output: 工具输出结果（存入 observation）
             duration_ms: 调用耗时（毫秒）
         """
-        self.record(
-            ActionType.TOOL_CALL,
-            {
-                "tool_name": tool_name,
-                "input": _short(tool_input),
-                "duration_ms": duration_ms,
-            },
-            observation=tool_output,
-        )
+        from sdk.schemas import ToolCallDetail
+
+        detail = ToolCallDetail(tool_name=tool_name, input=_short(tool_input), duration_ms=duration_ms)
+        self.record(ActionType.TOOL_CALL, detail.model_dump(), observation=tool_output)
 
     def record_tool_result(
         self,
@@ -666,16 +657,10 @@ class TrajectoryCollector:
             success: 是否成功
             error_type: 错误类型（失败时）
         """
-        self.record(
-            ActionType.TOOL_RESULT,
-            {
-                "tool_name": tool_name,
-                "success": success,
-                "error_type": error_type,
-                "duration_ms": duration_ms,
-            },
-            observation=tool_output,
-        )
+        from sdk.schemas import ToolResultDetail
+
+        detail = ToolResultDetail(tool_name=tool_name, success=success, error_type=error_type, duration_ms=duration_ms)
+        self.record(ActionType.TOOL_RESULT, detail.model_dump(), observation=tool_output)
 
     def record_think(self, thought: str) -> None:
         """记录思考/推理过程。
@@ -683,22 +668,25 @@ class TrajectoryCollector:
         参数:
             thought: 思考内容文本
         """
-        self.record(ActionType.THINK, {"thought": thought})
+        from sdk.schemas import ThinkDetail
+
+        detail = ThinkDetail(thought=thought)
+        self.record(ActionType.THINK, detail.model_dump())
 
     def record_llm_call(
         self, model: str, messages: Any = None, response: Any = None, duration_ms: Optional[float] = None
     ) -> None:
         """记录 LLM 调用（同时记录为 THINK 以保留 LLM 内容语义）。"""
-        self.record(
-            ActionType.THINK,
-            {
-                "thought": f"LLM call to {model}",
-                "model": model,
-                "messages": _short(messages, 1000),
-                "response": _short(response, 1000),
-                "duration_ms": duration_ms,
-            },
+        from sdk.schemas import ThinkDetail
+
+        detail = ThinkDetail(
+            thought=f"LLM call to {model}",
+            model=model,
+            messages=messages,
+            response=response,
+            duration_ms=duration_ms,
         )
+        self.record(ActionType.THINK, detail.model_dump())
 
     def record_state_change(
         self, state_before: Dict[str, Any], state_after: Dict[str, Any], trigger: str = "", node_name: str = ""
@@ -736,14 +724,10 @@ class TrajectoryCollector:
                         "old": str(old_val)[:100] if old_val is not None else "None",
                         "new": str(new_val)[:100] if new_val is not None else "None",
                     }
-        self.record(
-            ActionType.STATE_CHANGE,
-            {
-                "node_name": node_name,
-                "trigger": trigger,
-                "diff": diff,
-            },
-        )
+        from sdk.schemas import StateChangeDetail
+
+        detail = StateChangeDetail(node_name=node_name, trigger=trigger, diff=_short(diff))
+        self.record(ActionType.STATE_CHANGE, detail.model_dump())
 
     def record_failure(
         self,
@@ -758,23 +742,23 @@ class TrajectoryCollector:
 
         参数:
             error_type: 错误类型名（如 "ValueError", "TimeoutError"）
-            error_message: 错误消息（截断到 2000 字符）
+            error_message: 错误消息
             context: 错误上下文描述
             recoverable: 是否可恢复
             node_name: 关联的节点名称
-            stack_trace: 堆栈跟踪（截断到 1000 字符）
+            stack_trace: 堆栈跟踪
         """
-        self.record(
-            ActionType.FAILURE,
-            {
-                "error_type": error_type,
-                "error_message": error_message[:2000],
-                "context": context,
-                "recoverable": recoverable,
-                "node_name": node_name,
-                "stack_trace": (stack_trace or "")[:1000],
-            },
+        from sdk.schemas import FailureDetail
+
+        detail = FailureDetail(
+            error_type=error_type,
+            error_message=error_message,
+            context=context,
+            recoverable=recoverable,
+            node_name=node_name,
+            stack_trace=stack_trace or "",
         )
+        self.record(ActionType.FAILURE, detail.model_dump())
 
     def record_plan_update(
         self,
@@ -791,26 +775,22 @@ class TrajectoryCollector:
             reason: 更新原因
             remaining_steps: 剩余步骤列表
         """
-        self.record(
-            ActionType.PLAN_UPDATE,
-            {
-                "milestone_status": milestone_status,
-                "next_action": next_action,
-                "reason": reason,
-                "remaining_steps": remaining_steps or [],
-            },
+        from sdk.schemas import PlanUpdateDetail
+
+        detail = PlanUpdateDetail(
+            milestone_status=milestone_status,
+            next_action=next_action,
+            reason=reason,
+            remaining_steps=remaining_steps or [],
         )
+        self.record(ActionType.PLAN_UPDATE, detail.model_dump())
 
     def record_replan(self, reason: str, new_plan: str = "", trigger: str = "") -> None:
         """记录重规划事件（ReplanEvaluator 依赖此方法）。"""
-        self.record(
-            ActionType.REPLAN,
-            {
-                "reason": reason,
-                "new_plan": new_plan,
-                "trigger": trigger,
-            },
-        )
+        from sdk.schemas import ReplanDetail
+
+        detail = ReplanDetail(reason=reason, new_plan=new_plan, trigger=trigger)
+        self.record(ActionType.REPLAN, detail.model_dump())
 
     def record_memory_write(self, key: str, value: Any, source: str = "", memory_type: str = "fact") -> None:
         """记录记忆写入。
@@ -821,15 +801,10 @@ class TrajectoryCollector:
             source: 数据来源（如 "llm_extraction", "user_input"）
             memory_type: 记忆类型（如 "fact", "preference", "context"）
         """
-        self.record(
-            ActionType.MEMORY_WRITE,
-            {
-                "key": key,
-                "value": value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)[:2000],
-                "source": source,
-                "memory_type": memory_type,
-            },
-        )
+        from sdk.schemas import MemoryWriteDetail
+
+        detail = MemoryWriteDetail(key=key, value=value, source=source, memory_type=memory_type)
+        self.record(ActionType.MEMORY_WRITE, detail.model_dump())
 
     def record_memory_read(self, key: str, value: Any = None, context: str = "", hit: bool = True) -> None:
         """记录记忆读取。
@@ -840,17 +815,10 @@ class TrajectoryCollector:
             context: 读取上下文
             hit: 是否命中（缓存命中/未命中）
         """
-        self.record(
-            ActionType.MEMORY_READ,
-            {
-                "key": key,
-                "value": value
-                if isinstance(value, str)
-                else (json.dumps(value, ensure_ascii=False, default=str)[:2000] if value else None),
-                "context": context,
-                "hit": hit,
-            },
-        )
+        from sdk.schemas import MemoryReadDetail
+
+        detail = MemoryReadDetail(key=key, value=value, context=context, hit=hit)
+        self.record(ActionType.MEMORY_READ, detail.model_dump())
 
     def record_retrieval(
         self,
@@ -871,25 +839,25 @@ class TrajectoryCollector:
             top_k: 最多记录的文档数
             duration_ms: 检索耗时
         """
-        self.record(
-            ActionType.RETRIEVAL,
-            {
-                "query": query,
-                "source": source,
-                "top_k": top_k,
-                "result_count": len(retrieved_docs),
-                "duration_ms": duration_ms,
-                "retrieved_docs": [
-                    {
-                        "title": doc.get("title", ""),
-                        "path": doc.get("path", ""),
-                        "snippet": doc.get("snippet", "")[:500],
-                        "score": doc.get("score"),
-                    }
-                    for doc in retrieved_docs[:top_k]
-                ],
-            },
+        from sdk.schemas import RetrievedDoc, RetrievalDetail
+
+        docs = [
+            RetrievedDoc(
+                title=doc.get("title", ""),
+                path=doc.get("path", ""),
+                snippet=doc.get("snippet", ""),
+                score=doc.get("score"),
+            )
+            for doc in retrieved_docs[:top_k]
+        ]
+        detail = RetrievalDetail(
+            query=query,
+            source=source,
+            result_count=len(retrieved_docs),
+            duration_ms=duration_ms,
+            retrieved_docs=docs,
         )
+        self.record(ActionType.RETRIEVAL, detail.model_dump())
 
     def record_evidence(
         self,
@@ -909,27 +877,22 @@ class TrajectoryCollector:
             final_prompt_messages: 最终发送给 LLM 的消息列表
             context: 上下文描述
         """
-        truncated = None
-        if final_prompt_messages:
-            truncated = [
-                {"role": m.get("role", "unknown"), "content": str(m.get("content", ""))[:1000]}
-                for m in final_prompt_messages
-            ]
-        self.record(
-            ActionType.EVIDENCE,
-            {
-                "evidence_type": evidence_type,
-                "context": context,
-                "sources": {
-                    "retrieved_docs_count": len(sources.get("retrieved_docs") or []),
-                    "tool_results_count": len(sources.get("tool_results") or []),
-                    "memory_results_count": len(sources.get("memory_results") or []),
-                    "chat_history_count": sources.get("chat_history_count", 0),
-                },
-                "final_prompt_messages": truncated,
-                "total_message_count": len(truncated) if truncated else 0,
-            },
+        from sdk.schemas import EvidenceDetail, EvidenceSource
+
+        evidence_sources = EvidenceSource(
+            retrieved_docs_count=len(sources.get("retrieved_docs") or []),
+            tool_results_count=len(sources.get("tool_results") or []),
+            memory_results_count=len(sources.get("memory_results") or []),
+            chat_history_count=sources.get("chat_history_count", 0),
         )
+        detail = EvidenceDetail(
+            evidence_type=evidence_type,
+            context=context,
+            sources=evidence_sources,
+            final_prompt_messages=final_prompt_messages,
+            total_message_count=len(final_prompt_messages) if final_prompt_messages else 0,
+        )
+        self.record(ActionType.EVIDENCE, detail.model_dump())
 
     def get_steps(self) -> List[Dict[str, Any]]:
         """获取当前 session 的所有已缓冲步骤（线程安全快照）。"""

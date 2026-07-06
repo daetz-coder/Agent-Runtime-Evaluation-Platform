@@ -9,9 +9,26 @@ sdk.schemas — 14 种 ActionType 的 Pydantic Schema 定义
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+# ── 内部工具 ──────────────────────────────────────────────────
+
+
+def _short(value: Any, limit: int = 4000) -> Any:
+    """截断过长的值，防止轨迹数据过大。"""
+    if value is None or isinstance(value, (int, float, bool)):
+        return value
+    if isinstance(value, str):
+        return value if len(value) <= limit else value[:limit] + "…"
+    if isinstance(value, dict):
+        return {str(k): _short(v, limit) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_short(v, limit) for v in value[:50]]
+    return _short(str(value), limit)
 
 
 # ── 规划类 ──────────────────────────────────────────────
@@ -53,6 +70,11 @@ class ToolCallDetail(BaseModel):
     input: Optional[Dict[str, Any]] = Field(default=None, description="工具输入参数")
     duration_ms: Optional[float] = Field(default=None, description="调用耗时（毫秒）")
 
+    @field_validator("input", mode="before")
+    @classmethod
+    def _truncate_input(cls, v: Any) -> Any:
+        return _short(v)
+
 
 class ToolResultDetail(BaseModel):
     """TOOL_RESULT — 工具返回"""
@@ -83,6 +105,13 @@ class MemoryWriteDetail(BaseModel):
     source: str = Field(default="", description="数据来源（如 llm_extraction, user_input）")
     memory_type: str = Field(default="fact", description="记忆类型（fact, preference, context）")
 
+    @field_validator("value", mode="before")
+    @classmethod
+    def _serialize_value(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v
+        return json.dumps(v, ensure_ascii=False, default=str)[:2000]
+
 
 class MemoryReadDetail(BaseModel):
     """MEMORY_READ — 记忆读取"""
@@ -91,6 +120,15 @@ class MemoryReadDetail(BaseModel):
     value: Optional[Any] = Field(default=None, description="读取到的值")
     context: str = Field(default="", description="读取上下文")
     hit: bool = Field(default=True, description="是否命中")
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _serialize_value(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        return json.dumps(v, ensure_ascii=False, default=str)[:2000]
 
 
 # ── 状态类 ──────────────────────────────────────────────
@@ -111,14 +149,28 @@ class NodeExecuteDetail(BaseModel):
     input: Optional[Any] = Field(default=None, description="节点输入")
     output: Optional[Any] = Field(default=None, description="节点输出")
 
+    @field_validator("input", "output", mode="before")
+    @classmethod
+    def _truncate_large_fields(cls, v: Any) -> Any:
+        return _short(v)
+
 
 # ── 推理类 ──────────────────────────────────────────────
 
 
 class ThinkDetail(BaseModel):
-    """THINK — 思考/推理"""
+    """THINK — 思考/推理（也用于 LLM 调用记录）"""
 
     thought: str = Field(description="思考内容")
+    model: str = Field(default="", description="模型名称（LLM 调用时）")
+    messages: Optional[Any] = Field(default=None, description="发送的消息（LLM 调用时）")
+    response: Optional[Any] = Field(default=None, description="模型响应（LLM 调用时）")
+    duration_ms: Optional[float] = Field(default=None, description="调用耗时（毫秒）")
+
+    @field_validator("messages", "response", mode="before")
+    @classmethod
+    def _truncate_llm_fields(cls, v: Any) -> Any:
+        return _short(v, 1000)
 
 
 # ── 异常类 ──────────────────────────────────────────────
@@ -134,6 +186,16 @@ class FailureDetail(BaseModel):
     node_name: str = Field(default="", description="关联的节点")
     stack_trace: Optional[str] = Field(default=None, description="堆栈跟踪")
 
+    @field_validator("error_message", mode="before")
+    @classmethod
+    def _truncate_message(cls, v: str) -> str:
+        return str(v)[:2000]
+
+    @field_validator("stack_trace", mode="before")
+    @classmethod
+    def _truncate_stack(cls, v: Optional[str]) -> Optional[str]:
+        return v[:1000] if v else v
+
 
 # ── 检索类 ──────────────────────────────────────────────
 
@@ -145,6 +207,11 @@ class RetrievedDoc(BaseModel):
     path: str = Field(default="", description="文档路径")
     snippet: str = Field(default="", description="文档摘要")
     score: Optional[float] = Field(default=None, description="相关性分数")
+
+    @field_validator("snippet", mode="before")
+    @classmethod
+    def _truncate_snippet(cls, v: str) -> str:
+        return str(v)[:500]
 
 
 class RetrievalDetail(BaseModel):
@@ -174,6 +241,16 @@ class EvidenceDetail(BaseModel):
     sources: Optional[EvidenceSource] = Field(default=None, description="证据来源统计")
     final_prompt_messages: Optional[List[Dict[str, str]]] = Field(default=None, description="最终 prompt 消息")
     total_message_count: int = Field(default=0, description="消息总数")
+
+    @field_validator("final_prompt_messages", mode="before")
+    @classmethod
+    def _truncate_messages(cls, v: Optional[List[Dict[str, str]]]) -> Optional[List[Dict[str, str]]]:
+        if v is None:
+            return v
+        return [
+            {"role": m.get("role", "unknown"), "content": str(m.get("content", ""))[:1000]}
+            for m in v
+        ]
 
 
 # ── Schema 注册表 ──────────────────────────────────────
