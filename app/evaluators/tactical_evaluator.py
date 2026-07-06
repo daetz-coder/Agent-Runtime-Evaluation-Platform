@@ -67,6 +67,8 @@ TACTICAL_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
 | 100  | 每步行动都符合专家判断：先分析再行动、正确解读错误信息、选择最优方案 |
 
 feedback 字段请用中文。problematic_actions 列出有问题的行动（含 step、issue、suggestion）。
+
+{format_instructions}
 """
 
 
@@ -125,9 +127,11 @@ class TacticalEvaluator(BaseEvaluator):
                 "current_state": current_state,
                 "actions": actions_text,
                 "context": context or "No additional context provided.",
+                "format_instructions": "",  # PydanticOutputParser 降级时会覆盖
             },
             schema_class=TacticalEvaluationResult,
             max_retries=3,
+            prompt=prompt,
         )
 
         # Pydantic model 直接使用

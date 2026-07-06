@@ -67,6 +67,8 @@ Agent 的记忆在整个执行过程中是否一致？是否存在矛盾？
 | 100  | 完全一致：所有记忆条目前后吻合，零矛盾，信息传递准确无误 |
 
 feedback 字段请用中文。forgotten_facts 列出被遗忘的关键事实，inconsistencies 列出记忆矛盾。
+
+{format_instructions}
 """
 
 
@@ -135,9 +137,11 @@ class MemoryEvaluator(BaseEvaluator):
                 "trajectory": trajectory_text,
                 "key_facts": key_facts_text,
                 "context": context or "No additional context provided.",
+                "format_instructions": "",  # PydanticOutputParser 降级时会覆盖
             },
             schema_class=MemoryEvaluationResult,
             max_retries=3,
+            prompt=prompt,
         )
 
         # Pydantic model 直接使用

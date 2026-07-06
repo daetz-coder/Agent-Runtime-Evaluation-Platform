@@ -73,6 +73,8 @@ RETRIEVAL_EVAL_PROMPT = """你必须用中文输出所有内容（包括 feedbac
 | 100  | 检索文档包含回答问题所需的全部信息，零信息缺口 |
 
 feedback 字段请用中文。hallucination_detected 标记是否检测到幻觉，missing_info 列出信息缺口。
+
+{format_instructions}
 """
 
 
@@ -155,9 +157,11 @@ class RetrievalEvaluator(BaseEvaluator):
                     "goal": goal,
                     "retrieved_docs": docs_text,
                     "final_answer": final_answer or "No final answer found",
+                    "format_instructions": "",  # PydanticOutputParser 降级时会覆盖
                 },
                 schema_class=RetrievalEvaluationResult,
                 max_retries=3,
+                prompt=prompt,
             )
 
             # Pydantic model 直接使用

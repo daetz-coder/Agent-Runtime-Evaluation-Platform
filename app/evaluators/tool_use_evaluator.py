@@ -69,6 +69,8 @@ TOOL_USE_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
 | 100  | 每次工具结果都被充分利用：读取后分析、失败后诊断、数据驱动后续决策 |
 
 feedback 字段请用中文。inefficient_calls 列出低效工具调用（含 tool、issue、suggestion）。
+
+{format_instructions}
 """
 
 
@@ -134,9 +136,11 @@ class ToolUseEvaluator(BaseEvaluator):
                 "tool_calls": tool_calls_text,
                 "context": context or "No additional context provided.",
                 "execution_results": execution_results_text,
+                "format_instructions": "",  # PydanticOutputParser 降级时会覆盖
             },
             schema_class=ToolUseEvaluationResult,
             max_retries=3,
+            prompt=prompt,
         )
 
         # Pydantic model 直接使用

@@ -76,6 +76,8 @@ PLANNING_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 fe
 | 100  | 完整覆盖所有方面：happy path + 错误处理 + 边界情况 + 明确的完成标准 |
 
 feedback 字段请用中文。missing_milestones 列出缺失的关键步骤，suggestions 列出改进建议。
+
+{format_instructions}
 """
 
 
@@ -138,9 +140,11 @@ class PlanningEvaluator(BaseEvaluator):
                 "goal": goal,
                 "plan": plan_text,
                 "context": context or "No additional context provided.",
+                "format_instructions": "",  # PydanticOutputParser 降级时会覆盖
             },
             schema_class=PlanningEvaluationResult,
             max_retries=3,
+            prompt=prompt,
         )
 
         # Pydantic model 直接使用
