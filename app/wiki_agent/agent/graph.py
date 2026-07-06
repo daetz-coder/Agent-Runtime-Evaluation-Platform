@@ -1,6 +1,6 @@
 """Wiki Agent — LangGraph 编排（search → respond → decide → execute）
 
-纯业务逻辑。外部系统通过 hooks 接口监听生命周期事件。
+纯业务逻辑。通过 SDK TrajectoryCollector 直接采集评估轨迹。
 """
 
 from __future__ import annotations
@@ -27,8 +27,7 @@ from app.wiki_agent.agent.context_retriever import RetrievedContext, build_conte
 from app.wiki_agent.agent.llm_factory import create_chat_llm
 from app.wiki_agent.agent.tools import crud_tools
 from app.wiki_agent.config import settings
-from app.wiki_agent.hooks import emit_key_facts, emit_retrieval, emit_response, emit_session_end, emit_session_start
-from sdk.collector import get_collector
+from sdk.collector import ActionType, get_collector
 from app.wiki_agent.session import store as session_store
 
 _CHECKPOINT_DB = os.path.join(os.path.dirname(settings.DB_PATH), "checkpoints.db")
@@ -364,8 +363,7 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
 
     duration_ms = round((t1 - started) * 1000, 2)
 
-    # 通知 hooks
-    await emit_retrieval(user_message, ctx.wiki_results, duration_ms)
+    collector.record_retrieval(user_message, ctx.wiki_results, duration_ms=duration_ms)
 
     # wiki_text 向后兼容
     wiki_text = None
@@ -398,9 +396,13 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
 
     asyncio.create_task(_store_memories())
 
-    # 通知 hooks
     if ctx.session_facts or ctx.user_facts:
-        await emit_key_facts([f.get("content", "") for f in (ctx.session_facts + ctx.user_facts) if isinstance(f, dict)])
+        collector.record_memory_write(
+            "key_facts",
+            [f.get("content", "") for f in (ctx.session_facts + ctx.user_facts) if isinstance(f, dict)],
+            source="llm_extraction",
+            memory_type="fact",
+        )
 
     # 记录 MEMORY_READ（读取记忆）
     if ctx.user_facts:
@@ -501,9 +503,8 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
         if queue is not None:
             await _emit(queue, {"type": "content", "text": text})
 
-    # 通知 hooks
     if session_id:
-        await emit_response(session_id, collected)
+        collector.record(ActionType.EVIDENCE, {"final_response": collected[:4000], "session_id": session_id})
 
     # 记录 NODE_COMPLETE + STATE_CHANGE
     state_after = {"ai_response_len": len(collected), "stage": "respond"}
@@ -796,9 +797,8 @@ async def run_chat_stream(
     graph = await get_wiki_graph()
     thread_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
-
-    # 通知 hooks
-    await emit_session_start(user_message, session_id or "", {"thread_id": thread_id, "mode": "stream"})
+    collector = get_collector()
+    await collector.start_async(user_message, {"thread_id": thread_id, "mode": "stream"})
 
     config: RunnableConfig = {
         "configurable": {
@@ -820,9 +820,7 @@ async def run_chat_stream(
         "retrieved_context": None,
     }
 
-    # 保存 task_id 到 config，供 resume 时 attach
-    _collector = get_collector()
-    _task_id = _collector.task_id
+    _task_id = collector.task_id
 
     async def _run_graph():
         try:
@@ -849,12 +847,9 @@ async def run_chat_stream(
     finally:
         # 检查 graph 是否被 interrupt 暂停（task 仍在运行）
         if task.done():
-            # 正常结束或异常 → 结束 session
-            await emit_session_end(session_id or "")
+            await collector.finish_async(auto_run=True)
         else:
-            # interrupt 暂停 → flush 步骤但不结束 task
-            # resume 时会 attach 到同一个 task 并结束
-            _collector._flush(block=True)
+            await asyncio.to_thread(collector._flush, block=True)
             logger.info("[Wiki Agent] HITL interrupt, task %s paused, waiting for resume", _task_id)
         if not task.done():
             task.cancel()
@@ -873,9 +868,8 @@ async def run_chat_invoke(
     """非流式：经 LangGraph 完成 search → respond → decide（至 interrupt 或结束）"""
     graph = await get_wiki_graph()
     thread_id = str(uuid.uuid4())
-
-    # 通知 hooks
-    await emit_session_start(user_message, session_id or "", {"thread_id": thread_id, "mode": "invoke"})
+    collector = get_collector()
+    await collector.start_async(user_message, {"thread_id": thread_id, "mode": "invoke"})
 
     config: RunnableConfig = {
         "configurable": {
@@ -898,9 +892,9 @@ async def run_chat_invoke(
     try:
         result = await graph.ainvoke(initial_state, config)
     except Exception:
-        await emit_session_end(session_id or "")
+        await collector.finish_async(auto_run=True)
         raise
-    await emit_session_end(session_id or "")
+    await collector.finish_async(auto_run=True)
     return {
         "content": result.get("ai_response", ""),
         "wiki_text": result.get("wiki_text"),
@@ -927,16 +921,16 @@ async def resume_and_execute(
     if not collector.task_id:
         # 新请求没有 session，需要 attach 到已有 task
         # 通过 thread_id 关联（第一次请求把 thread_id 存在 task context 中）
-        collector.start(f"resume:{thread_id}", {"thread_id": thread_id, "mode": "resume"})
+        await collector.start_async(f"resume:{thread_id}", {"thread_id": thread_id, "mode": "resume"})
 
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
     try:
         result = await graph.ainvoke(Command(resume=confirm), config)
     except Exception:
-        await emit_session_end(session_id or "")
+        await collector.finish_async(auto_run=True)
         raise
-    await emit_session_end(session_id or "")
+    await collector.finish_async(auto_run=True)
 
     action_result = result.get("action_result")
     decision = result.get("decision", {})

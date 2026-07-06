@@ -105,7 +105,6 @@ wiki_agent/
 ├── config.py                    # 全局配置（读取 .env）
 ├── database.py                  # SQLite 初始化
 ├── bootstrap.py                 # 启动引导（目录、种子数据、索引同步）
-├── hooks.py                     # 生命周期钩子接口（评估平台接入点）
 ├── cache.py                     # Redis 缓存层（可选）
 │
 ├── agent/                       # 智能体层
@@ -230,17 +229,17 @@ GET /health
 
 ## 评估平台集成
 
-wiki-agent 通过 `hooks.py` 委托给 SDK `TrajectoryCollector` 实现评估数据采集。
+wiki-agent 直接使用 SDK `TrajectoryCollector` 采集评估轨迹，无中间层。
 
 ### 采集事件
 
-| 事件 | 触发时机 | SDK 方法 |
+| 调用位置 | 触发时机 | SDK 方法 |
 |------|----------|----------|
-| `emit_session_start` | 对话开始 | `collector.start_async()` |
-| `emit_retrieval` | 检索完成 | `collector.record_retrieval()` |
-| `emit_key_facts` | 提取关键事实 | `collector.record_memory_write()` |
-| `emit_response` | 回复生成完成 | `collector.record(EVIDENCE, ...)` |
-| `emit_session_end` | 对话结束 | `collector.finish_async()` |
+| `run_chat_stream` / `run_chat_invoke` | 对话开始 | `collector.start_async()` |
+| `search` 节点 | 检索完成 | `collector.record_retrieval()` |
+| `search` 节点 | 提取关键事实 | `collector.record_memory_write()` |
+| `respond` 节点 | 回复生成完成 | `collector.record(EVIDENCE, ...)` |
+| `run_chat_stream` / `run_chat_invoke` | 对话结束 | `collector.finish_async()` |
 
 ### 运行模式
 
