@@ -183,16 +183,3 @@ class ToolUseEvaluator(BaseEvaluator):
             lines.append("")
 
         return "\n".join(lines) if lines else "No tool results recorded"
-
-    def _parse_scores(self, content: str) -> Dict[str, Any]:
-        """Parse LLM response into scores dictionary."""
-        parsed = self._parse_json_from_llm(content)
-        if parsed is not None:
-            return parsed
-
-        return {
-            "selection_quality": 50,
-            "parameter_accuracy": 50,
-            "result_utilization": 50,
-            "feedback": content,
-        }

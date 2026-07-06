@@ -124,8 +124,7 @@ async def add_trajectory(
     Add trajectory steps to an existing task.
 
     Used by the Dashboard, SDK HTTP transport, and external Agent integrations
-    that capture their own runtime trace (as opposed to sandbox mode where the
-    platform runs the agent via POST /evaluations/run).
+    that capture their own runtime trace.
     """
     require_role(ctx, WorkspaceRole.EVALUATOR)
     service = EvaluationService(db)

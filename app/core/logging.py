@@ -3,7 +3,7 @@ Structured logging with structlog + correlation ID support.
 
 Replaces stdlib logging with structlog for JSON-formatted, contextual logs.
 Each request gets a unique correlation ID that propagates through the entire
-call chain (API → Agent → Evaluator → Sandbox).
+call chain (API → Agent → Evaluator).
 
 Usage:
     from app.core.logging import get_logger

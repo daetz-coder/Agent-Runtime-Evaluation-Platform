@@ -6,7 +6,6 @@ Exposes operational metrics at /metrics endpoint for Prometheus scraping.
 Key metrics:
   - Evaluation duration, count, success/failure rates
   - LLM call latency and token usage per provider
-  - Sandbox session pool utilization
   - Tool execution counts and error rates
   - HTTP request latency
 
@@ -27,7 +26,7 @@ from prometheus_client import Counter, Gauge, Histogram, Info
 EVALUATION_COUNT = Counter(
     "agent_eval_evaluation_total",
     "Total number of evaluations",
-    ["status", "mode"],  # status: success/failed, mode: legacy/sandbox
+    ["status"],  # status: success/failed
 )
 
 EVALUATION_DURATION = Histogram(
