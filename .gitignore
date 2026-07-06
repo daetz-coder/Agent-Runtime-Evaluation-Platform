@@ -66,3 +66,4 @@ frontend/.vite/
 # Personal files
 cv_docs/
 output/
+.agents/
