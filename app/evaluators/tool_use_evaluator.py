@@ -15,7 +15,12 @@ from app.evaluators.base import BaseEvaluator
 from app.evaluators.eval_schemas import ToolUseEvaluationResult
 from app.models.schemas import ToolUseScore, TrajectoryStep
 
-TOOL_USE_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、inefficient_calls）。你是一位 AI Agent 工具使用评估专家。
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    TOOL_USE_EVALUATION_PROMPT = get_prompt("evaluators/tool_use")
+except Exception:
+    TOOL_USE_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、inefficient_calls）。你是一位 AI Agent 工具使用评估专家。
 
 ## 用户目标
 {goal}

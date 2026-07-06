@@ -77,7 +77,12 @@ class KnowledgeDecision(BaseModel):
 
 _parser = PydanticOutputParser(pydantic_object=KnowledgeDecision)
 
-DECIDE_PROMPT = """你是一个知识库维护决策器。根据当前对话和现有知识库，判断是否需要创建、更新、删除知识条目。
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    DECIDE_PROMPT = get_prompt("wiki_agent/decide")
+except Exception:
+    DECIDE_PROMPT = """你是一个知识库维护决策器。根据当前对话和现有知识库，判断是否需要创建、更新、删除知识条目。
 
 ## 当前对话
 用户: {user_message}

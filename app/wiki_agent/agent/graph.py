@@ -35,7 +35,12 @@ logger = logging.getLogger(__name__)
 _CHECKPOINT_DB = os.path.join(os.path.dirname(settings.DB_PATH), "checkpoints.db")
 os.makedirs(os.path.dirname(_CHECKPOINT_DB), exist_ok=True)
 
-SYSTEM_PROMPT = """你是一个智能知识助手。请用中文回答。
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    SYSTEM_PROMPT = get_prompt("wiki_agent/system_prompt")
+except Exception:
+    SYSTEM_PROMPT = """你是一个智能知识助手。请用中文回答。
 
 ## 你的能力
 1. 用你的知识详细回答用户的各种问题
@@ -48,6 +53,7 @@ SYSTEM_PROMPT = """你是一个智能知识助手。请用中文回答。
 - 绝对不要说"没有找到相关内容"或"知识库中没有"之类的话 —— 要么用知识库结果回答，要么用你自己的知识回答
 - 不要只说"已搜索"或"未找到"，要真正回答用户的问题
 - 引用知识库条目时，使用 [[条目标题]] 格式创建链接，例如：详见 [[向量索引]]
+"""
 """
 
 class ExtractedFact(BaseModel):

@@ -336,7 +336,12 @@ def classify_complexity(query: str) -> QueryComplexity:
 
 # ── 6. 合并分类+改写 ──────────────────────────────────────────
 
-_CLASSIFY_AND_REWRITE_PROMPT = """你是一个查询分析专家。请完成两个任务：
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    _CLASSIFY_AND_REWRITE_PROMPT = get_prompt("wiki_agent/query_rewrite")
+except Exception:
+    _CLASSIFY_AND_REWRITE_PROMPT = """你是一个查询分析专家。请完成两个任务：
 
 ## 任务 1: 分类
 将查询分为以下类型之一：

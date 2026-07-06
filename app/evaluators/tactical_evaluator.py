@@ -15,7 +15,12 @@ from app.evaluators.base import BaseEvaluator
 from app.evaluators.eval_schemas import TacticalEvaluationResult
 from app.models.schemas import TacticalScore, TrajectoryStep
 
-TACTICAL_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、problematic_actions）。你是一位 AI Agent 战术决策评估专家。
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    TACTICAL_EVALUATION_PROMPT = get_prompt("evaluators/tactical")
+except Exception:
+    TACTICAL_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、problematic_actions）。你是一位 AI Agent 战术决策评估专家。
 
 ## 用户目标
 {goal}

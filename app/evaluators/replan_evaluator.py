@@ -15,7 +15,12 @@ from app.evaluators.base import BaseEvaluator
 from app.evaluators.eval_schemas import ReplanEvaluationResult
 from app.models.schemas import ReplanScore, TrajectoryStep
 
-REPLAN_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、missed_replan_opportunities、unnecessary_replans）。你是一位 AI Agent 重规划决策评估专家。
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    REPLAN_EVALUATION_PROMPT = get_prompt("evaluators/replan")
+except Exception:
+    REPLAN_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、missed_replan_opportunities、unnecessary_replans）。你是一位 AI Agent 重规划决策评估专家。
 
 ## 用户目标
 {goal}

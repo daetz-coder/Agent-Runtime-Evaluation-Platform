@@ -16,7 +16,12 @@ from app.wiki_agent.config import settings
 
 logger = logging.getLogger(__name__)
 
-AUTO_TAG_PROMPT = """你是一个知识库标签生成器。根据文档标题和内容，生成 3-5 个简洁的标签。
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    AUTO_TAG_PROMPT = get_prompt("wiki_agent/auto_tag")
+except Exception:
+    AUTO_TAG_PROMPT = """你是一个知识库标签生成器。根据文档标题和内容，生成 3-5 个简洁的标签。
 
 ## 文档标题
 {title}

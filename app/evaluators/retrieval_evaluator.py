@@ -22,7 +22,12 @@ from app.models.schemas import TrajectoryStep
 
 logger = logging.getLogger(__name__)
 
-RETRIEVAL_EVAL_PROMPT = """你必须用中文输出所有内容（包括 feedback、missing_info）。你是一位 RAG（检索增强生成）质量评估专家。
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    RETRIEVAL_EVAL_PROMPT = get_prompt("evaluators/retrieval")
+except Exception:
+    RETRIEVAL_EVAL_PROMPT = """你必须用中文输出所有内容（包括 feedback、missing_info）。你是一位 RAG（检索增强生成）质量评估专家。
 
 ## 问题 / 目标
 {goal}

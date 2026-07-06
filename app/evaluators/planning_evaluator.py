@@ -16,7 +16,12 @@ from app.evaluators.base import BaseEvaluator
 from app.evaluators.eval_schemas import PlanningEvaluationResult
 from app.models.schemas import PlanningScore, TrajectoryStep
 
-PLANNING_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、missing_milestones、suggestions）。你是一位 AI Agent 规划质量评估专家。
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    PLANNING_EVALUATION_PROMPT = get_prompt("evaluators/planning")
+except Exception:
+    PLANNING_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、missing_milestones、suggestions）。你是一位 AI Agent 规划质量评估专家。
 
 ## 用户目标
 {goal}

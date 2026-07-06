@@ -15,7 +15,12 @@ from app.evaluators.base import BaseEvaluator
 from app.evaluators.eval_schemas import MemoryEvaluationResult
 from app.models.schemas import MemoryScore, TrajectoryStep
 
-MEMORY_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、forgotten_facts、inconsistencies）。你是一位 AI Agent 记忆质量评估专家。
+# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
+try:
+    from prompts import get_prompt
+    MEMORY_EVALUATION_PROMPT = get_prompt("evaluators/memory")
+except Exception:
+    MEMORY_EVALUATION_PROMPT = """你必须用中文输出所有内容（包括 feedback、forgotten_facts、inconsistencies）。你是一位 AI Agent 记忆质量评估专家。
 
 ## 用户目标
 {goal}
