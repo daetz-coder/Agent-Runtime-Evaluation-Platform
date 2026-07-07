@@ -409,7 +409,9 @@ class TrajectoryCollector:
     async def start_async(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
         """异步创建评估任务（在线程池中执行 HTTP 请求，不阻塞事件循环）。"""
         import asyncio
-        return await asyncio.to_thread(self.start, goal, context)
+        task_id = await asyncio.to_thread(self.start, goal, context)
+        logger.info("[EvalDiag] start_async task_id=%s enabled=%s api_base=%s", task_id, self._enabled, self._api_base)
+        return task_id
 
     def finish(self, *, auto_run: bool = False) -> Optional[str]:
         """结束任务，flush 轨迹，可选触发评估。"""
