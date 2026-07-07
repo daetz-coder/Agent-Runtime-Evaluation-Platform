@@ -438,6 +438,10 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         context=f"Query: {user_message[:100]}",
     )
 
+    # 中间 flush — 确保搜索阶段的轨迹步骤已保存到数据库
+    # （防止 finish() 未执行导致轨迹丢失）
+    await asyncio.to_thread(collector._flush, block=True)
+
     # 记录 PLAN_UPDATE（基于检索结果的真正规划）
     has_kb_results = len(ctx.wiki_results) > 0
     has_memory = len(ctx.user_facts) > 0 or len(ctx.session_facts) > 0
@@ -518,6 +522,9 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     state_after = {"ai_response_len": len(collected), "stage": "respond"}
     collector.record_node_execute("respond_complete", output_data=state_after)
     collector.record_state_change(state_before, state_after, trigger="respond", node_name="respond")
+
+    # 中间 flush — 确保回复阶段的轨迹步骤已保存
+    await asyncio.to_thread(collector._flush, block=True)
 
     return {**state, "ai_response": collected, "stage": "respond"}
 
