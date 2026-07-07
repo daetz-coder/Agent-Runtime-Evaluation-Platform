@@ -357,6 +357,22 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     collector = get_collector()
     state_before = {k: str(v)[:100] for k, v in state.items() if v}
     collector.record_node_execute("search", input_data=state_before)
+
+    # 记录初始计划（PLAN）— 评估器需要初始计划才能评分
+    user_msg = state["user_message"]
+    collector.record(
+        "plan",
+        {
+            "steps": [
+                {"milestone": "search", "description": "检索知识库和四路记忆"},
+                {"milestone": "respond", "description": "基于检索结果生成回复"},
+                {"milestone": "decide", "description": "判断是否需要保存为知识条目"},
+                {"milestone": "execute", "description": "执行知识库 CRUD 操作（如需要）"},
+            ],
+            "goal": user_msg[:200],
+            "strategy": "LangGraph 编排：search → respond → decide → execute",
+        },
+    )
     user_message = state["user_message"]
     configurable = _get_configurable(config)
     chat_history: list[BaseMessage] = configurable.get("chat_history") or []
