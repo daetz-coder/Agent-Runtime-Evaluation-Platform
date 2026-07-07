@@ -378,11 +378,11 @@ class TrajectoryCollector:
         session.eval_triggered = False
 
         if not self._enabled:
-            logger.info("[EvalDiag] start() SKIPPED — collector disabled")
+            print(f"[EvalDiag] start() SKIPPED — collector disabled")
             return session.task_id
 
         try:
-            logger.info("[EvalDiag] start() task_id=%s api_base=%s goal=%s", session.task_id, self._api_base, goal[:80])
+            print(f"[EvalDiag] start() task_id={session.task_id} api_base={self._api_base} goal={goal[:80]}")
             r = self._http_with_retry(
                 "POST",
                 f"{self._api_base}/api/v1/tasks/",
@@ -393,7 +393,7 @@ class TrajectoryCollector:
             if r is not None:
                 session.task_id = r.json()["id"]
                 session.remote_task_created = True
-                logger.info("[EvalDiag] start() remote task created task_id=%s", session.task_id)
+                print(f"[EvalDiag] start() remote task created task_id=%s", session.task_id)
             else:
                 logger.warning(
                     "[EvalDiag] start() FAILED — platform at %s unreachable. "
@@ -413,7 +413,7 @@ class TrajectoryCollector:
         """异步创建评估任务（在线程池中执行 HTTP 请求，不阻塞事件循环）。"""
         import asyncio
         task_id = await asyncio.to_thread(self.start, goal, context)
-        logger.info("[EvalDiag] start_async task_id=%s enabled=%s api_base=%s", task_id, self._enabled, self._api_base)
+        print(f"[EvalDiag] start_async task_id=%s enabled=%s api_base=%s", task_id, self._enabled, self._api_base)
         return task_id
 
     def finish(self, *, auto_run: bool = False) -> Optional[str]:
@@ -422,10 +422,10 @@ class TrajectoryCollector:
         if not session.task_id:
             return None
         steps_before = len(session.steps)
-        logger.info("[EvalDiag] finish() start task_id=%s steps_in_buffer=%d", session.task_id, steps_before)
+        print(f"[EvalDiag] finish() start task_id=%s steps_in_buffer=%d", session.task_id, steps_before)
         self.record(ActionType.THINK, {"thought": "Run finished"})
         self._flush(block=True)
-        logger.info("[EvalDiag] finish() after flush task_id=%s steps_remaining=%d", session.task_id, len(session.steps))
+        print(f"[EvalDiag] finish() after flush task_id=%s steps_remaining=%d", session.task_id, len(session.steps))
 
         # Only mark completed if all steps were flushed successfully.
         # After _flush, remaining steps indicate a failed upload.
@@ -992,10 +992,10 @@ class TrajectoryCollector:
         a new thread cannot see the parent's session.
         """
         if not steps_to_send or not remote_created or not task_id:
-            logger.info("[EvalDiag] _flush_steps SKIPPED task_id=%s steps=%d remote=%s", task_id, len(steps_to_send), remote_created)
+            print(f"[EvalDiag] _flush_steps SKIPPED task_id=%s steps=%d remote=%s", task_id, len(steps_to_send), remote_created)
             return
 
-        logger.info("[EvalDiag] _flush_steps POST task_id=%s steps=%d", task_id, len(steps_to_send))
+        print(f"[EvalDiag] _flush_steps POST task_id=%s steps=%d", task_id, len(steps_to_send))
         r = self._http_with_retry(
             "POST",
             f"{self._api_base}/api/v1/tasks/{task_id}/trajectory",

@@ -863,12 +863,12 @@ async def run_chat_stream(
                 break
             yield event
     finally:
-        logger.info("[EvalDiag] run_chat_stream finally block entered, task_id=%s task.done=%s", _task_id, task.done())
+        print(f"[EvalDiag] run_chat_stream finally block entered, task_id=%s task.done=%s", _task_id, task.done())
         # 检查 graph 是否被 interrupt 暂停（task 仍在运行）
         if task.done():
-            logger.info("[EvalDiag] calling collector.finish_async task_id=%s", _task_id)
+            print(f"[EvalDiag] calling collector.finish_async task_id=%s", _task_id)
             await collector.finish_async(auto_run=True)
-            logger.info("[EvalDiag] collector.finish_async returned task_id=%s", _task_id)
+            print(f"[EvalDiag] collector.finish_async returned task_id=%s", _task_id)
         else:
             await asyncio.to_thread(collector._flush, block=True)
             logger.info("[Wiki Agent] HITL interrupt, task %s paused, waiting for resume", _task_id)
