@@ -350,31 +350,7 @@ async def _extract_key_facts(
 
 # ── 计划生成（Plan-and-Execute）──────────────────────────────
 
-# 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
-try:
-    from prompts import get_prompt
-    _PLAN_PROMPT = get_prompt("wiki_agent/plan")
-except Exception:
-    _PLAN_PROMPT = """你是一个智能知识助手的规划模块。根据用户的问题，生成一个执行计划。
-
-## 用户问题
-{user_message}
-
-## 可用步骤
-- search: 检索知识库（向量搜索 + BM25 + 用户记忆 + 会话记忆）
-- respond: 基于检索结果生成回复
-- decide: 判断是否需要将新知识保存到知识库
-- execute: 执行知识库操作（创建/更新/删除条目）
-
-## 规划原则
-- 分析用户意图，确定需要哪些步骤
-- 每个步骤要有明确的目标和描述
-- 策略说明要概括整体思路
-- 简单问题可以跳过某些步骤（如纯闲聊不需要 decide/execute）
-
-请返回 JSON 格式的计划：
-{{"steps": [{{"milestone": "步骤名", "description": "具体做什么"}}], "strategy": "总体策略说明"}}
-"""
+from prompts import get_prompt
 
 
 async def _generate_plan(user_message: str) -> dict:
@@ -386,18 +362,18 @@ async def _generate_plan(user_message: str) -> dict:
 
     try:
         llm = create_chat_llm(temperature=0.3, max_tokens=500)
-        prompt_text = _PLAN_PROMPT.format(user_message=user_message[:500], format_instructions="")
+        prompt_text = get_prompt("wiki_agent/plan").format(
+            user_message=user_message[:500], format_instructions=""
+        )
         response = await llm.ainvoke([HumanMessage(content=prompt_text)])
         raw = (response.content or "").strip()
 
-        # 提取 JSON
         m = _re.search(r'\{[\s\S]*\}', raw)
         if m:
             return _json.loads(m.group())
     except Exception as e:
         print(f"[Wiki Agent] 计划生成失败: {e}")
 
-    # 兜底计划
     return {
         "steps": [
             {"milestone": "search", "description": "检索知识库和四路记忆"},
