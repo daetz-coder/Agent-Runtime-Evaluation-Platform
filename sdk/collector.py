@@ -416,21 +416,26 @@ class TrajectoryCollector:
         session = self._session()
         if not session.task_id:
             return None
+        steps_before = len(session.steps)
+        logger.info("[EvalDiag] finish() start task_id=%s steps_in_buffer=%d", session.task_id, steps_before)
         self.record(ActionType.THINK, {"thought": "Run finished"})
         self._flush(block=True)
+        logger.info("[EvalDiag] finish() after flush task_id=%s steps_remaining=%d", session.task_id, len(session.steps))
 
         # Only mark completed if all steps were flushed successfully.
         # After _flush, remaining steps indicate a failed upload.
         with self._buffer_lock:
             flush_succeeded = len(session.steps) == 0
+            unflushed = len(session.steps)
 
+        eval_triggered = False
         if session.remote_task_created and flush_succeeded:
             self.update_task(status="completed")
         elif session.remote_task_created and not flush_succeeded:
             logger.warning(
                 "Task %s has %d un-flushed steps; marking as 'failed' instead of 'completed'",
                 session.task_id,
-                len(session.steps),
+                unflushed,
             )
             self.update_task(status="failed")
 
@@ -445,10 +450,26 @@ class TrajectoryCollector:
                 )
                 if r is not None:
                     session.eval_triggered = True
+                    eval_triggered = True
                 else:
                     logger.warning("Failed to trigger evaluation for task %s", session.task_id)
             except Exception as exc:
                 logger.warning("Evaluation trigger failed: %s", exc)
+
+        try:
+            from app.core.eval_diagnostics import log_collector_finish
+
+            log_collector_finish(
+                session.task_id,
+                steps_buffered=steps_before + 1,  # +1 for Run finished think step
+                flush_succeeded=flush_succeeded,
+                unflushed=unflushed,
+                auto_run=auto_run,
+                eval_triggered=eval_triggered,
+            )
+        except Exception:
+            pass
+
         return session.task_id
 
     async def finish_async(self, *, auto_run: bool = False) -> Optional[str]:
@@ -976,7 +997,13 @@ class TrajectoryCollector:
             idempotent=True,
         )
         if r is None:
-            logger.warning("Trajectory flush failed, %d steps re-buffered", len(steps_to_send))
+            logger.warning(
+                "[EvalDiag] trajectory flush HTTP failed task_id=%s steps=%d url=%s/api/v1/tasks/%s/trajectory",
+                task_id,
+                len(steps_to_send),
+                self._api_base,
+                task_id,
+            )
             if failed_steps is not None:
                 failed_steps.extend(steps_to_send)
 

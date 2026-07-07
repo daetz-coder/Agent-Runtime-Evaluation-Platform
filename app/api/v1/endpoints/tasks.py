@@ -107,6 +107,11 @@ async def add_trajectory(
     Used by the Dashboard, SDK HTTP transport, and external Agent integrations
     that capture their own runtime trace.
     """
+    import logging as _logging
+    _logging.getLogger("eval_diagnostics").info(
+        "[EvalDiag] trajectory persisted task_id=%s added=%d",
+        task_id, len(steps),
+    )
     service = EvaluationService(db)
     steps_data = [step.model_dump() for step in steps]
     success = await service.add_trajectory(task_id, steps_data)
