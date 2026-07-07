@@ -86,3 +86,4 @@ scripts/interview_answer_bank.py
 # Empty or local-only directories
 agent-skills/
 example/wiki-agent/
+docs/interview-questions.md
