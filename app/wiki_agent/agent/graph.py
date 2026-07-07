@@ -512,7 +512,7 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
             await _emit(queue, {"type": "content", "text": text})
 
     if session_id:
-        collector.record(ActionType.EVIDENCE, {"final_response": collected[:4000], "session_id": session_id})
+        collector.record(ActionType.EVIDENCE, {"evidence_type": "final_answer", "final_response": collected[:4000], "session_id": session_id})
 
     # 记录 NODE_COMPLETE + STATE_CHANGE
     state_after = {"ai_response_len": len(collected), "stage": "respond"}
