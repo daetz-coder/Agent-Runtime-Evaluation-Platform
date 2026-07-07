@@ -219,6 +219,6 @@ def get_env_monitor() -> EnvironmentMonitor:
     """获取全局环境监控器实例"""
     global _monitor
     if _monitor is None:
-        _monitor = EnvironmentMonitor(poll_interval=5.0)
+        _monitor = EnvironmentMonitor(poll_interval=30.0)
         _monitor.on_change(auto_sync_callback)
     return _monitor
