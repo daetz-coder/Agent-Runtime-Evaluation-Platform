@@ -74,6 +74,28 @@
 - 质量等级：优秀 ≥ 80 · 良好 ≥ 60 · 一般 ≥ 40 · 较差 < 40
 - 维度不适用时自动标记并从加权总分中剔除（权重重新归一化）
 
+### 评估流程演示
+
+![评估流程演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163207267.gif)
+
+### 评估详情总览
+
+展示一次 Agent 评估结果，总分约 57 分，包含规划质量、战术决策、工具使用、记忆保持、重规划、检索质量等维度评分。
+
+![评估详情总览页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707141239977.png)
+
+### 多模型共识与检索质量分析
+
+展示多模型共识评分和检索质量分析，指出当前回答存在相关性低、证据准确性不足、覆盖度不够等问题。
+
+![检索质量评估页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707141341679.png)
+
+### 另一组评估结果
+
+展示一次评估结果，总分约 60 分，战术决策较高，但检索质量为 0，工具使用和重规划不适用。
+
+![另一组评估详情页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707161942546.png)
+
 ---
 
 ## 关键特性
@@ -130,6 +152,52 @@ collector.finish(auto_run=True)
 
 ---
 
+## Wiki Agent
+
+Wiki Agent 是平台内置的 RAG 知识库问答系统，支持四级混合检索、双层记忆、HITL（Human-in-the-Loop）知识库管理。
+
+### 对话与知识保存
+
+Wiki Agent 对话页，用户询问 SWE-bench，系统回答后提示发现可保存知识，并生成"SWE-bench"知识保存卡片。
+
+![Wiki Agent 对话页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707161942546.png)
+
+系统提示 AI 发现可保存的新知识，内容为"模型上下文协议（MCP）"，并提供"查看详情、确认保存、忽略"操作。
+
+![知识保存提示页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707125501320.png)
+
+界面显示"模型上下文协议（MCP）已保存到知识库"，表示知识条目保存成功。
+
+![知识保存成功提示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707162300669.png)
+
+### HITL（Human-in-the-Loop）机制
+
+Wiki Agent 的 HITL 流程演示：当 AI 决定创建或修改知识库条目时，会暂停并等待用户确认。
+
+![HITL 流程演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163244703.gif)
+
+### 知识库浏览
+
+知识库中展示 LangChain 架构概述，包括架构设计原则、RAG Agent 数据流以及与 LangGraph、CrewAI 的关系。
+
+![LangChain 架构知识页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707162237029.png)
+
+Wiki Agent 的变更流界面，展示已创建知识"模型上下文协议（MCP）"，并显示文件路径和版本信息。
+
+![变更流页面](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707125635924.png)
+
+知识库中打开"模型上下文协议（MCP）"文档，页面展示 MCP 的定义、重要性和核心概念。
+
+![MCP 知识详情页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707125651205.png)
+
+### 向量索引管理
+
+展示 Wiki Agent 的向量库管理界面，包括集合名、URI、维度、分块总数、页面数和分块列表。
+
+![Milvus 向量管理页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707153600473.png)
+
+---
+
 ## 快速开始
 
 ```bash
@@ -147,6 +215,20 @@ cd frontend && npm run dev
 ```
 
 访问 http://localhost:3000 查看仪表盘，http://localhost:8000/docs 查看 API 文档。
+
+---
+
+## 系统管理
+
+### 系统检查器
+
+展示系统运行状态，包括 Sessions、Messages、Checkpoints、BM25 Chunks、Vectors 等统计信息，并列出对话消息记录。
+
+![系统检查器页面](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707162237029.png)
+
+### 系统概览
+
+![系统概览演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163220968.gif)
 
 ---
 
