@@ -22,6 +22,26 @@
 
 ---
 
+## 快速开始
+
+```bash
+# 1. 安装依赖
+pip install -e ".[dev]"
+cd frontend && npm install && cd ..
+
+# 2. 配置 API Key（编辑 .env，填入 DEEPSEEK_API_KEY）
+
+# 3. 启动后端
+python -m app.main
+
+# 4. 另一个终端启动前端
+cd frontend && npm run dev
+```
+
+访问 http://localhost:3000 查看仪表盘，http://localhost:8000/docs 查看 API 文档。
+
+---
+
 ## 核心指标
 
 | 指标 | 数值 |
@@ -32,6 +52,86 @@
 | 单次全评估耗时 | 15~30s（6 评估器 asyncio.gather 并行） |
 | 检索基准（Wiki Agent） | Top-1: **75%**, MRR: **0.825** |
 | 综合分单调递减验证 | **93.1 → 20.0** |
+
+---
+
+## 功能演示
+
+### 评估流程
+
+![评估流程演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163207267.gif)
+
+展示一次 Agent 评估的完整过程：从触发评估到 6 个维度并行评分完成。
+
+### 评估详情
+
+![评估详情总览页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707141239977.png)
+
+评估详情总览：总分约 57 分，包含规划质量、战术决策、工具使用、记忆保持、重规划、检索质量等维度评分。
+
+![检索质量评估页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707141341679.png)
+
+多模型共识与检索质量分析：4 个模型独立评分，指出检索相关性低、证据准确性不足等问题。
+
+![另一组评估详情页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707161942546.png)
+
+另一组评估结果：总分约 60 分，战术决策较高，但检索质量为 0，工具使用和重规划不适用。
+
+### Wiki Agent
+
+![Wiki Agent 对话页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707161942546.png)
+
+Wiki Agent 对话页：用户询问 SWE-bench，系统回答后提示发现可保存知识，并生成知识保存卡片。
+
+![HITL 流程演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163244703.gif)
+
+HITL（Human-in-the-Loop）机制：当 AI 决定创建或修改知识库条目时，会暂停并等待用户确认。
+
+![知识保存提示页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707125501320.png)
+
+知识保存提示：系统提示 AI 发现可保存的新知识"模型上下文协议（MCP）"，并提供查看详情、确认保存、忽略操作。
+
+![知识保存成功提示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707162300669.png)
+
+知识保存成功：界面显示"模型上下文协议（MCP）已保存到知识库"。
+
+![变更流页面](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707125635924.png)
+
+变更流页面：Wiki Agent 的变更流界面，展示已创建知识及文件路径和版本信息。
+
+![MCP 知识详情页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707125651205.png)
+
+MCP 知识详情页：知识库中打开"模型上下文协议（MCP）"文档，展示定义、重要性和核心概念。
+
+![LangChain 架构知识页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707162237029.png)
+
+LangChain 架构知识页：知识库中展示 LangChain 架构概述、RAG Agent 数据流以及与 LangGraph、CrewAI 的关系。
+
+![Milvus 向量管理页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707153600473.png)
+
+Milvus 向量管理页：展示向量库管理界面，包括集合名、URI、维度、分块总数、页面数和分块列表。
+
+### 系统管理
+
+![系统概览演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163220968.gif)
+
+系统检查器：展示系统运行状态，包括 Sessions、Messages、Checkpoints、BM25 Chunks、Vectors 等统计信息。
+
+---
+
+## 评估体系
+
+| 维度 | 权重 | 子指标 | 评估器 |
+|------|------|--------|--------|
+| 规划质量（Planning） | 20% | 覆盖率、顺序性、粒度、完整性 | `planning_evaluator.py` |
+| 战术决策（Tactical） | 20% | 相关性、效率、正确性 | `tactical_evaluator.py` |
+| 工具使用（Tool Use） | 15% | 选择质量、参数准确性、结果利用 | `tool_use_evaluator.py` |
+| 记忆保持（Memory） | 15% | 保持力、相关性、一致性 | `memory_evaluator.py` |
+| 重规划（Replan） | 15% | 触发适当性、适应质量、学习能力 | `replan_evaluator.py` |
+| 检索质量（Retrieval） | 15% | 相关性、证据准确性、覆盖度 + 幻觉检测 | `retrieval_evaluator.py` |
+
+- 质量等级：优秀 ≥ 80 · 良好 ≥ 60 · 一般 ≥ 40 · 较差 < 40
+- 维度不适用时自动标记并从加权总分中剔除（权重重新归一化）
 
 ---
 
@@ -57,44 +157,6 @@
 |--------|------|
 | **评估引擎** | 6 个并行 LLM-as-Judge 评估器 + 多模型共识 + 4 阶段轨迹压缩 |
 | **Wiki Agent** | RAG 知识库问答（四级混合检索 + Query 改写 + 双层记忆 + HITL CRUD） |
-
----
-
-## 评估体系
-
-| 维度 | 权重 | 子指标 | 评估器 |
-|------|------|--------|--------|
-| 规划质量（Planning） | 20% | 覆盖率、顺序性、粒度、完整性 | `planning_evaluator.py` |
-| 战术决策（Tactical） | 20% | 相关性、效率、正确性 | `tactical_evaluator.py` |
-| 工具使用（Tool Use） | 15% | 选择质量、参数准确性、结果利用 | `tool_use_evaluator.py` |
-| 记忆保持（Memory） | 15% | 保持力、相关性、一致性 | `memory_evaluator.py` |
-| 重规划（Replan） | 15% | 触发适当性、适应质量、学习能力 | `replan_evaluator.py` |
-| 检索质量（Retrieval） | 15% | 相关性、证据准确性、覆盖度 + 幻觉检测 | `retrieval_evaluator.py` |
-
-- 质量等级：优秀 ≥ 80 · 良好 ≥ 60 · 一般 ≥ 40 · 较差 < 40
-- 维度不适用时自动标记并从加权总分中剔除（权重重新归一化）
-
-### 评估流程演示
-
-![评估流程演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163207267.gif)
-
-### 评估详情总览
-
-展示一次 Agent 评估结果，总分约 57 分，包含规划质量、战术决策、工具使用、记忆保持、重规划、检索质量等维度评分。
-
-![评估详情总览页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707141239977.png)
-
-### 多模型共识与检索质量分析
-
-展示多模型共识评分和检索质量分析，指出当前回答存在相关性低、证据准确性不足、覆盖度不够等问题。
-
-![检索质量评估页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707141341679.png)
-
-### 另一组评估结果
-
-展示一次评估结果，总分约 60 分，战术决策较高，但检索质量为 0，工具使用和重规划不适用。
-
-![另一组评估详情页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707161942546.png)
 
 ---
 
@@ -149,86 +211,6 @@ collector.start("任务目标", context={...})
 collector.record_tool_call("search", input={...}, output=result)
 collector.finish(auto_run=True)
 ```
-
----
-
-## Wiki Agent
-
-Wiki Agent 是平台内置的 RAG 知识库问答系统，支持四级混合检索、双层记忆、HITL（Human-in-the-Loop）知识库管理。
-
-### 对话与知识保存
-
-Wiki Agent 对话页，用户询问 SWE-bench，系统回答后提示发现可保存知识，并生成"SWE-bench"知识保存卡片。
-
-![Wiki Agent 对话页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707161942546.png)
-
-系统提示 AI 发现可保存的新知识，内容为"模型上下文协议（MCP）"，并提供"查看详情、确认保存、忽略"操作。
-
-![知识保存提示页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707125501320.png)
-
-界面显示"模型上下文协议（MCP）已保存到知识库"，表示知识条目保存成功。
-
-![知识保存成功提示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707162300669.png)
-
-### HITL（Human-in-the-Loop）机制
-
-Wiki Agent 的 HITL 流程演示：当 AI 决定创建或修改知识库条目时，会暂停并等待用户确认。
-
-![HITL 流程演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163244703.gif)
-
-### 知识库浏览
-
-知识库中展示 LangChain 架构概述，包括架构设计原则、RAG Agent 数据流以及与 LangGraph、CrewAI 的关系。
-
-![LangChain 架构知识页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707162237029.png)
-
-Wiki Agent 的变更流界面，展示已创建知识"模型上下文协议（MCP）"，并显示文件路径和版本信息。
-
-![变更流页面](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707125635924.png)
-
-知识库中打开"模型上下文协议（MCP）"文档，页面展示 MCP 的定义、重要性和核心概念。
-
-![MCP 知识详情页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707125651205.png)
-
-### 向量索引管理
-
-展示 Wiki Agent 的向量库管理界面，包括集合名、URI、维度、分块总数、页面数和分块列表。
-
-![Milvus 向量管理页](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707153600473.png)
-
----
-
-## 快速开始
-
-```bash
-# 1. 安装依赖
-pip install -e ".[dev]"
-cd frontend && npm install && cd ..
-
-# 2. 配置 API Key（编辑 .env，填入 DEEPSEEK_API_KEY）
-
-# 3. 启动后端
-python -m app.main
-
-# 4. 另一个终端启动前端
-cd frontend && npm run dev
-```
-
-访问 http://localhost:3000 查看仪表盘，http://localhost:8000/docs 查看 API 文档。
-
----
-
-## 系统管理
-
-### 系统检查器
-
-展示系统运行状态，包括 Sessions、Messages、Checkpoints、BM25 Chunks、Vectors 等统计信息，并列出对话消息记录。
-
-![系统检查器页面](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707162237029.png)
-
-### 系统概览
-
-![系统概览演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163220968.gif)
 
 ---
 
