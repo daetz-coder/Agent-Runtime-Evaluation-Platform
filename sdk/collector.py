@@ -410,10 +410,59 @@ class TrajectoryCollector:
         return session.task_id
 
     async def start_async(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
-        """异步创建评估任务（在线程池中执行 HTTP 请求，不阻塞事件循环）。"""
+        """异步创建评估任务（在线程池中执行 HTTP 请求，不阻塞事件循环）。
+
+        start() 在线程中运行并通过 ContextVar 创建 session，
+        但 ContextVar 不会从子线程传回父协程。
+        因此在线程完成后，在协程上下文中重新创建 session 并同步状态。
+        """
         import asyncio
-        task_id = await asyncio.to_thread(self.start, goal, context)
-        print(f"[EvalDiag] start_async task_id=%s enabled=%s api_base=%s", task_id, self._enabled, self._api_base)
+
+        # start() 在线程中运行，返回 task_id 和是否创建成功
+        def _start_in_thread() -> tuple:
+            session = self._new_session()
+            session.task_id = str(uuid.uuid4())
+            session.remote_task_created = False
+            session.step_counter = 0
+            session.steps = []
+            session.seen_events.clear()
+            session.eval_triggered = False
+
+            if not self._enabled:
+                return session.task_id, False
+
+            try:
+                print(f"[EvalDiag] start() task_id={session.task_id} api_base={self._api_base} goal={goal[:80]}")
+                r = self._http_with_retry(
+                    "POST",
+                    f"{self._api_base}/api/v1/tasks/",
+                    json={"id": session.task_id, "goal": goal, "context": _short(context or {})},
+                    timeout=30.0,
+                    idempotent=True,
+                )
+                if r is not None:
+                    session.task_id = r.json()["id"]
+                    session.remote_task_created = True
+                    print(f"[EvalDiag] start() remote task created task_id={session.task_id}")
+                else:
+                    print(f"[EvalDiag] start() FAILED — platform at {self._api_base} unreachable")
+            except Exception as exc:
+                print(f"[EvalDiag] start() EXCEPTION: {exc}")
+            return session.task_id, session.remote_task_created
+
+        task_id, remote_ok = await asyncio.to_thread(_start_in_thread)
+
+        # 在协程上下文中设置 session（ContextVar 隔离，需要在协程中重新设置）
+        session = _CollectorSession()
+        session.task_id = task_id
+        session.remote_task_created = remote_ok
+        session.step_counter = 0
+        session.steps = []
+        session.seen_events.clear()
+        session.eval_triggered = False
+        _collector_session.set(session)
+
+        print(f"[EvalDiag] start_async task_id={task_id} remote={remote_ok}")
         return task_id
 
     def finish(self, *, auto_run: bool = False) -> Optional[str]:
@@ -478,9 +527,67 @@ class TrajectoryCollector:
         return session.task_id
 
     async def finish_async(self, *, auto_run: bool = False) -> Optional[str]:
-        """异步结束任务（在线程池中执行 HTTP 请求，不阻塞事件循环）。"""
+        """异步结束任务。
+
+        在协程上下文中访问 session（ContextVar），然后在线程池中执行 HTTP 请求。
+        """
         import asyncio
-        return await asyncio.to_thread(self.finish, auto_run=auto_run)
+
+        session = self._session()
+        if not session.task_id:
+            return None
+
+        steps_before = len(session.steps)
+        print(f"[EvalDiag] finish() start task_id={session.task_id} steps_in_buffer={steps_before}")
+
+        # 在协程上下文中记录 THINK 步骤
+        self.record(ActionType.THINK, {"thought": "Run finished"})
+
+        # flush 在协程上下文中获取 session.steps，然后在线程中执行 HTTP
+        await asyncio.to_thread(self._flush, block=True)
+
+        steps_remaining = len(session.steps)
+        print(f"[EvalDiag] finish() after flush task_id={session.task_id} steps_remaining={steps_remaining}")
+
+        # 后续 HTTP 调用在线程中执行
+        await asyncio.to_thread(self._finish_post_flush, auto_run=auto_run)
+
+        return session.task_id
+
+    def _finish_post_flush(self, *, auto_run: bool = False) -> None:
+        """finish() 的后半部分：标记完成 + 触发评估（在线程中运行）。"""
+        session = self._session()
+        if not session.task_id:
+            return
+
+        with self._buffer_lock:
+            flush_succeeded = len(session.steps) == 0
+            unflushed = len(session.steps)
+
+        eval_triggered = False
+        if session.remote_task_created and flush_succeeded:
+            self.update_task(status="completed")
+        elif session.remote_task_created and not flush_succeeded:
+            print(f"[EvalDiag] finish() WARNING: {unflushed} unflushed steps, marking as failed")
+            self.update_task(status="failed")
+
+        if auto_run and session.remote_task_created and not session.eval_triggered:
+            try:
+                r = self._http_with_retry(
+                    "POST",
+                    f"{self._api_base}/api/v1/evaluations/",
+                    json={"task_id": session.task_id},
+                    timeout=30.0,
+                    idempotent=True,
+                )
+                if r is not None:
+                    session.eval_triggered = True
+                    eval_triggered = True
+                    print(f"[EvalDiag] finish() evaluation triggered task_id={session.task_id}")
+                else:
+                    print(f"[EvalDiag] finish() evaluation trigger FAILED task_id={session.task_id}")
+            except Exception as exc:
+                print(f"[EvalDiag] finish() evaluation trigger EXCEPTION: {exc}")
 
     def attach(self, task_id: str) -> None:
         """Bind to an existing remote task without POST /tasks (reuse for confirm/resume)."""
