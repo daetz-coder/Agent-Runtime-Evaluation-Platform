@@ -585,6 +585,8 @@ async def evaluation_stream(
                 except Exception as e:
                     logger.error("Failed to persist stream evaluation %s: %s", evaluation_id, e)
                     yield {"event": "error", "data": json.dumps({"message": f"Persist failed: {e}"})}
+                    yield {"event": "done", "data": "{}"}
+                    return
 
             yield {
                 "event": "result",

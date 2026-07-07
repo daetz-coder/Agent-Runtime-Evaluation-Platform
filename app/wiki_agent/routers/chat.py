@@ -122,6 +122,12 @@ async def stream_response(session_id: str, user_message: str) -> AsyncGenerator[
         extraction=extraction_data,
     )
 
+    # 返回评估任务 ID（前端用于跳转评估详情页）
+    from sdk.collector import get_collector
+    eval_task_id = get_collector().task_id
+    if eval_task_id:
+        yield f"data: {json.dumps({'type': 'evaluation_task', 'task_id': eval_task_id}, ensure_ascii=False)}\n\n"
+
     yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
 
 

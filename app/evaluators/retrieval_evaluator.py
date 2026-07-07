@@ -137,8 +137,10 @@ class RetrievalEvaluator(BaseEvaluator):
 
         if not retrieval_docs:
             return RetrievalScore(
+                applicable=False,
+                not_applicable_reason="轨迹中没有检索步骤，该维度已从综合评分中剔除。",
                 overall=0,
-                feedback="No retrieval steps found in trajectory. Cannot evaluate RAG quality.",
+                feedback="不适用：轨迹中没有检索步骤。",
             )
 
         # 格式化检索文档

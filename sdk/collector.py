@@ -605,7 +605,7 @@ class TrajectoryCollector:
         session = self._session()
         session.task_id = task_id
         session.remote_task_created = True
-        session.eval_triggered = False
+        # 不重置 eval_triggered — 避免 HITL resume 时重复触发评估
 
     def update_task(
         self,

@@ -168,6 +168,8 @@ class ReplanScore(BaseModel):
 class RetrievalScore(BaseModel):
     """Retrieval quality evaluation (RAG Eval)."""
 
+    applicable: bool = Field(True, description="Whether retrieval is applicable to this trajectory")
+    not_applicable_reason: Optional[str] = Field(None, description="Reason this dimension is excluded")
     relevance: float = Field(0, ge=0, le=100)
     evidence_accuracy: float = Field(0, ge=0, le=100)
     coverage: float = Field(0, ge=0, le=100)
