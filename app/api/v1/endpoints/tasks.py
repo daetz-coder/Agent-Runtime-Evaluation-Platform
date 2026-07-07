@@ -35,7 +35,7 @@ async def get_tasks_dashboard(
     db: AsyncSession = Depends(get_db),
 ):
     """Get task dashboard counters and recent tasks."""
-    cache_key = EvaluationService._dashboard_cache_key(None)
+    cache_key = EvaluationService._dashboard_cache_key()
 
     cached = await cache_get(cache_key)
     if cached is not None:
