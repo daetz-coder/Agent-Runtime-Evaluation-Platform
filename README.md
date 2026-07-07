@@ -43,19 +43,19 @@ cd frontend && npm run dev
 
 ### 评估流程
 
-![评估流程演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163207267.gif)
+![评估流程演示](docs/assets/2-评估.gif)
 
 6 维度并行评估，实时推送进度。[更多评估截图 →](docs/screenshots/evaluation.md)
 
 ### Wiki Agent — HITL 知识管理
 
-![HITL 流程演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163244703.gif)
+![HITL 流程演示](docs/assets/1-HIL.gif)
 
 AI 决定修改知识库时暂停等待用户确认。[更多 Wiki Agent 截图 →](docs/screenshots/wiki-agent.md)
 
 ### 系统管理
 
-![系统概览演示](https://daetz-image.oss-cn-hangzhou.aliyuncs.com/img/20260707163220968.gif)
+![系统概览演示](docs/assets/3-系统.gif)
 
 系统检查器：Sessions、Messages、Checkpoints、BM25、Vectors 等运行状态。[更多系统截图 →](docs/screenshots/system.md)
 
