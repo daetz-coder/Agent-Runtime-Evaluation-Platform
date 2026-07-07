@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Literal
 
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -16,6 +18,21 @@ from app.wiki_agent.agent.llm_factory import create_chat_llm
 
 logger = logging.getLogger(__name__)
 
+
+def _strip_output_wrapper(text: str) -> str:
+    """Strip output(...) wrapper that some LLMs add around JSON.
+
+    Models fine-tuned for function calling sometimes return:
+        output({"action": "none", ...})
+    instead of raw JSON. This strips the wrapper.
+    """
+    text = text.strip()
+    # Match output({...}) or output([...])
+    m = re.match(r'^output\s*\((.*)\)\s*$', text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return text
+
 _llm: ChatOpenAI | None = None
 _structured_llm: ChatOpenAI | None = None
 
@@ -27,13 +44,17 @@ def _get_llm() -> ChatOpenAI:
     return _llm
 
 
-def _get_structured_llm() -> ChatOpenAI | None:
-    """获取支持 with_structured_output 的 LLM（如果可用）。"""
+def _get_structured_llm():
+    """获取支持 with_structured_output 的 LLM（如果可用）。
+
+    使用 include_raw=True 以便在解析失败时可以从 raw 中提取原始文本，
+    处理模型输出 output({...}) 包装的情况。
+    """
     global _structured_llm
     if _structured_llm is None:
         try:
             llm = _get_llm()
-            _structured_llm = llm.with_structured_output(KnowledgeDecision)
+            _structured_llm = llm.with_structured_output(KnowledgeDecision, include_raw=True)
         except Exception as e:
             logger.warning("with_structured_output not available: %s, falling back to PydanticOutputParser", e)
             _structured_llm = False  # 标记为不可用，避免重复尝试
@@ -92,10 +113,16 @@ AI: {ai_response}
 {existing_context}
 
 ## 判断规则
-- create：对话中包含具有长期复用价值的新知识，且现有知识库没有相关条目。必须填写 title、category 和 content。
+- create：对话中包含可复用的知识（技术方案、配置方法、操作步骤、经验总结、概念解释等），且现有知识库没有相关条目。必须填写 title、category 和 content。
 - update：对话对现有条目进行了补充、修正或结构化完善。必须填写 path 和 content。
 - delete：用户明确要求删除某个知识条目。必须填写 path。
-- none：普通问答、闲聊、重复已有内容、临时性问题、没有长期保存价值。
+- none：仅限于纯闲聊、打招呼、或完全重复已有内容的对话。注意：解释概念、总结信息、回答技术问题等都可能包含可复用知识，倾向于 create 而非 none。
+
+## 倾向 create 的信号
+- 用户询问某个技术概念或工具的用法
+- AI 给出了结构化的解释或步骤
+- 对话涉及配置、命令、代码片段
+- 信息具有跨会话的参考价值
 
 ## Wiki 链接规则（重要）
 在 content 中引用其他知识条目时，必须使用 [[页面名称]] 语法创建链接。
@@ -103,7 +130,7 @@ AI: {ai_response}
 - 链接目标应使用知识条目的标题或文件名（不含 .md 后缀）
 - 如果引用现有知识库中的条目，请使用上面"已有上下文"中列出的标题
 
-请直接调用 output 函数返回决策结果。
+请直接返回 JSON 格式的决策结果，不要添加 output() 包装。
 """
 
 
@@ -170,6 +197,27 @@ async def _decide_with_structured_output(
 
             result = await chain.ainvoke(retry_inputs)
 
+            # include_raw=True 返回 {"raw": msg, "parsed": obj|None, "parsing_error": err|None}
+            if isinstance(result, dict) and "parsed" in result:
+                parsed = result["parsed"]
+                if parsed is not None and isinstance(parsed, KnowledgeDecision):
+                    print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次成功: action={parsed.action}")
+                    return parsed
+                # parsed 为 None — 尝试从 raw 中手动解析
+                raw_msg = result.get("raw")
+                raw_text = raw_msg.content if hasattr(raw_msg, "content") else str(raw_msg)
+                stripped = _strip_output_wrapper(raw_text)
+                try:
+                    data = json.loads(stripped)
+                    decision = KnowledgeDecision.model_validate(data)
+                    print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次从 raw 手动解析成功: action={decision.action}")
+                    return decision
+                except Exception as inner_e:
+                    last_error = f"parsed=None, raw 手动解析也失败: {inner_e}"
+                    logger.warning("structured_output attempt %d/%d: %s", attempt + 1, max_retries + 1, last_error)
+                    continue
+
+            # 兼容不带 include_raw 的情况
             if isinstance(result, KnowledgeDecision):
                 print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次成功: action={result.action}")
                 return result
@@ -212,6 +260,7 @@ async def _decide_with_parser(
             raw_text = (response.content or "").strip()
             if not raw_text:
                 return KnowledgeDecision(action="none", reason="LLM 返回空内容")
+            raw_text = _strip_output_wrapper(raw_text)
             decision = _parser.parse(raw_text)
             print(f"[Knowledge Agent] parser 第 {attempt + 1} 次解析成功: action={decision.action}")
             return decision
