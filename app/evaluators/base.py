@@ -396,7 +396,10 @@ class BaseEvaluator(ABC):
     async def _try_pydantic_parser(
         self, prompt, inputs: Dict[str, Any], schema_class: type, max_retries: int
     ) -> Optional[Any]:
-        """策略 2：PydanticOutputParser（prompt 注入 JSON Schema）。"""
+        """策略 2：PydanticOutputParser（prompt 注入 JSON Schema）。
+
+        通过 _invoke_llm_cached 调用 LLM，确保 Judge 原始数据被记录。
+        """
         from langchain_core.output_parsers import PydanticOutputParser
 
         parser = PydanticOutputParser(pydantic_object=schema_class)
@@ -409,9 +412,6 @@ class BaseEvaluator(ABC):
 
         for attempt in range(max_retries):
             try:
-                # 构建 chain：prompt | llm | parser
-                chain = prompt | self.llm | parser
-
                 if attempt > 0 and last_error:
                     error_msg = (
                         f"\n\n⚠️ 上一次输出格式错误: {last_error}\n"
@@ -423,7 +423,13 @@ class BaseEvaluator(ABC):
                     elif "goal" in parser_inputs:
                         parser_inputs["goal"] = str(parser_inputs["goal"]) + error_msg
 
-                result = await chain.ainvoke(parser_inputs)
+                # 通过 _invoke_llm_cached 调用 LLM（记录 Judge 原始数据）
+                llm_chain = prompt | self.llm
+                response = await self._invoke_llm_cached(llm_chain, parser_inputs)
+                raw_text = response.content if hasattr(response, "content") else str(response)
+
+                # 用 parser 解析 LLM 输出
+                result = parser.parse(raw_text)
 
                 if isinstance(result, schema_class):
                     logger.info("PydanticOutputParser succeeded on attempt %d", attempt + 1)
