@@ -240,6 +240,8 @@ class EvidenceDetail(BaseModel):
     context: str = Field(default="", description="上下文描述")
     sources: Optional[EvidenceSource] = Field(default=None, description="证据来源统计")
     final_prompt_messages: Optional[List[Dict[str, str]]] = Field(default=None, description="最终 prompt 消息")
+    final_response: Optional[str] = Field(default=None, description="Agent 最终回复内容（final_answer 类型时）")
+    session_id: Optional[str] = Field(default=None, description="会话 ID")
     total_message_count: int = Field(default=0, description="消息总数")
 
     @field_validator("final_prompt_messages", mode="before")
