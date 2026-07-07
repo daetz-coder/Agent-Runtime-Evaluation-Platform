@@ -435,6 +435,8 @@ class TrajectoryCollector:
                 session.task_id = r.json()["id"]
                 session.remote_task_created = True
                 print(f"[EvalDiag] start_async remote task created task_id={session.task_id}")
+                # 标记任务为 RUNNING（创建时默认是 PENDING）
+                await self._async_update_task(status="running")
             else:
                 print(f"[EvalDiag] start_async FAILED — platform at {self._api_base} unreachable")
         except Exception as exc:
@@ -525,12 +527,10 @@ class TrajectoryCollector:
             flush_succeeded = len(session.steps) == 0
             unflushed = len(session.steps)
 
-        # 标记任务完成
-        if session.remote_task_created and flush_succeeded:
-            await self._async_update_task(status="completed")
-        elif session.remote_task_created and not unflushed == 0:
+        # 不在 finish_async 中标记任务完成 — 任务状态由评估流程控制
+        # 评估完成时会把任务标为 completed；未评估的任务保持 running
+        if not flush_succeeded:
             print(f"[EvalDiag] finish_async WARNING: {unflushed} unflushed steps")
-            await self._async_update_task(status="failed")
 
         # 触发评估（仅当 flush 成功且 auto_run 为 True）
         if auto_run and flush_succeeded and session.remote_task_created and not session.eval_triggered:
