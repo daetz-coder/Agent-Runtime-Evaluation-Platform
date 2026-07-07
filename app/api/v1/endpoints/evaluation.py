@@ -374,6 +374,11 @@ async def evaluation_stream(
         for t in traj_rows
     ]
 
+    from app.core.eval_diagnostics import log_stream_start, log_trajectory
+
+    log_stream_start(request.task_id, request.evaluation_id, len(steps))
+    log_trajectory(request.task_id, steps, source="SSE /evaluations/stream")
+
     evaluators = [
         ("planning", PlanningEvaluator),
         ("tactical", TacticalEvaluator),
@@ -402,15 +407,27 @@ async def evaluation_stream(
 
     async def run_eval(dim_name: str, EvalClass):
         nonlocal progress_count
+        import time
+
+        from app.core.eval_diagnostics import log_evaluator_result
+
+        t0 = time.monotonic()
         try:
             ev = EvalClass()
             r = await ev.evaluate(goal=task.goal, trajectory=steps, context=task.context)
-            score = getattr(r, "overall", 0)
-            dim_data = r.model_dump() if hasattr(r, "model_dump") else {"overall": score}
-            judge_raw = ev.get_judge_raw_history()
-            if judge_raw:
-                dim_data["_judge_raw"] = judge_raw
+            dim_data = r.model_dump() if hasattr(r, "model_dump") else {"overall": getattr(r, "overall", 0)}
+            score = dim_data.get("overall")
+            judge_calls = len(ev.get_judge_raw_history())
+            if judge_calls:
+                dim_data["_judge_raw"] = ev.get_judge_raw_history()
             dim_results[dim_name] = dim_data
+            log_evaluator_result(
+                task_id,
+                dim_name,
+                dim_data,
+                elapsed_ms=(time.monotonic() - t0) * 1000,
+                judge_calls=judge_calls,
+            )
             async with progress_lock:
                 progress_count += 1
                 current = progress_count
@@ -429,6 +446,14 @@ async def evaluation_stream(
             )
         except Exception as e:
             dim_results[dim_name] = {"overall": 0, "feedback": str(e)}
+            log_evaluator_result(
+                task_id,
+                dim_name,
+                dim_results[dim_name],
+                elapsed_ms=(time.monotonic() - t0) * 1000,
+                judge_calls=0,
+            )
+            logger.exception("[EvalDiag] evaluator EXCEPTION task_id=%s dim=%s", task_id, dim_name)
             async with progress_lock:
                 progress_count += 1
                 current = progress_count
@@ -508,6 +533,9 @@ async def evaluation_stream(
                         }
                         return
                     if eval_row.status == EvaluationStatus.COMPLETED:
+                        from app.core.eval_diagnostics import log_stream_replay
+
+                        log_stream_replay(evaluation_id, request.task_id, eval_row.overall_score)
                         async for msg in yield_completed_evaluation(eval_row):
                             yield msg
                         return

@@ -257,6 +257,17 @@ class EvaluationService:
 
         await cache_delete(f"trajectory:{task_id}")
 
+        count_result = await self.db.execute(
+            select(AgentTrajectory).where(AgentTrajectory.task_id == task_id)
+        )
+        total = len(count_result.scalars().all())
+        try:
+            from app.core.eval_diagnostics import log_trajectory_persisted
+
+            log_trajectory_persisted(task_id, len(steps), total)
+        except Exception:
+            pass
+
         return True
 
     async def create_evaluation(
@@ -334,6 +345,10 @@ class EvaluationService:
 
         # Get trajectory
         trajectory = await self._get_trajectory(task_id)
+
+        from app.core.eval_diagnostics import log_trajectory
+
+        log_trajectory(task_id, trajectory, source="run_evaluation")
 
         # Use the requested evaluation record, or the latest IN_PROGRESS one
         if evaluation_id:
