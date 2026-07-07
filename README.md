@@ -3,9 +3,9 @@
 <div align="center">
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?logo=fastapi&logoColor=white)
 ![Vue 3](https://img.shields.io/badge/Vue_3-v3.5-4FC08D?logo=vuedotjs&logoColor=white)
-![LangGraph](https://img.shields.io/badge/LangGraph-v0.3-1C3C5C?logo=langchain&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-v0.2-1C3C5C?logo=langchain&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-v5.7-3178C6?logo=typescript&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7.2-DC382D?logo=redis&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-FF6B6B?logo=sqlalchemy&logoColor=white)

@@ -72,6 +72,7 @@ collector.finish(auto_run=True)
 |------|--------|------|
 | `EVAL_ENABLED` | `true` | 总开关 |
 | `EVAL_API_BASE_URL` | `http://127.0.0.1:8000` | 评估平台地址 |
+| `EVAL_API_KEY` | `""` | API 认证密钥 |
 | `EVAL_BATCH_SIZE` | `10` | 批量上传阈值 |
 
 ## 14 种 Action Type

@@ -51,32 +51,12 @@ http://localhost:8000/api/v1
 | `GET /tasks/` | 列出任务（支持 `?skip=&limit=`） |
 | `GET /tasks/{id}` | 获取任务详情 |
 | `PUT /tasks/{id}` | 更新任务（goal/context/status） |
+| `DELETE /tasks/{id}` | 删除任务 |
 | `GET /tasks/dashboard` | 仪表板统计（总数、状态分布、最近 5 条） |
-| `POST /tasks/{id}/trajectory` | 上传轨迹步骤（**deprecated** → 使用 `POST /evaluations/run`） |
+| `POST /tasks/{id}/trajectory` | 上传轨迹步骤 |
+| `GET /tasks/{id}/trajectory` | 获取任务轨迹 |
 
 ### Evaluations
-
-#### Agent in Sandbox（推荐）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `POST /evaluations/run` | **沙箱评估** — Agent 在 Docker 容器内运行，自动捕获轨迹并评估 |
-| `POST /evaluations/run/stream` | **SSE 流式沙箱评估** — 实时推送 agent_step + eval_progress |
-
-`POST /evaluations/run` 请求体：
-```json
-{
-  "goal": "分析 sales.csv 并生成报告",
-  "model": "deepseek-chat",
-  "provider": "deepseek",
-  "workspace_files": {"sales.csv": "date,amount\n2024-01-01,100\n..."},
-  "tools": ["python_execute", "bash_execute", "file_read", "file_write", "file_list"],
-  "max_steps": 20,
-  "temperature": 0.0
-}
-```
-
-#### 传统评估流程
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -86,6 +66,8 @@ http://localhost:8000/api/v1
 | `POST /evaluations/batch` | 批量评估 `{"task_ids": [...]}` |
 | `POST /evaluations/consensus` | 多模型共识评估（DeepSeek+GLM+Qwen） |
 | `GET /evaluations/` | 列出评估（支持 `?skip=&limit=&status=`） |
+| `GET /evaluations/dashboard` | 评估仪表板统计 |
+| `GET /evaluations/settings` | 评估配置信息 |
 | `GET /evaluations/{id}` | 获取评估详情（含 6 维分数+反馈+版本信息） |
 | `DELETE /evaluations/{id}` | 删除评估记录 |
 
@@ -123,7 +105,14 @@ http://localhost:8000/api/v1
 |------|------|------|
 | `GET /system/health` | 健康检查（DB 状态） |
 | `GET /system/metrics` | Prometheus 指标端点（`/metrics`） |
-| `GET /settings` | 运行时配置（provider、tools、quota 等公开信息） |
+
+### Settings / 配置
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET /settings/prompts` | 列出所有 Prompt 版本 |
+| `GET /settings/prompts/{version}` | 获取指定版本的 Prompt 内容 |
+| `PUT /settings/prompts/{version}` | 创建或更新 Prompt 版本 |
 
 ### CLI / Makefile
 
@@ -147,17 +136,35 @@ make db-upgrade    # 数据库迁移
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET /api/wiki/tree` | 知识库目录树 |
+| `GET /api/wiki/search?q=` | 搜索知识库 |
 | `GET /api/wiki/page/{path}` | 获取页面内容 |
 | `POST /api/wiki/page/{path}` | 创建页面（自动四路同步） |
 | `PUT /api/wiki/page/{path}` | 更新页面 |
 | `DELETE /api/wiki/page/{path}` | 删除页面 |
+| `GET /api/wiki/page/{path}/history` | 单页面版本历史 |
+| `GET /api/wiki/page/{path}/diff` | 页面版本 diff |
+| `GET /api/wiki/page/{path}/backlinks` | 反向链接 |
 | `POST /api/wiki/page/{path}/rollback` | Git 回滚 |
-| `GET /api/wiki/history` | 版本历史 |
-| `GET /api/wiki/search?q=` | 搜索知识库 |
+| `GET /api/wiki/history` | 全局版本历史 |
+| `GET /api/wiki/tags` | 标签列表 |
+| `GET /api/wiki/graph` | 知识图谱 |
+| `GET /api/wiki/categories` | 分类列表 |
+| `GET /api/wiki/category/{path}/entries` | 分类下条目 |
+| `GET /api/wiki/index` | 知识库索引 |
 | `POST /api/wiki/import` | 导入 Markdown |
+| `POST /api/wiki/upload` | 上传文件 |
 | `POST /api/wiki/auto-tag` | LLM 自动生成标签 |
 | `GET /api/wiki/export` | 知识库 ZIP 导出 |
+| `GET /api/wiki/assets/{filename}` | 静态资源 |
+
+### Wiki Agent 向量管理
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
 | `GET /api/wiki/vector-stats` | 向量数据库统计 |
+| `POST /api/wiki/vector-rebuild` | 重建向量索引 |
+| `GET /api/wiki/vector-paths` | 向量库已索引路径列表 |
+| `GET /api/wiki/vector-chunks` | 向量库分块列表（支持分页和筛选） |
 
 ### Wiki Agent 对话
 
@@ -176,8 +183,12 @@ make db-upgrade    # 数据库迁移
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET /api/debug/overview` | 调试总览 |
-| `GET /api/debug/sessions` | 调试会话详情 |
+| `GET /api/debug/overview` | 调试总览（Sessions、Checkpoints、BM25、Vectors 统计） |
+| `GET /api/debug/sessions` | 调试会话列表 |
+| `GET /api/debug/sessions/{session_id}` | 调试会话详情 |
+| `GET /api/debug/checkpoints` | Checkpoint 列表 |
+| `GET /api/debug/checkpoints/{thread_id}` | 指定线程的 Checkpoint 详情 |
+| `GET /api/debug/bm25` | BM25 索引状态 |
 
 ---
 
