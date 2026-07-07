@@ -87,3 +87,7 @@ scripts/interview_answer_bank.py
 agent-skills/
 example/wiki-agent/
 docs/interview-questions.md
+
+# Local config
+AGENTS.md
+reasonix.toml
