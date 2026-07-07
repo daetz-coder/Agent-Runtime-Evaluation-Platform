@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.wiki_agent.agent.context_retriever import build_context_block, retrieve_context
 from app.wiki_agent.agent.llm_factory import create_chat_llm
@@ -19,84 +19,66 @@ from app.wiki_agent.agent.llm_factory import create_chat_llm
 logger = logging.getLogger(__name__)
 
 
-def _strip_output_wrapper(text: str) -> str:
-    """Strip output(...) wrapper and markdown code blocks from LLM JSON.
-
-    Handles common LLM output formats:
-    - output({"action": ...})
-    - ```json\n{...}\n```
-    - ```\n{...}\n```
-    - Raw JSON
-    """
-    text = text.strip()
-    # Strip output({...}) wrapper
-    m = re.match(r'^output\s*\((.*)\)\s*$', text, re.DOTALL)
-    if m:
-        text = m.group(1).strip()
-    # Strip markdown code blocks
-    m = re.match(r'^```(?:json)?\s*\n?(.*?)\n?```\s*$', text, re.DOTALL)
-    if m:
-        text = m.group(1).strip()
-    return text
-
-
-def _normalize_llm_json(data: dict) -> dict:
-    """Normalize common LLM field name variations to match KnowledgeDecision schema.
-
-    Some models return 'decision' instead of 'action', or return content as a dict.
-    """
-    # decision → action
-    if "decision" in data and "action" not in data:
-        data["action"] = data.pop("decision")
-    # content as dict → JSON string
-    if "content" in data and isinstance(data["content"], dict):
-        lines = []
-        for k, v in data["content"].items():
-            lines.append(f"### {k}\n{v}" if isinstance(v, str) else f"### {k}\n{json.dumps(v, ensure_ascii=False)}")
-        data["content"] = "\n\n".join(lines)
-    # Ensure reason exists
-    if "reason" not in data:
-        data["reason"] = ""
-    return data
-
-_llm: ChatOpenAI | None = None
-_structured_llm: ChatOpenAI | None = None
-
-
-def _get_llm() -> ChatOpenAI:
-    global _llm
-    if _llm is None:
-        _llm = create_chat_llm(temperature=0.3)
-    return _llm
-
-
-def _get_structured_llm():
-    """获取支持 with_structured_output 的 LLM（如果可用）。
-
-    使用 include_raw=True 以便在解析失败时可以从 raw 中提取原始文本，
-    处理模型输出 output({...}) 包装的情况。
-    """
-    global _structured_llm
-    if _structured_llm is None:
-        try:
-            llm = _get_llm()
-            _structured_llm = llm.with_structured_output(KnowledgeDecision, include_raw=True)
-        except Exception as e:
-            logger.warning("with_structured_output not available: %s, falling back to PydanticOutputParser", e)
-            _structured_llm = False  # 标记为不可用，避免重复尝试
-    return _structured_llm if _structured_llm is not False else None
+# ── Pydantic Model ──────────────────────────────────────────────────────────
 
 
 class KnowledgeDecision(BaseModel):
-    """知识操作决策"""
+    """知识操作决策。
+
+    通过 Pydantic validator 自动处理 LLM 常见的输出变体：
+    - 'decision' → 'action'（字段名别名）
+    - dict 类型的 content → 自动序列化为 Markdown 字符串
+    - 缺失的 reason → 默认空字符串
+    """
 
     action: Literal["create", "update", "delete", "none"] = Field(description="操作类型")
-    reason: str = Field(description="判断原因")
+    reason: str = Field(default="", description="判断原因")
     path: str = Field(default="", description="知识条目路径，update/delete 时必填")
     title: str = Field(default="", description="条目标题，create 时必填")
     category: str = Field(default="", description="分类路径如 programming/python，create 时填写")
     content: str = Field(default="", description="Markdown 内容，create/update 时必填")
     tags: list[str] | None = Field(default=None, description="标签列表")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_fields(cls, data: Any) -> Any:
+        """在字段验证前统一字段名和类型。"""
+        if not isinstance(data, dict):
+            return data
+        # decision → action（字段名别名）
+        if "decision" in data and "action" not in data:
+            data["action"] = data.pop("decision")
+        # content: dict → Markdown 字符串
+        if "content" in data and isinstance(data["content"], dict):
+            lines = []
+            for k, v in data["content"].items():
+                if isinstance(v, str):
+                    lines.append(f"### {k}\n{v}")
+                else:
+                    lines.append(f"### {k}\n{json.dumps(v, ensure_ascii=False, indent=2)}")
+            data["content"] = "\n\n".join(lines)
+        # content: list → JSON 字符串
+        if "content" in data and isinstance(data["content"], list):
+            data["content"] = json.dumps(data["content"], ensure_ascii=False, indent=2)
+        return data
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def coerce_content_to_str(cls, v: Any) -> str:
+        """确保 content 一定是字符串。"""
+        if isinstance(v, dict):
+            lines = []
+            for k, val in v.items():
+                if isinstance(val, str):
+                    lines.append(f"### {k}\n{val}")
+                else:
+                    lines.append(f"### {k}\n{json.dumps(val, ensure_ascii=False, indent=2)}")
+            return "\n\n".join(lines)
+        if isinstance(v, list):
+            return json.dumps(v, ensure_ascii=False, indent=2)
+        if v is None:
+            return ""
+        return str(v)
 
     @model_validator(mode="after")
     def validate_action_fields(self) -> "KnowledgeDecision":
@@ -122,14 +104,20 @@ class KnowledgeDecision(BaseModel):
         return self.model_dump()
 
 
+# ── Parser（使用 get_format_instructions 注入 schema）────────────────────────
+
 _parser = PydanticOutputParser(pydantic_object=KnowledgeDecision)
+_FORMAT_INSTRUCTIONS = _parser.get_format_instructions()
+
+
+# ── Prompt ───────────────────────────────────────────────────────────────────
 
 # 尝试从 YAML 加载 Prompt，失败则使用硬编码 fallback
 try:
     from prompts import get_prompt
-    DECIDE_PROMPT = get_prompt("wiki_agent/decide")
+    _RAW_PROMPT = get_prompt("wiki_agent/decide")
 except Exception:
-    DECIDE_PROMPT = """你是一个知识库维护决策器。根据当前对话和现有知识库，判断是否需要创建、更新、删除知识条目。
+    _RAW_PROMPT = """你是一个知识库维护决策器。根据当前对话和现有知识库，判断是否需要创建、更新、删除知识条目。
 
 ## 当前对话
 用户: {user_message}
@@ -155,9 +143,66 @@ AI: {ai_response}
 - 例如：相关内容参见 [[向量索引]]、[[多智能体编码工具搭建指南]]
 - 链接目标应使用知识条目的标题或文件名（不含 .md 后缀）
 - 如果引用现有知识库中的条目，请使用上面"已有上下文"中列出的标题
-
-请直接返回 JSON 格式的决策结果，不要添加 output() 包装。
 """
+
+# 将 PydanticOutputParser 的 format instructions 拼接到 prompt 末尾
+DECIDE_PROMPT = _RAW_PROMPT.rstrip() + "\n\n{format_instructions}\n"
+
+
+# ── LLM 实例 ────────────────────────────────────────────────────────────────
+
+_llm: ChatOpenAI | None = None
+_structured_llm: ChatOpenAI | None = None
+
+
+def _get_llm() -> ChatOpenAI:
+    global _llm
+    if _llm is None:
+        _llm = create_chat_llm(temperature=0.3)
+    return _llm
+
+
+def _get_structured_llm():
+    """获取支持 with_structured_output 的 LLM（如果可用）。"""
+    global _structured_llm
+    if _structured_llm is None:
+        try:
+            llm = _get_llm()
+            _structured_llm = llm.with_structured_output(KnowledgeDecision, include_raw=True)
+        except Exception as e:
+            logger.warning("with_structured_output not available: %s, falling back to PydanticOutputParser", e)
+            _structured_llm = False
+    return _structured_llm if _structured_llm is not False else None
+
+
+# ── 文本预处理 ──────────────────────────────────────────────────────────────
+
+
+def _extract_json(text: str) -> dict:
+    """从 LLM 输出中提取 JSON 对象。
+
+    处理常见包装格式：
+    - output({...})
+    - ```json\n{...}\n```
+    - 前后带有解释文本的 JSON
+    """
+    text = text.strip()
+    # Strip output({...})
+    m = re.match(r'^output\s*\((.*)\)\s*$', text, re.DOTALL)
+    if m:
+        text = m.group(1).strip()
+    # Strip markdown code blocks
+    m = re.match(r'^```(?:json)?\s*\n?(.*?)\n?```\s*$', text, re.DOTALL)
+    if m:
+        text = m.group(1).strip()
+    # Find JSON object
+    m = re.search(r'\{[\s\S]*\}', text)
+    if m:
+        return json.loads(m.group())
+    raise ValueError(f"No JSON object found in: {text[:200]}")
+
+
+# ── 决策入口 ────────────────────────────────────────────────────────────────
 
 
 async def decide_action(
@@ -173,7 +218,6 @@ async def decide_action(
     优先使用 with_structured_output（API 层 schema 约束），
     不可用时回退到 PydanticOutputParser（文本解析 + 重试）。
     """
-    # 如果没有传入已有的上下文，则重新检索（兼容旧调用）
     if existing_context is None:
         ctx = await retrieve_context(
             user_message, chat_history or [], session_id
@@ -193,6 +237,9 @@ async def decide_action(
     )
 
 
+# ── 路径 1：with_structured_output ──────────────────────────────────────────
+
+
 async def _decide_with_structured_output(
     user_message: str,
     ai_response: str,
@@ -208,6 +255,7 @@ async def _decide_with_structured_output(
         "user_message": user_message,
         "ai_response": ai_response,
         "existing_context": existing_context,
+        "format_instructions": _FORMAT_INSTRUCTIONS,
     }
 
     last_error = None
@@ -215,7 +263,6 @@ async def _decide_with_structured_output(
         try:
             retry_inputs = dict(inputs)
             if attempt > 0 and last_error:
-                # 把错误反馈给 LLM
                 retry_inputs["existing_context"] = (
                     f"{existing_context}\n\n⚠️ 上一次输出校验失败: {last_error}\n"
                     f"请确保 action='{_guess_action(user_message)}' 时必填字段不为空。"
@@ -229,13 +276,11 @@ async def _decide_with_structured_output(
                 if parsed is not None and isinstance(parsed, KnowledgeDecision):
                     print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次成功: action={parsed.action}")
                     return parsed
-                # parsed 为 None — 尝试从 raw 中手动解析
+                # parsed 为 None — 尝试从 raw 中手动提取 JSON 并通过 Pydantic 验证
                 raw_msg = result.get("raw")
                 raw_text = raw_msg.content if hasattr(raw_msg, "content") else str(raw_msg)
-                stripped = _strip_output_wrapper(raw_text)
                 try:
-                    data = json.loads(stripped)
-                    data = _normalize_llm_json(data)
+                    data = _extract_json(raw_text)
                     decision = KnowledgeDecision.model_validate(data)
                     print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次从 raw 手动解析成功: action={decision.action}")
                     return decision
@@ -265,58 +310,61 @@ async def _decide_with_structured_output(
     return await _decide_with_parser(user_message, ai_response, existing_context, max_retries)
 
 
+# ── 路径 2：PydanticOutputParser ────────────────────────────────────────────
+
+
 async def _decide_with_parser(
     user_message: str,
     ai_response: str,
     existing_context: str,
     max_retries: int,
 ) -> KnowledgeDecision:
-    """使用 PydanticOutputParser 决策（文本解析 + 重试）。"""
-    base_prompt = DECIDE_PROMPT.format(
-        user_message=user_message,
-        ai_response=ai_response,
-        existing_context=existing_context,
-    )
+    """使用 PydanticOutputParser 决策（文本解析 + 重试）。
 
-    llm = _get_llm()
-    messages = [HumanMessage(content=base_prompt)]
+    Prompt 中已包含 format_instructions，LLM 会看到完整的 JSON schema。
+    Pydantic model_validator/field_validator 自动处理字段名和类型变体。
+    """
+    prompt = ChatPromptTemplate.from_template(DECIDE_PROMPT)
+    chain = prompt | _get_llm()
+
+    inputs = {
+        "user_message": user_message,
+        "ai_response": ai_response,
+        "existing_context": existing_context,
+        "format_instructions": _FORMAT_INSTRUCTIONS,
+    }
 
     for attempt in range(max_retries + 1):
         try:
-            response = await llm.ainvoke(messages)
+            if attempt > 0:
+                retry_inputs = dict(inputs)
+                retry_inputs["existing_context"] = (
+                    f"{existing_context}\n\n⚠️ 上一次输出校验失败，请严格按照下方 schema 输出。"
+                )
+            else:
+                retry_inputs = inputs
+
+            response = await chain.ainvoke(retry_inputs)
             raw_text = (response.content or "").strip()
             if not raw_text:
                 return KnowledgeDecision(action="none", reason="LLM 返回空内容")
-            raw_text = _strip_output_wrapper(raw_text)
-            # Extract JSON, normalize field names, then validate
-            try:
-                # Try to find JSON in the text (handles markdown code blocks etc.)
-                json_match = re.search(r'\{[\s\S]*\}', raw_text)
-                if json_match:
-                    data = json.loads(json_match.group())
-                    data = _normalize_llm_json(data)
-                    decision = KnowledgeDecision.model_validate(data)
-                else:
-                    decision = _parser.parse(raw_text)
-            except (json.JSONDecodeError, Exception):
-                # Fallback to standard parser
-                decision = _parser.parse(raw_text)
+
+            # 提取 JSON → Pydantic 验证（validator 自动处理字段名/类型变体）
+            data = _extract_json(raw_text)
+            decision = KnowledgeDecision.model_validate(data)
             print(f"[Knowledge Agent] parser 第 {attempt + 1} 次解析成功: action={decision.action}")
             return decision
+
         except Exception as e:
             print(f"[Knowledge Agent] parser 第 {attempt + 1} 次解析失败: {e}")
-            if attempt < max_retries:
-                messages.append(HumanMessage(content=(
-                    f"你的回复校验失败，错误如下：\n\n{e}\n\n"
-                    "请严格按照以下 JSON schema 重新输出，确保必填字段不为空：\n"
-                    '{"action": "create|update|delete|none", "reason": "原因", '
-                    '"path": "", "title": "", "category": "", "content": "字符串", "tags": []}\n'
-                    "注意：content 必须是字符串类型，不能是对象。"
-                )))
-                continue
+            if attempt >= max_retries:
+                break
 
     print(f"[Knowledge Agent] 重试 {max_retries} 次后仍失败，返回 none")
     return KnowledgeDecision(action="none", reason=f"重试 {max_retries} 次后仍失败")
+
+
+# ── 辅助 ────────────────────────────────────────────────────────────────────
 
 
 def _guess_action(user_message: str) -> str:

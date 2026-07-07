@@ -12,6 +12,8 @@ variables:
     description: AI 回复
   - name: existing_context
     description: 已有上下文（四层记忆）
+  - name: format_instructions
+    description: PydanticOutputParser 自动生成的 JSON schema 格式说明
 
 template: |
   你是一个知识库维护决策器。根据当前对话和现有知识库，判断是否需要创建、更新、删除知识条目。
@@ -41,4 +43,4 @@ template: |
   - 链接目标应使用知识条目的标题或文件名（不含 .md 后缀）
   - 如果引用现有知识库中的条目，请使用上面"已有上下文"中列出的标题
 
-  请直接返回 JSON 格式的决策结果，不要添加 output() 包装。
+  {format_instructions}
