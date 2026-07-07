@@ -15,10 +15,7 @@
 
 </div>
 
-**AI Agent 运行时全维度质量评估平台。** 对 Agent 的规划、战术决策、工具使用、记忆保持、重规划、RAG 检索质量六个维度进行量化评估。基于 LangGraph 编排、LLM-as-Judge 评分、FastAPI + Vue 3 全栈交付。
-
-> **❌ 不是 Prompt Evaluation**（评估最终输出文本质量）
-> **✅ 是 Agent Runtime Evaluation**（评估 Agent 运行时每一步的决策质量）
+**AI Agent 运行时全维度质量评估平台。** 不仅评估最终回答质量，更评估 Agent 在执行过程中的决策质量。从规划、战术决策、工具使用、记忆保持、重规划到 RAG 检索，对 Agent 的运行轨迹进行多维量化分析。基于 LangGraph 编排、LLM-as-Judge 评分、FastAPI + Vue 3 全栈交付。
 
 ---
 
