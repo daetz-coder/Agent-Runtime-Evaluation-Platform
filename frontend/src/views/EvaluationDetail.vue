@@ -410,65 +410,47 @@
         <el-empty v-else description='点击上方「加载共识评估」获取多模型对比（将消耗额外 API 配额）' />
       </el-card>
 
-      <!-- 全维度汇总 -->
-      <el-card class="summary-card" shadow="hover" v-if="evaluation.status === 'completed'">
+      <!-- Retrieval Quality / Hallucination Inspector -->
+      <el-card class="retrieval-card" shadow="hover" v-if="retrievalFeedback">
         <template #header>
           <div class="card-header">
-            <span>全维度评估汇总</span>
-            <el-tag :type="evaluation.overall_score >= 60 ? 'success' : evaluation.overall_score >= 40 ? 'warning' : 'danger'" size="small">
-              综合 {{ evaluation.overall_score?.toFixed(1) || 0 }} 分
+            <span>检索质量分析</span>
+            <el-tag v-if="retrievalFeedback.hallucination_detected" type="danger" size="small" effect="dark">
+              幻觉告警
             </el-tag>
-          </div>
-        </template>
-        <div class="summary-grid">
-          <div v-for="dim in dimensions" :key="dim.key" class="summary-item">
-            <div class="summary-item-header">
-              <span class="summary-icon" :style="{ background: dim.bgColor }">{{ dim.icon }}</span>
-              <span class="summary-label">{{ dim.name }}</span>
-              <span class="summary-score" :style="{ color: dim.color }">{{ getDimensionScore(dim.key)?.toFixed(1) || 'N/A' }}</span>
-            </div>
-            <el-progress
-              :percentage="getDimensionScore(dim.key) || 0"
-              :stroke-width="6"
-              :color="dim.color"
-              :show-text="false"
-              style="margin-top:6px"
-            />
-            <p v-if="getDimensionFeedback(dim.key)" class="summary-feedback">{{ getDimensionFeedback(dim.key).slice(0, 120) }}{{ getDimensionFeedback(dim.key).length > 120 ? '...' : '' }}</p>
-          </div>
-        </div>
-        <!-- 检索质量特殊指标 -->
-        <div v-if="retrievalFeedback" style="margin-top:16px; padding-top:16px; border-top:1px solid #eee">
-          <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
-            <strong>检索质量详情</strong>
-            <el-tag v-if="retrievalFeedback.hallucination_detected" type="danger" size="small" effect="dark">幻觉告警</el-tag>
             <el-tag v-else type="success" size="small">无幻觉</el-tag>
           </div>
-          <el-row :gutter="16">
-            <el-col :span="8">
+        </template>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <div class="retrieval-scores">
               <div class="retrieval-score-item">
-                <span class="label">相关性</span>
-                <el-progress :percentage="retrievalFeedback.relevance || 0" :stroke-width="8" color="#409eff" />
+                <span class="label">相关性 (Relevance)</span>
+                <el-progress :percentage="retrievalFeedback.relevance || 0" :stroke-width="10" color="#409eff" />
               </div>
-            </el-col>
-            <el-col :span="8">
               <div class="retrieval-score-item">
-                <span class="label">证据准确性</span>
-                <el-progress :percentage="retrievalFeedback.evidence_accuracy || 0" :stroke-width="8" color="#67c23a" />
+                <span class="label">证据准确性 (Evidence Accuracy)</span>
+                <el-progress :percentage="retrievalFeedback.evidence_accuracy || 0" :stroke-width="10" color="#67c23a" />
               </div>
-            </el-col>
-            <el-col :span="8">
               <div class="retrieval-score-item">
-                <span class="label">覆盖度</span>
-                <el-progress :percentage="retrievalFeedback.coverage || 0" :stroke-width="8" color="#e6a23c" />
+                <span class="label">覆盖度 (Coverage)</span>
+                <el-progress :percentage="retrievalFeedback.coverage || 0" :stroke-width="10" color="#e6a23c" />
               </div>
-            </el-col>
-          </el-row>
-          <div v-if="retrievalFeedback.missing_info?.length" style="margin-top:12px">
-            <span style="font-size:13px;color:#666">缺失信息：</span>
-            <el-tag v-for="info in retrievalFeedback.missing_info" :key="info" type="warning" size="small" style="margin:2px">{{ info }}</el-tag>
-          </div>
-        </div>
+            </div>
+          </el-col>
+          <el-col :span="12">
+            <div v-if="retrievalFeedback.missing_info?.length" class="missing-info">
+              <h4>缺失信息</h4>
+              <el-tag v-for="info in retrievalFeedback.missing_info" :key="info" type="warning" style="margin:2px">
+                {{ info }}
+              </el-tag>
+            </div>
+            <div v-if="retrievalFeedback.feedback" class="feedback-section" style="margin-top:12px">
+              <h4>评估反馈</h4>
+              <p>{{ retrievalFeedback.feedback }}</p>
+            </div>
+          </el-col>
+        </el-row>
       </el-card>
     </template>
 
@@ -1462,60 +1444,6 @@ watch(selectedJudgeDim, () => {
         font-weight: 600;
         font-size: 14px;
       }
-    }
-  }
-}
-
-.summary-card {
-  margin-top: 20px;
-  .summary-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-  }
-  .summary-item {
-    padding: 12px;
-    background: #fafafa;
-    border-radius: 8px;
-    .summary-item-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .summary-icon {
-      width: 24px;
-      height: 24px;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      flex-shrink: 0;
-    }
-    .summary-label {
-      flex: 1;
-      font-size: 13px;
-      font-weight: 500;
-      color: #303133;
-    }
-    .summary-score {
-      font-size: 18px;
-      font-weight: 700;
-    }
-    .summary-feedback {
-      margin: 8px 0 0;
-      font-size: 12px;
-      color: #909399;
-      line-height: 1.5;
-    }
-  }
-  .retrieval-score-item {
-    margin-bottom: 8px;
-    .label {
-      display: block;
-      font-size: 12px;
-      color: #606266;
-      margin-bottom: 4px;
     }
   }
 }
