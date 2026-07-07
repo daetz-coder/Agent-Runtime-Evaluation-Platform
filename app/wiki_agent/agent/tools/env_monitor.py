@@ -73,9 +73,9 @@ class EnvironmentMonitor:
             return
 
         self._running = True
-        # 初始快照
-        self._snapshots = self._scan_all()
-        logger.info(f"[EnvMonitor] 启动监控: {self._knowledge_dir} ({len(self._snapshots)} 文件)")
+        # 初始快照（强制计算所有 hash）
+        self._snapshots = self._scan_all(force_hash=True)
+        logger.info(f"[EnvMonitor] 启动监控: {self._knowledge_dir} ({len(self._snapshots)} 文件, 间隔 {self._poll_interval}s)")
 
         # 启动轮询
         self._task = asyncio.create_task(self._poll_loop())
@@ -95,8 +95,12 @@ class EnvironmentMonitor:
         """立即检查一次变化（手动触发）"""
         return await self._detect_changes()
 
-    def _scan_all(self) -> dict[str, FileSnapshot]:
-        """扫描所有文件，生成快照"""
+    def _scan_all(self, force_hash: bool = False) -> dict[str, FileSnapshot]:
+        """扫描所有文件，生成快照
+
+        Args:
+            force_hash: 是否强制计算所有文件的 hash（首次扫描时为 True）
+        """
         snapshots = {}
         if not self._knowledge_dir.exists():
             return snapshots
@@ -107,6 +111,12 @@ class EnvironmentMonitor:
             rel_path = str(md_file.relative_to(self._knowledge_dir)).replace("\\", "/")
             try:
                 stat = md_file.stat()
+                # 优化：先检查 mtime/size，未变化时复用旧 hash
+                old = self._snapshots.get(rel_path)
+                if not force_hash and old and old.mtime == stat.st_mtime and old.size == stat.st_size:
+                    snapshots[rel_path] = old  # 无变化，复用快照
+                    continue
+
                 content = md_file.read_bytes()
                 file_hash = hashlib.md5(content).hexdigest()
                 snapshots[rel_path] = FileSnapshot(
@@ -134,8 +144,8 @@ class EnvironmentMonitor:
                 logger.error(f"[EnvMonitor] 轮询异常: {e}")
 
     async def _detect_changes(self) -> list[FileChangeEvent]:
-        """检测文件变化"""
-        current = self._scan_all()
+        """检测文件变化（优化：先检查 mtime/size，变化时才计算 hash）"""
+        current = self._scan_all(force_hash=False)
         changes: list[FileChangeEvent] = []
 
         # 检测新增和修改
