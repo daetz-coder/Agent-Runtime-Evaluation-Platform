@@ -348,6 +348,55 @@ async def _extract_key_facts(
     return [], []
 
 
+# ── 计划生成（Plan-and-Execute）──────────────────────────────
+
+_PLAN_PROMPT = """你是一个智能知识助手的规划模块。根据用户的问题，生成一个执行计划。
+
+## 用户问题
+{user_message}
+
+## 可用步骤
+- search: 检索知识库（向量搜索 + BM25 + 用户记忆 + 会话记忆）
+- respond: 基于检索结果生成回复
+- decide: 判断是否需要将新知识保存到知识库
+- execute: 执行知识库操作（创建/更新/删除条目）
+
+请返回 JSON 格式的计划：
+{{"steps": [{{"milestone": "步骤名", "description": "具体做什么"}}], "strategy": "总体策略说明"}}
+"""
+
+
+async def _generate_plan(user_message: str) -> dict:
+    """LLM 根据用户问题生成执行计划。"""
+    import json as _json
+    import re as _re
+
+    from app.wiki_agent.agent.llm_factory import create_chat_llm
+
+    try:
+        llm = create_chat_llm(temperature=0.3, max_tokens=500)
+        prompt = _PLAN_PROMPT.format(user_message=user_message[:500])
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        raw = (response.content or "").strip()
+
+        # 提取 JSON
+        m = _re.search(r'\{[\s\S]*\}', raw)
+        if m:
+            return _json.loads(m.group())
+    except Exception as e:
+        print(f"[Wiki Agent] 计划生成失败: {e}")
+
+    # 兜底计划
+    return {
+        "steps": [
+            {"milestone": "search", "description": "检索知识库和四路记忆"},
+            {"milestone": "respond", "description": "基于检索结果生成回复"},
+            {"milestone": "decide", "description": "判断是否需要保存为知识条目"},
+        ],
+        "strategy": "标准知识助手流程",
+    }
+
+
 # ── 节点（纯业务逻辑） ──────────────────────────────────────
 
 
@@ -358,19 +407,15 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     state_before = {k: str(v)[:100] for k, v in state.items() if v}
     collector.record_node_execute("search", input_data=state_before)
 
-    # 记录初始计划（PLAN）— 评估器需要初始计划才能评分
+    # LLM 生成初始计划（Plan-and-Execute 架构）
     user_msg = state["user_message"]
+    plan = await _generate_plan(user_msg)
     collector.record(
         "plan",
         {
-            "steps": [
-                {"milestone": "search", "description": "检索知识库和四路记忆"},
-                {"milestone": "respond", "description": "基于检索结果生成回复"},
-                {"milestone": "decide", "description": "判断是否需要保存为知识条目"},
-                {"milestone": "execute", "description": "执行知识库 CRUD 操作（如需要）"},
-            ],
+            "steps": plan.get("steps", []),
             "goal": user_msg[:200],
-            "strategy": "LangGraph 编排：search → respond → decide → execute",
+            "strategy": plan.get("strategy", ""),
         },
     )
     user_message = state["user_message"]
