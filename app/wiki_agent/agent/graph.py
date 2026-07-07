@@ -398,12 +398,22 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     # LLM 生成初始计划（Plan-and-Execute 架构）
     user_msg = state["user_message"]
     plan = await _generate_plan(user_msg)
+    # PlanDetail schema 要求 steps: List[str]，milestones: List[str]
+    plan_steps = plan.get("steps", [])
+    steps_str = [
+        s.get("description", s) if isinstance(s, dict) else str(s)
+        for s in plan_steps
+    ]
+    milestones_str = [
+        s.get("milestone", "") if isinstance(s, dict) else ""
+        for s in plan_steps
+    ]
     collector.record(
         "plan",
         {
-            "steps": plan.get("steps", []),
             "goal": user_msg[:200],
-            "strategy": plan.get("strategy", ""),
+            "steps": steps_str,
+            "milestones": milestones_str,
         },
     )
     user_message = state["user_message"]
@@ -918,7 +928,7 @@ async def run_chat_stream(
         print(f"[EvalDiag] run_chat_stream finally block entered, task_id={_task_id} flow_completed={flow_completed}")
         if flow_completed:
             # 正常完成 → flush + 触发评估
-            await collector.finish_async(auto_run=True)
+            await collector.finish_async(auto_run=False)
             print(f"[EvalDiag] finish_async returned task_id={_task_id}")
         else:
             # HITL 中断或异常 → 只 flush，不触发评估
@@ -995,9 +1005,9 @@ async def run_chat_invoke(
     try:
         result = await graph.ainvoke(initial_state, config)
     except Exception:
-        await collector.finish_async(auto_run=True)
+        await collector.finish_async(auto_run=False)
         raise
-    await collector.finish_async(auto_run=True)
+    await collector.finish_async(auto_run=False)
     return {
         "content": result.get("ai_response", ""),
         "wiki_text": result.get("wiki_text"),
@@ -1048,9 +1058,9 @@ async def resume_and_execute(
     try:
         result = await graph.ainvoke(Command(resume=confirm), config)
     except Exception:
-        await collector.finish_async(auto_run=True)
+        await collector.finish_async(auto_run=False)
         raise
-    await collector.finish_async(auto_run=True)
+    await collector.finish_async(auto_run=False)
 
     action_result = result.get("action_result")
     decision = result.get("decision", {})
