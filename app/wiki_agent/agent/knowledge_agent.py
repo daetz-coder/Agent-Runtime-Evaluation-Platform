@@ -163,16 +163,12 @@ def _get_llm() -> ChatOpenAI:
 
 
 def _get_structured_llm():
-    """获取支持 with_structured_output 的 LLM（如果可用）。"""
-    global _structured_llm
-    if _structured_llm is None:
-        try:
-            llm = _get_llm()
-            _structured_llm = llm.with_structured_output(KnowledgeDecision, include_raw=True)
-        except Exception as e:
-            logger.warning("with_structured_output not available: %s, falling back to PydanticOutputParser", e)
-            _structured_llm = False
-    return _structured_llm if _structured_llm is not False else None
+    """获取支持 with_structured_output 的 LLM（如果可用）。
+
+    注意：DeepSeek / 智谱等国产模型对 with_structured_output 支持不佳，
+    统一走 PydanticOutputParser 路径（prompt 中注入 schema + 文本解析）。
+    """
+    return None
 
 
 # ── 文本预处理 ──────────────────────────────────────────────────────────────
