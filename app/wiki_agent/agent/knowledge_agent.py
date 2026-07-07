@@ -20,18 +20,44 @@ logger = logging.getLogger(__name__)
 
 
 def _strip_output_wrapper(text: str) -> str:
-    """Strip output(...) wrapper that some LLMs add around JSON.
+    """Strip output(...) wrapper and markdown code blocks from LLM JSON.
 
-    Models fine-tuned for function calling sometimes return:
-        output({"action": "none", ...})
-    instead of raw JSON. This strips the wrapper.
+    Handles common LLM output formats:
+    - output({"action": ...})
+    - ```json\n{...}\n```
+    - ```\n{...}\n```
+    - Raw JSON
     """
     text = text.strip()
-    # Match output({...}) or output([...])
+    # Strip output({...}) wrapper
     m = re.match(r'^output\s*\((.*)\)\s*$', text, re.DOTALL)
     if m:
-        return m.group(1).strip()
+        text = m.group(1).strip()
+    # Strip markdown code blocks
+    m = re.match(r'^```(?:json)?\s*\n?(.*?)\n?```\s*$', text, re.DOTALL)
+    if m:
+        text = m.group(1).strip()
     return text
+
+
+def _normalize_llm_json(data: dict) -> dict:
+    """Normalize common LLM field name variations to match KnowledgeDecision schema.
+
+    Some models return 'decision' instead of 'action', or return content as a dict.
+    """
+    # decision → action
+    if "decision" in data and "action" not in data:
+        data["action"] = data.pop("decision")
+    # content as dict → JSON string
+    if "content" in data and isinstance(data["content"], dict):
+        lines = []
+        for k, v in data["content"].items():
+            lines.append(f"### {k}\n{v}" if isinstance(v, str) else f"### {k}\n{json.dumps(v, ensure_ascii=False)}")
+        data["content"] = "\n\n".join(lines)
+    # Ensure reason exists
+    if "reason" not in data:
+        data["reason"] = ""
+    return data
 
 _llm: ChatOpenAI | None = None
 _structured_llm: ChatOpenAI | None = None
@@ -209,6 +235,7 @@ async def _decide_with_structured_output(
                 stripped = _strip_output_wrapper(raw_text)
                 try:
                     data = json.loads(stripped)
+                    data = _normalize_llm_json(data)
                     decision = KnowledgeDecision.model_validate(data)
                     print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次从 raw 手动解析成功: action={decision.action}")
                     return decision
@@ -261,7 +288,19 @@ async def _decide_with_parser(
             if not raw_text:
                 return KnowledgeDecision(action="none", reason="LLM 返回空内容")
             raw_text = _strip_output_wrapper(raw_text)
-            decision = _parser.parse(raw_text)
+            # Extract JSON, normalize field names, then validate
+            try:
+                # Try to find JSON in the text (handles markdown code blocks etc.)
+                json_match = re.search(r'\{[\s\S]*\}', raw_text)
+                if json_match:
+                    data = json.loads(json_match.group())
+                    data = _normalize_llm_json(data)
+                    decision = KnowledgeDecision.model_validate(data)
+                else:
+                    decision = _parser.parse(raw_text)
+            except (json.JSONDecodeError, Exception):
+                # Fallback to standard parser
+                decision = _parser.parse(raw_text)
             print(f"[Knowledge Agent] parser 第 {attempt + 1} 次解析成功: action={decision.action}")
             return decision
         except Exception as e:
@@ -269,7 +308,10 @@ async def _decide_with_parser(
             if attempt < max_retries:
                 messages.append(HumanMessage(content=(
                     f"你的回复校验失败，错误如下：\n\n{e}\n\n"
-                    "请严格按照 JSON schema 重新输出，确保必填字段不为空。"
+                    "请严格按照以下 JSON schema 重新输出，确保必填字段不为空：\n"
+                    '{"action": "create|update|delete|none", "reason": "原因", '
+                    '"path": "", "title": "", "category": "", "content": "字符串", "tags": []}\n'
+                    "注意：content 必须是字符串类型，不能是对象。"
                 )))
                 continue
 
