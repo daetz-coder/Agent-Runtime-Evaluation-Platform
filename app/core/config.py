@@ -2,10 +2,15 @@
 Application configuration using pydantic-settings.
 """
 
+import os
+from pathlib import Path
 from typing import List
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 项目根目录（app/core/config.py 的上两级）
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -28,6 +33,20 @@ class Settings(BaseSettings):
                     "SECRET_KEY must be explicitly set in non-development environments. "
                     "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _resolve_database_path(self):
+        """将相对路径的 SQLite URL 解析为绝对路径（基于项目根目录）。
+
+        避免因启动目录不同导致创建多个 agent_eval.db 文件。
+        """
+        url = self.DATABASE_URL
+        if url.startswith("sqlite") and "///./" in url:
+            # sqlite+aiosqlite:///./agent_eval.db → 绝对路径
+            rel_path = url.split("///./", 1)[1]
+            abs_path = str(_PROJECT_ROOT / rel_path)
+            self.DATABASE_URL = url.replace(f"///./{rel_path}", f"///{abs_path}")
         return self
 
     # Server
