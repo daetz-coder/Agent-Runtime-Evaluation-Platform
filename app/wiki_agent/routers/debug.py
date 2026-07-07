@@ -184,6 +184,19 @@ async def list_checkpoints():
     """LangGraph checkpoint 线程列表"""
     try:
         async with aiosqlite.connect(_CHECKPOINT_DB) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    thread_id TEXT NOT NULL,
+                    checkpoint_ns TEXT NOT NULL DEFAULT '',
+                    checkpoint_id TEXT NOT NULL,
+                    parent_checkpoint_id TEXT,
+                    type TEXT,
+                    checkpoint BLOB,
+                    metadata BLOB,
+                    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+                )
+            """)
+            await db.commit()
             cursor = await db.execute("""
                 SELECT thread_id, COUNT(*) as cnt, MAX(checkpoint_id) as latest
                 FROM checkpoints GROUP BY thread_id ORDER BY thread_id
@@ -226,6 +239,29 @@ async def get_checkpoint_detail(thread_id: str):
         serde = JsonPlusSerializer()
 
         async with aiosqlite.connect(_CHECKPOINT_DB) as db:
+            await db.executescript("""
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    thread_id TEXT NOT NULL,
+                    checkpoint_ns TEXT NOT NULL DEFAULT '',
+                    checkpoint_id TEXT NOT NULL,
+                    parent_checkpoint_id TEXT,
+                    type TEXT,
+                    checkpoint BLOB,
+                    metadata BLOB,
+                    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+                );
+                CREATE TABLE IF NOT EXISTS writes (
+                    thread_id TEXT NOT NULL,
+                    checkpoint_ns TEXT NOT NULL DEFAULT '',
+                    checkpoint_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    idx INTEGER NOT NULL,
+                    channel TEXT NOT NULL,
+                    type TEXT,
+                    value BLOB,
+                    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
+                );
+            """)
             cursor = await db.execute(
                 "SELECT checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata "
                 "FROM checkpoints WHERE thread_id = ? ORDER BY checkpoint_id",
