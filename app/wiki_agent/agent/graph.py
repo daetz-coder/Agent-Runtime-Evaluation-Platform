@@ -176,6 +176,7 @@ class WikiState(TypedDict, total=False):
     action_result: dict | None
     stage: str
     retrieved_context: dict | None
+    eval_task_id: str | None  # 评估任务 ID（HITL resume 时复用）
 
 
 def _get_configurable(config: RunnableConfig) -> dict:
@@ -529,6 +530,7 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
             "history_summary": ctx.history_summary,
         },
         "stage": "search",
+        "eval_task_id": collector.task_id,  # 保存 task_id 供 HITL resume 复用
     }
 
 
@@ -928,6 +930,36 @@ async def run_chat_stream(
                 pass
 
 
+async def _find_task_by_thread_id(thread_id: str) -> str | None:
+    """通过 thread_id 在数据库中查找已有的 task。
+
+    collector.start() 创建 task 时会把 thread_id 存在 context 中。
+    这里通过 API 查询匹配的 task。
+    """
+    import httpx
+
+    from sdk.collector import _env_str
+
+    api_base = _env_str("EVAL_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+    try:
+        r = httpx.get(f"{api_base}/api/v1/tasks/", params={"limit": 50}, timeout=5.0)
+        if r.status_code == 200:
+            tasks = r.json()
+            for task in tasks:
+                ctx = task.get("context") or {}
+                if isinstance(ctx, str):
+                    import json
+                    try:
+                        ctx = json.loads(ctx)
+                    except Exception:
+                        continue
+                if ctx.get("thread_id") == thread_id:
+                    return task["id"]
+    except Exception as e:
+        print(f"[Wiki Agent] 查找已有 task 失败: {e}")
+    return None
+
+
 async def run_chat_invoke(
     user_message: str,
     chat_history: list[BaseMessage],
@@ -984,13 +1016,30 @@ async def resume_and_execute(
     """
     graph = await get_wiki_graph()
 
-    # 从 LangGraph checkpoint 恢复时，需要 attach 到第一次请求创建的 task
-    # thread_id 作为 dedupe_key，让 collector attach 到正确的 task
+    # 从 LangGraph checkpoint 恢复时，attach 到第一次请求创建的 task
     collector = get_collector()
     if not collector.task_id:
-        # 新请求没有 session，需要 attach 到已有 task
-        # 通过 thread_id 关联（第一次请求把 thread_id 存在 task context 中）
-        await collector.start_async(f"resume:{thread_id}", {"thread_id": thread_id, "mode": "resume"})
+        # 从 checkpoint 中读取第一次请求保存的 eval_task_id
+        existing_task_id = None
+        try:
+            state_snapshot = await graph.aget_state({"configurable": {"thread_id": thread_id}})
+            if state_snapshot and state_snapshot.values:
+                existing_task_id = state_snapshot.values.get("eval_task_id")
+        except Exception as e:
+            print(f"[Wiki Agent] 读取 checkpoint state 失败: {e}")
+
+        if existing_task_id:
+            collector.attach(existing_task_id)
+            print(f"[Wiki Agent] HITL resume: attached to existing task {existing_task_id}")
+        else:
+            # checkpoint 中没有 task_id，尝试数据库查找
+            existing_task_id = await _find_task_by_thread_id(thread_id)
+            if existing_task_id:
+                collector.attach(existing_task_id)
+                print(f"[Wiki Agent] HITL resume: attached via DB lookup {existing_task_id}")
+            else:
+                await collector.start_async(f"resume:{thread_id}", {"thread_id": thread_id, "mode": "resume"})
+                print(f"[Wiki Agent] HITL resume: created new task {collector.task_id}")
 
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 

@@ -1,0 +1,27 @@
+name: wiki_agent/contextualize
+version: 1
+status: active
+description: 多轮对话指代消解 Prompt（将含代词的 query 改写为自包含问题）
+author: zhanyong
+created_at: "2026-07-07"
+
+variables:
+  - name: history
+    description: 对话历史
+  - name: query
+    description: 用户原始查询
+
+template: |
+  请将以下用户问题结合对话历史，改写为一个独立、完整的搜索查询。
+  要求：
+  - 消除所有代词（它、这个、那个等），替换为具体指代对象
+  - 保留原始问题的完整语义
+  - 只输出改写后的查询，不要解释
+
+  ## 对话历史
+  {history}
+
+  ## 用户问题
+  {query}
+
+  ## 改写后的查询：

@@ -55,7 +55,11 @@ def _get_rewrite_llm(temperature: float = 0, max_tokens: int = 200) -> ChatOpenA
 class Contextualizer:
     """多轮对话指代消解 — 检测到代词时，用 LLM 将 query 改写为自包含问题"""
 
-    _PROMPT = """请将以下用户问题结合对话历史，改写为一个独立、完整的搜索查询。
+    try:
+        from prompts import get_prompt as _gp
+        _PROMPT = _gp("wiki_agent/contextualize")
+    except Exception:
+        _PROMPT = """请将以下用户问题结合对话历史，改写为一个独立、完整的搜索查询。
 要求：
 - 消除所有代词（它、这个、那个等），替换为具体指代对象
 - 保留原始问题的完整语义
@@ -106,7 +110,11 @@ class Contextualizer:
 class QueryClassifier:
     """用 LLM 做轻量 4 分类，路由到不同改写策略"""
 
-    _PROMPT = """你是一个查询分类器。请将用户查询分类为以下四种类型之一：
+    try:
+        from prompts import get_prompt as _gp
+        _PROMPT = _gp("wiki_agent/query_classify")
+    except Exception:
+        _PROMPT = """你是一个查询分类器。请将用户查询分类为以下四种类型之一：
 
 - direct: 简单明确的事实查询，无需改写即可直接检索。例如："Python 的 GIL 是什么"
 - simple: 简单但可以轻微改写以提高检索效果。例如："介绍一下向量数据库"
@@ -148,7 +156,11 @@ class QueryRewriter:
     """按分类结果执行对应改写策略"""
 
     # ── Multi-Query ──
-    _MULTI_QUERY_PROMPT = """请将以下查询改写为 3 个不同角度的搜索查询，以提高检索召回率。
+    try:
+        from prompts import get_prompt as _gp
+        _MULTI_QUERY_PROMPT = _gp("wiki_agent/multi_query")
+    except Exception:
+        _MULTI_QUERY_PROMPT = """请将以下查询改写为 3 个不同角度的搜索查询，以提高检索召回率。
 要求：
 - 每个改写保持原始语义，但从不同角度表述
 - 改写 1：同义词替换
@@ -161,7 +173,11 @@ class QueryRewriter:
 改写查询："""
 
     # ── HyDE ──
-    _HYDE_PROMPT = """请根据以下问题，生成一段假设性的知识库文档内容（约 100-150 字）。
+    try:
+        from prompts import get_prompt as _gp
+        _HYDE_PROMPT = _gp("wiki_agent/hyde")
+    except Exception:
+        _HYDE_PROMPT = """请根据以下问题，生成一段假设性的知识库文档内容（约 100-150 字）。
 这段文档应该像是知识库中真实存在的、能够回答该问题的文档片段。
 
 问题：{query}
@@ -169,7 +185,11 @@ class QueryRewriter:
 假设性文档："""
 
     # ── Decompose ──
-    _DECOMPOSE_PROMPT = """请将以下复杂问题拆解为 2-3 个独立的子问题，每个子问题可以独立检索。
+    try:
+        from prompts import get_prompt as _gp
+        _DECOMPOSE_PROMPT = _gp("wiki_agent/decompose")
+    except Exception:
+        _DECOMPOSE_PROMPT = """请将以下复杂问题拆解为 2-3 个独立的子问题，每个子问题可以独立检索。
 要求：
 - 子问题之间互不依赖
 - 合在一起能覆盖原始问题的全部信息需求
