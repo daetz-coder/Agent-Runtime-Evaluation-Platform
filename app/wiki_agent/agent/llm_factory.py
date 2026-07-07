@@ -23,26 +23,26 @@ def create_chat_llm(
 ) -> ChatOpenAI:
     """创建 ChatOpenAI 实例。
 
-    优先使用 ZhipuAI（如配置了 ZHIPUAI_API_KEY），否则使用 DeepSeek。
+    优先使用 DeepSeek（如配置了 DEEPSEEK_API_KEY），否则使用 ZhipuAI。
 
     Args:
         temperature: 生成温度
         streaming: 是否启用流式输出
         max_tokens: 最大生成 token 数
     """
-    if settings.ZHIPUAI_API_KEY:
+    if settings.DEEPSEEK_API_KEY:
         return ChatOpenAI(
-            model=settings.ZHIPUAI_CHAT_MODEL,
-            api_key=settings.ZHIPUAI_API_KEY,
-            base_url=settings.ZHIPUAI_BASE_URL,
+            model=settings.DEEPSEEK_MODEL,
+            api_key=settings.DEEPSEEK_API_KEY,
+            base_url=settings.DEEPSEEK_BASE_URL,
             temperature=temperature,
             streaming=streaming,
             max_tokens=max_tokens,
         )
     return ChatOpenAI(
-        model=settings.DEEPSEEK_MODEL,
-        api_key=settings.DEEPSEEK_API_KEY or "placeholder",
-        base_url=settings.DEEPSEEK_BASE_URL,
+        model=settings.ZHIPUAI_CHAT_MODEL,
+        api_key=settings.ZHIPUAI_API_KEY or "placeholder",
+        base_url=settings.ZHIPUAI_BASE_URL,
         temperature=temperature,
         streaming=streaming,
         max_tokens=max_tokens,
