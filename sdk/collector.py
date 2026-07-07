@@ -378,9 +378,11 @@ class TrajectoryCollector:
         session.eval_triggered = False
 
         if not self._enabled:
+            logger.info("[EvalDiag] start() SKIPPED — collector disabled")
             return session.task_id
 
         try:
+            logger.info("[EvalDiag] start() task_id=%s api_base=%s goal=%s", session.task_id, self._api_base, goal[:80])
             r = self._http_with_retry(
                 "POST",
                 f"{self._api_base}/api/v1/tasks/",
@@ -391,9 +393,10 @@ class TrajectoryCollector:
             if r is not None:
                 session.task_id = r.json()["id"]
                 session.remote_task_created = True
+                logger.info("[EvalDiag] start() remote task created task_id=%s", session.task_id)
             else:
                 logger.warning(
-                    "Failed to create remote task (platform at %s unreachable). "
+                    "[EvalDiag] start() FAILED — platform at %s unreachable. "
                     "Trajectory will be buffered locally only.",
                     self._api_base,
                 )
@@ -989,8 +992,10 @@ class TrajectoryCollector:
         a new thread cannot see the parent's session.
         """
         if not steps_to_send or not remote_created or not task_id:
+            logger.info("[EvalDiag] _flush_steps SKIPPED task_id=%s steps=%d remote=%s", task_id, len(steps_to_send), remote_created)
             return
 
+        logger.info("[EvalDiag] _flush_steps POST task_id=%s steps=%d", task_id, len(steps_to_send))
         r = self._http_with_retry(
             "POST",
             f"{self._api_base}/api/v1/tasks/{task_id}/trajectory",
