@@ -385,41 +385,12 @@ class BaseEvaluator(ABC):
     async def _try_structured_output(
         self, chain, inputs: Dict[str, Any], schema_class: type, max_retries: int
     ) -> Optional[Any]:
-        """策略 1：with_structured_output（API 级 function calling）。"""
-        last_error = None
+        """策略 1：with_structured_output（API 级 function calling）。
 
-        for attempt in range(max_retries):
-            try:
-                retry_inputs = dict(inputs)
-                if attempt > 0 and last_error:
-                    error_msg = (
-                        f"\n\n⚠️ 上一次输出格式错误: {last_error}\n"
-                        f"请严格按照 {schema_class.__name__} 的字段要求重新输出。"
-                    )
-                    if "context" in retry_inputs:
-                        retry_inputs["context"] = str(retry_inputs["context"]) + error_msg
-                    elif "goal" in retry_inputs:
-                        retry_inputs["goal"] = str(retry_inputs["goal"]) + error_msg
-
-                result = await chain.ainvoke(retry_inputs)
-
-                if isinstance(result, schema_class):
-                    return result
-                if isinstance(result, dict):
-                    return schema_class.model_validate(result)
-
-                last_error = f"Expected {schema_class.__name__}, got {type(result).__name__}"
-                logger.warning("Structured output attempt %d/%d: %s", attempt + 1, max_retries, last_error)
-
-            except Exception as e:
-                last_error = str(e)
-                # 检测 API 不支持 structured output 的情况，立即降级
-                if "response_format" in str(e).lower() or "unavailable" in str(e).lower():
-                    logger.warning("Model does not support structured output, falling back to PydanticOutputParser")
-                    return None
-                logger.warning("Structured output attempt %d/%d failed: %s", attempt + 1, max_retries, last_error)
-
-        logger.warning("Structured output failed after %d retries", max_retries)
+        DeepSeek / 智谱等国产模型对 with_structured_output 支持不佳，
+        统一跳过，直接走 PydanticOutputParser 路径。
+        """
+        logger.info("Skipping with_structured_output, using PydanticOutputParser directly")
         return None
 
     async def _try_pydantic_parser(
