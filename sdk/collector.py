@@ -435,8 +435,7 @@ class TrajectoryCollector:
                 session.task_id = r.json()["id"]
                 session.remote_task_created = True
                 print(f"[EvalDiag] start_async remote task created task_id={session.task_id}")
-                # 标记任务为 RUNNING（创建时默认是 PENDING）
-                await self._async_update_task(status="running")
+                # 不改变任务状态 — 保持 PENDING，直到用户触发评估
             else:
                 print(f"[EvalDiag] start_async FAILED — platform at {self._api_base} unreachable")
         except Exception as exc:
