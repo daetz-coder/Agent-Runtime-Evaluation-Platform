@@ -393,7 +393,7 @@ class TrajectoryCollector:
             if r is not None:
                 session.task_id = r.json()["id"]
                 session.remote_task_created = True
-                print(f"[EvalDiag] start() remote task created task_id=%s", session.task_id)
+                print(f"[EvalDiag] start() remote task created task_id={session.task_id}")
             else:
                 logger.warning(
                     "[EvalDiag] start() FAILED — platform at %s unreachable. "
@@ -448,10 +448,10 @@ class TrajectoryCollector:
         if not session.task_id:
             return None
         steps_before = len(session.steps)
-        print(f"[EvalDiag] finish() start task_id=%s steps_in_buffer=%d", session.task_id, steps_before)
+        print(f"[EvalDiag] finish() start task_id={session.task_id} steps_in_buffer={steps_before}")
         self.record(ActionType.THINK, {"thought": "Run finished"})
         self._flush(block=True)
-        print(f"[EvalDiag] finish() after flush task_id=%s steps_remaining=%d", session.task_id, len(session.steps))
+        print(f"[EvalDiag] finish() after flush task_id={session.task_id} steps_remaining={len(session.steps)}")
 
         # Only mark completed if all steps were flushed successfully.
         # After _flush, remaining steps indicate a failed upload.
@@ -532,8 +532,8 @@ class TrajectoryCollector:
             print(f"[EvalDiag] finish_async WARNING: {unflushed} unflushed steps")
             await self._async_update_task(status="failed")
 
-        # 触发评估
-        if auto_run and session.remote_task_created and not session.eval_triggered:
+        # 触发评估（仅当 flush 成功且 auto_run 为 True）
+        if auto_run and flush_succeeded and session.remote_task_created and not session.eval_triggered:
             try:
                 r = await self._async_http_with_retry(
                     "POST",
@@ -549,6 +549,8 @@ class TrajectoryCollector:
                     print(f"[EvalDiag] finish_async evaluation trigger FAILED task_id={session.task_id}")
             except Exception as exc:
                 print(f"[EvalDiag] finish_async evaluation EXCEPTION: {exc}")
+        elif auto_run and not flush_succeeded:
+            print(f"[EvalDiag] finish_async SKIPPED evaluation — flush failed, {unflushed} steps unflushed")
 
         return session.task_id
 
@@ -727,27 +729,8 @@ class TrajectoryCollector:
             }
             session.steps.append(step)
 
-            if len(session.steps) >= self._batch_size:
-                steps_snapshot = list(session.steps)
-                session.steps = []
-                task_id = session.task_id
-                remote = session.remote_task_created
-                # Capture re-buffer target outside the thread to avoid
-                # ContextVar isolation issues (threading.Thread does not
-                # inherit parent context on Python < 3.12).
-                failed_steps: List[Dict[str, Any]] = []
-                threading.Thread(
-                    target=self._flush_steps,
-                    args=(task_id, remote, steps_snapshot, failed_steps),
-                    daemon=True,
-                ).start()
-                # If the thread already finished (unlikely) and failed,
-                # re-buffer now; otherwise the next record() call will
-                # pick up failed_steps via _rebuffer_failed_steps().
-                if failed_steps:
-                    with self._buffer_lock:
-                        if session.task_id == task_id:
-                            session.steps = failed_steps + session.steps
+            # 不再用 daemon 线程 flush（会丢步）。
+            # 步骤累积在缓冲区中，由调用方（graph 节点 / finish_async）通过 _async_flush 统一上传。
 
             return step
 
@@ -1134,10 +1117,10 @@ class TrajectoryCollector:
         a new thread cannot see the parent's session.
         """
         if not steps_to_send or not remote_created or not task_id:
-            print(f"[EvalDiag] _flush_steps SKIPPED task_id=%s steps=%d remote=%s", task_id, len(steps_to_send), remote_created)
+            print(f"[EvalDiag] _flush_steps SKIPPED task_id={task_id} steps={len(steps_to_send)} remote={remote_created}")
             return
 
-        print(f"[EvalDiag] _flush_steps POST task_id=%s steps=%d", task_id, len(steps_to_send))
+        print(f"[EvalDiag] _flush_steps POST task_id={task_id} steps={len(steps_to_send)}")
         r = self._http_with_retry(
             "POST",
             f"{self._api_base}/api/v1/tasks/{task_id}/trajectory",

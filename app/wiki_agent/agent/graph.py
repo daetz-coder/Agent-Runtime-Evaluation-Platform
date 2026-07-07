@@ -903,6 +903,7 @@ async def run_chat_stream(
             await queue.put(None)
 
     task = asyncio.create_task(_run_graph())
+    flow_completed = False  # 是否正常完成（非 HITL 中断）
 
     try:
         while True:
@@ -910,18 +911,19 @@ async def run_chat_stream(
             if event is None:
                 break
             if event.get("type") == "_done":
+                flow_completed = True
                 break
             yield event
     finally:
-        print(f"[EvalDiag] run_chat_stream finally block entered, task_id=%s task.done=%s", _task_id, task.done())
-        # 检查 graph 是否被 interrupt 暂停（task 仍在运行）
-        if task.done():
-            print(f"[EvalDiag] calling collector.finish_async task_id=%s", _task_id)
+        print(f"[EvalDiag] run_chat_stream finally block entered, task_id={_task_id} flow_completed={flow_completed}")
+        if flow_completed:
+            # 正常完成 → flush + 触发评估
             await collector.finish_async(auto_run=True)
-            print(f"[EvalDiag] collector.finish_async returned task_id=%s", _task_id)
+            print(f"[EvalDiag] finish_async returned task_id={_task_id}")
         else:
+            # HITL 中断或异常 → 只 flush，不触发评估
             await collector._async_flush()
-            logger.info("[Wiki Agent] HITL interrupt, task %s paused, waiting for resume", _task_id)
+            print(f"[Wiki Agent] HITL interrupt, task {_task_id} paused, waiting for resume")
         if not task.done():
             task.cancel()
             try:
