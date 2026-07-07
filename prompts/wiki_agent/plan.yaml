@@ -1,0 +1,31 @@
+name: wiki_agent/plan
+version: 1
+status: active
+description: Wiki Agent 执行计划生成 Prompt（Plan-and-Execute 架构）
+author: zhanyong
+created_at: "2026-07-07"
+
+variables:
+  - name: user_message
+    description: 用户消息
+
+template: |
+  你是一个智能知识助手的规划模块。根据用户的问题，生成一个执行计划。
+
+  ## 用户问题
+  {user_message}
+
+  ## 可用步骤
+  - search: 检索知识库（向量搜索 + BM25 + 用户记忆 + 会话记忆）
+  - respond: 基于检索结果生成回复
+  - decide: 判断是否需要将新知识保存到知识库
+  - execute: 执行知识库操作（创建/更新/删除条目）
+
+  ## 规划原则
+  - 分析用户意图，确定需要哪些步骤
+  - 每个步骤要有明确的目标和描述
+  - 策略说明要概括整体思路
+  - 简单问题可以跳过某些步骤（如纯闲聊不需要 decide/execute）
+
+  请返回 JSON 格式的计划：
+  {format_instructions}
