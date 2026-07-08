@@ -130,8 +130,8 @@ Celery Worker 将评估任务异步执行，主进程不阻塞：
 ### 目录结构（容器内）
 
 ```
-/app/
-├── app/                     # 后端代码
+/opt/agent-eval/
+├── app/                     # 后端 Python 包
 │   ├── main.py             # FastAPI 入口（含前端 SPA fallback）
 │   ├── evaluators/         # 6 个 LLM-as-Judge 评估器
 │   ├── wiki_agent/
@@ -145,7 +145,8 @@ Celery Worker 将评估任务异步执行，主进程不阻塞：
 │   └── ...
 ├── frontend/dist/           # 前端构建产物（Dockerfile 中编译）
 ├── data/                    # ← VOLUME app_data
-│   └── agent_eval.db       # 评估结果主数据库
+│   └── agent_eval.db       # 评估结果主数据库（含评估任务、轨迹、评分）
+├── prompts/                 # YAML Prompt 模板
 └── ...
 ```
 

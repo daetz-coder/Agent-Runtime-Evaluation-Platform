@@ -14,7 +14,8 @@ echo " Environment: ${APP_ENV:-production}"
 echo "================================================================"
 
 # ── Ensure runtime directories exist ────────────────────────────────────
-mkdir -p /app/data /app/app/wiki_agent/data /app/app/wiki_agent/models
+APP_HOME="${APP_HOME:-$PWD}"
+mkdir -p "${APP_HOME}/data" "${APP_HOME}/app/wiki_agent/data" "${APP_HOME}/app/wiki_agent/models"
 mkdir -p /model-cache/sentence-transformers /model-cache/huggingface
 
 # ── Warm model cache if cold ────────────────────────────────────────────
