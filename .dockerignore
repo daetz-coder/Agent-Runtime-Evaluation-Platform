@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.so
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Frontend (source — dist is built in Docker)
+frontend/node_modules/
+frontend/.vite/
+frontend/src/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Runtime data (mounted as volumes in compose)
+*.db
+*.sqlite3
+data/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+tests/
+
+# Documentation sources (compiled docs are in docs/)
+docs/
+
+# Local config
+.env
+.env.local
+AGENTS.md
+reasonix.toml
+
+# Personal files
+cv_docs/
+output/
+.agents/
+example/
+agent-skills/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Deployment files (compose & nginx are external)
+docker-compose.yml
+nginx/

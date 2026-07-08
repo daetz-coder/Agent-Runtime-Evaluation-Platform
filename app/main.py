@@ -27,7 +27,9 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.routing import APIRoute
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.endpoints import benchmark, evaluation, reports, system, tasks
 from app.api.v1.endpoints import settings as settings_endpoints
@@ -265,6 +267,36 @@ collector.finish()
             "wiki_chat": "/api/chat",
             "vector_admin": "/vector-admin",
         }
+
+    # ── 前端静态文件（生产部署用） ────────────────────────────────────
+    _frontend_dist = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist"
+    )
+    if os.path.isdir(_frontend_dist):
+        from pathlib import Path as _Path
+
+        app.mount(
+            "/assets",
+            StaticFiles(directory=os.path.join(_frontend_dist, "assets")),
+            name="assets",
+        )
+
+        @app.get("/", include_in_schema=False)
+        async def _serve_index():
+            index_path = _Path(_frontend_dist) / "index.html"
+            return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+
+        @app.get("/{path:path}", include_in_schema=False)
+        async def _spa_fallback(path: str):
+            if path.startswith(("api/", "docs", "redoc", "health", "assets/")):
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail="Not found")
+            index_path = _Path(_frontend_dist) / "index.html"
+            return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+
+        logger.info("Frontend served from %s", _frontend_dist)
+    else:
+        logger.warning("Frontend dist not found at %s — API only mode", _frontend_dist)
 
     return app
 
