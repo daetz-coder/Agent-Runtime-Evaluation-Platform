@@ -191,6 +191,7 @@ docs/                       # 文档
 
 | 文档 | 内容 |
 |------|------|
+| [Docker 部署指南](docs/deploy-docker.md) | 5 分钟快速部署、三种模式、生产配置 |
 | [架构文档](docs/architecture.md) | 系统架构、组件说明、数据流 |
 | [API 文档](docs/api.md) | REST 端点、SSE 事件类型 |
 | [SDK 文档](sdk/README.md) | 轨迹采集 SDK API |
