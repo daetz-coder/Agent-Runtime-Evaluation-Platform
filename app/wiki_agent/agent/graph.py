@@ -29,21 +29,48 @@ from app.wiki_agent.agent.tools import crud_tools
 from app.wiki_agent.config import settings
 from sdk.collector import ActionType, get_collector
 from sdk.schemas import (
-    PlanDetail,
-    PlanUpdateDetail,
-    ReplanDetail,
-    ToolCallDetail,
-    ToolResultDetail,
-    ToolDecisionDetail,
-    MemoryWriteDetail,
-    MemoryReadDetail,
-    RetrievedDoc,
-    RetrievalDetail,
-    EvidenceDetail,
-    EvidenceSource,
     FailureDetail,
+    ToolCallDetail,
+    ToolDecisionDetail,
+    ToolResultDetail,
 )
 from app.wiki_agent.session import store as session_store
+
+
+# ── 统一工具事件构建器 ──────────────────────────────────
+
+
+def _tc(tool_name: str, input_data: dict | None = None, *,
+        duration_ms: float | None = None,
+        observation: Any = None) -> dict:
+    """构建单条 TOOL_CALL 事件。"""
+    return {
+        "action_type": ActionType.TOOL_CALL,
+        "action_detail": ToolCallDetail(
+            tool_name=tool_name,
+            input=input_data,
+            duration_ms=duration_ms,
+        ).model_dump(),
+        "observation": observation,
+    }
+
+
+def _tr(tool_name: str, *,
+         success: bool = True,
+         duration_ms: float | None = None,
+         error_type: str | None = None,
+         observation: Any = None) -> dict:
+    """构建单条 TOOL_RESULT 事件。"""
+    return {
+        "action_type": ActionType.TOOL_RESULT,
+        "action_detail": ToolResultDetail(
+            tool_name=tool_name,
+            success=success,
+            duration_ms=duration_ms,
+            error_type=error_type,
+        ).model_dump(),
+        "observation": observation,
+    }
 
 logger = logging.getLogger(__name__)
 
@@ -477,90 +504,40 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         f"history: {len(ctx.history_summary)} chars → {len(context_block)} chars"
     )
 
-    # ── 构建轨迹事件（ActionType + Schema.model_dump 保证类型安全） ──
+    # ── 构建轨迹事件（统一 TOOL_CALL + TOOL_RESULT，按 tool_name 区分） ──
     events: list[dict] = []
 
-    # 1. PLAN
-    events.append({
-        "action_type": ActionType.PLAN,
-        "action_detail": PlanDetail(
-            goal=user_msg[:200],
-            steps=steps_str,
-            milestones=milestones_str,
-        ).model_dump(),
-    })
+    # 1. plan
+    events.append(_tc("plan", {"goal": user_msg[:200], "steps": steps_str, "milestones": milestones_str}))
 
-    # 2. RETRIEVAL
-    docs = [
-        RetrievedDoc(
-            title=doc.get("title", ""),
-            path=doc.get("path", ""),
-            snippet=doc.get("snippet", ""),
-            score=doc.get("score"),
-        ).model_dump()
-        for doc in ctx.wiki_results[:3]
-    ]
-    events.append({
-        "action_type": ActionType.RETRIEVAL,
-        "action_detail": RetrievalDetail(
-            query=user_message,
-            source="hybrid_search",
-            result_count=len(ctx.wiki_results),
-            duration_ms=duration_ms,
-            retrieved_docs=docs,
-        ).model_dump(),
-    })
+    # 2. retrieval
+    doc_summary = [{"title": d.get("title", ""), "path": d.get("path", "")} for d in ctx.wiki_results[:3]]
+    events.append(_tc("retrieval", {"query": user_message, "source": "hybrid_search", "result_count": len(ctx.wiki_results)},
+                       duration_ms=duration_ms, observation=doc_summary))
+    events.append(_tr("retrieval", duration_ms=duration_ms, observation=doc_summary))
 
-    # 3. MEMORY_WRITE
+    # 3. memory_write
     if ctx.session_facts or ctx.user_facts:
-        events.append({
-            "action_type": ActionType.MEMORY_WRITE,
-            "action_detail": MemoryWriteDetail(
-                key="key_facts",
-                value=[f.get("content", "") for f in (ctx.session_facts + ctx.user_facts) if isinstance(f, dict)],
-                source="llm_extraction",
-                memory_type="fact",
-            ).model_dump(),
-        })
+        values = [f.get("content", "") for f in (ctx.session_facts + ctx.user_facts) if isinstance(f, dict)]
+        events.append(_tc("memory_write", {"key": "key_facts", "value": values, "source": "llm_extraction", "memory_type": "fact"}))
 
-    # 4. MEMORY_READ
+    # 4. memory_read
     if ctx.user_facts:
-        events.append({
-            "action_type": ActionType.MEMORY_READ,
-            "action_detail": MemoryReadDetail(
-                key="user_memory",
-                value=len(ctx.user_facts),
-                context="search node",
-                hit=True,
-            ).model_dump(),
-        })
+        events.append(_tc("memory_read", {"key": "user_memory", "hit": True}))
+        events.append(_tr("memory_read", observation=f"{len(ctx.user_facts)} facts"))
     if ctx.session_facts:
-        events.append({
-            "action_type": ActionType.MEMORY_READ,
-            "action_detail": MemoryReadDetail(
-                key="session_memory",
-                value=len(ctx.session_facts),
-                context="search node",
-                hit=True,
-            ).model_dump(),
-        })
+        events.append(_tc("memory_read", {"key": "session_memory", "hit": True}))
+        events.append(_tr("memory_read", observation=f"{len(ctx.session_facts)} facts"))
 
-    # 5. EVIDENCE
-    events.append({
-        "action_type": ActionType.EVIDENCE,
-        "action_detail": EvidenceDetail(
-            evidence_type="rag_context",
-            context=f"Query: {user_message[:100]}",
-            sources=EvidenceSource(
-                retrieved_docs_count=len(ctx.wiki_results),
-                tool_results_count=0,
-                memory_results_count=len(ctx.user_facts) + len(ctx.session_facts),
-                chat_history_count=len(chat_history),
-            ),
-        ).model_dump(),
-    })
+    # 5. evidence
+    events.append(_tc("evidence", {
+        "evidence_type": "rag_context",
+        "retrieved_docs_count": len(ctx.wiki_results),
+        "memory_results_count": len(ctx.user_facts) + len(ctx.session_facts),
+        "chat_history_count": len(chat_history),
+    }))
 
-    # 6. PLAN_UPDATE（基于检索结果的真正规划）
+    # 6. plan_update（基于检索结果的真正规划）
     has_kb_results = len(ctx.wiki_results) > 0
     has_memory = len(ctx.user_facts) > 0 or len(ctx.session_facts) > 0
     remaining = []
@@ -572,15 +549,12 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     if len(user_message) > 20:
         remaining.append("分析是否需要保存为知识条目")
 
-    events.append({
-        "action_type": ActionType.PLAN_UPDATE,
-        "action_detail": PlanUpdateDetail(
-            milestone_status={"search": "done", "respond": "pending", "decide": "pending"},
-            next_action="respond: 基于检索结果生成回复",
-            reason=f"检索到 {len(ctx.wiki_results)} 条知识库结果，{'有' if has_memory else '无'}记忆数据",
-            remaining_steps=remaining,
-        ).model_dump(),
-    })
+    events.append(_tc("plan_update", {
+        "milestone_status": {"search": "done", "respond": "pending", "decide": "pending"},
+        "next_action": "respond: 基于检索结果生成回复",
+        "reason": f"检索到 {len(ctx.wiki_results)} 条知识库结果，{'有' if has_memory else '无'}记忆数据",
+        "remaining_steps": remaining,
+    }))
 
     return {
         **state,
@@ -628,21 +602,9 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
 
     events: list[dict] = []
     if session_id and collected:
-        events.append({
-            "action_type": ActionType.EVIDENCE,
-            "action_detail": EvidenceDetail(
-                evidence_type="final_answer",
-                sources=EvidenceSource(
-                    retrieved_docs_count=len(state.get("wiki_results", [])),
-                    tool_results_count=0,
-                    memory_results_count=0,
-                    chat_history_count=len(chat_history),
-                ),
-                final_response=collected[:4000],
-                session_id=session_id,
-                total_message_count=len(messages),
-            ).model_dump(),
-        })
+        events.append(_tc("final_answer", {"session_id": session_id, "total_message_count": len(messages)},
+                           observation=collected[:4000]))
+        events.append(_tr("final_answer", observation=collected[:4000]))
 
     return {**state, "ai_response": collected, "stage": "respond", "_events": events}
 
@@ -694,14 +656,11 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
                 input={"title": decision_dict.get("title"), "path": decision_dict.get("path")},
             ).model_dump(),
         })
-        events.append({
-            "action_type": ActionType.PLAN_UPDATE,
-            "action_detail": PlanUpdateDetail(
-                milestone_status={"search": "done", "respond": "done", "decide": "done"},
-                next_action=f"execute {action}",
-                reason=decision_dict.get("reason", ""),
-            ).model_dump(),
-        })
+        events.append(_tc("plan_update", {
+            "milestone_status": {"search": "done", "respond": "done", "decide": "done"},
+            "next_action": f"execute {action}",
+            "reason": decision_dict.get("reason", ""),
+        }))
 
     return {**state, "decision": decision_dict, "stage": "decide", "_events": events}
 
@@ -714,14 +673,7 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
 
     if not user_confirmed:
         print("[Wiki Agent] 用户取消操作")
-        events.append({
-            "action_type": ActionType.REPLAN,
-            "action_detail": ReplanDetail(
-                reason="用户取消了知识库操作",
-                new_plan="跳过 CRUD，返回对话结果",
-                trigger="user_cancel",
-            ).model_dump(),
-        })
+        events.append(_tc("replan", {"reason": "用户取消了知识库操作", "new_plan": "跳过 CRUD", "trigger": "user_cancel"}))
         return {
             **state,
             "action_result": {"status": "cancelled", "message": "用户取消"},
@@ -829,14 +781,9 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
             alternative_action = "create"
             replan_reason += " → 尝试 create 替代"
 
-        events.append({
-            "action_type": ActionType.REPLAN,
-            "action_detail": ReplanDetail(
-                reason=replan_reason,
-                new_plan=f"尝试 {alternative_action}" if alternative_action else "返回错误",
-                trigger=f"crud_{action}_failure",
-            ).model_dump(),
-        })
+        events.append(_tc("replan", {"reason": replan_reason,
+                                       "new_plan": f"尝试 {alternative_action}" if alternative_action else "返回错误",
+                                       "trigger": f"crud_{action}_failure"}))
 
         # 尝试替代方案
         if alternative_action:

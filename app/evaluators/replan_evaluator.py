@@ -178,7 +178,10 @@ class ReplanEvaluator(BaseEvaluator):
         consecutive_failures = 0
         replan_count = 0
 
-        for i, step in enumerate(trajectory):
+        def _is_tool(step, name):
+            return step.action_type == "tool_call" and step.action_detail.get("tool_name") == name
+
+        for step in trajectory:
             # 跟踪工具调用观察结果中的连续失败
             if step.action_type == "tool_call":
                 obs = (step.observation or "").lower()
@@ -191,10 +194,10 @@ class ReplanEvaluator(BaseEvaluator):
             if step.action_type == "failure":
                 consecutive_failures += 1
 
-            # 跟踪重规划事件
-            if step.action_type == "replan":
+            # 跟踪重规划事件（统一后的 TOOL_CALL + tool_name="replan"）
+            if _is_tool(step, "replan"):
                 replan_count += 1
-                consecutive_failures = 0  # 重规划后重置计数
+                consecutive_failures = 0
 
             # 检测错过的重规划时机
             if consecutive_failures >= 5 and replan_count == 0:
@@ -211,6 +214,12 @@ class ReplanEvaluator(BaseEvaluator):
         """格式化轨迹，重点关注与重规划相关的信息。"""
         lines = []
         consecutive_failures = 0
+
+        def _is_tool(step, name):
+            return step.action_type == "tool_call" and step.action_detail.get("tool_name") == name
+
+        def _inp(step):
+            return step.action_detail.get("input") or {}
 
         for step in trajectory:
             if step.action_type == "tool_call":
@@ -238,20 +247,23 @@ class ReplanEvaluator(BaseEvaluator):
                 lines.append(f"  Context: {step.action_detail.get('context', '')}")
                 lines.append(f"  Recoverable: {step.action_detail.get('recoverable', True)}")
 
-            elif step.action_type == "replan":
+            elif _is_tool(step, "replan"):
                 consecutive_failures = 0
+                inp = _inp(step)
                 lines.append(f"Step {step.step_number}: REPLAN TRIGGERED")
-                lines.append(f"  Reason: {step.action_detail.get('reason', 'Not specified')}")
-                if step.action_detail.get("new_plan"):
-                    lines.append(f"  New Plan: {step.action_detail['new_plan'][:200]}")
+                lines.append(f"  Reason: {inp.get('reason', 'Not specified')}")
+                if inp.get("new_plan"):
+                    lines.append(f"  New Plan: {inp['new_plan'][:200]}")
 
-            elif step.action_type == "retrieval":
-                query = step.action_detail.get("query", "")[:100]
-                count = step.action_detail.get("result_count", 0)
+            elif _is_tool(step, "retrieval"):
+                inp = _inp(step)
+                query = inp.get("query", "")[:100]
+                count = inp.get("result_count", 0)
                 lines.append(f"Step {step.step_number}: RETRIEVAL query='{query}' -> {count} docs")
 
-            elif step.action_type == "evidence":
-                etype = step.action_detail.get("evidence_type", "")
+            elif _is_tool(step, "evidence"):
+                inp = _inp(step)
+                etype = inp.get("evidence_type", "")
                 lines.append(f"Step {step.step_number}: EVIDENCE [{etype}]")
 
             elif step.action_type == "think":

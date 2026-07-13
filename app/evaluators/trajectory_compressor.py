@@ -16,23 +16,19 @@ from app.models.action_types import ActionType
 from app.models.schemas import TrajectoryStep
 
 # Importance Filter 保留的 action_type 集合
+# 域事件已统一为 TOOL_CALL（按 tool_name 区分），所以只需保留基础设施事件
 IMPORTANT_TYPES = {
-    ActionType.PLAN,
-    ActionType.PLAN_UPDATE,
     ActionType.TOOL_CALL,
     ActionType.TOOL_RESULT,
-    ActionType.MEMORY_WRITE,
-    ActionType.MEMORY_READ,
-    ActionType.RETRIEVAL,
-    ActionType.EVIDENCE,
+    ActionType.TOOL_DECISION,
     ActionType.FAILURE,
-    ActionType.REPLAN,
     ActionType.THINK,  # kept so stage 2 can truncate long observations
+    ActionType.NODE_EXECUTE,
+    ActionType.STATE_CHANGE,
 }
 
 # Recent Window 外也必须保留的锚点类型
 ANCHOR_TYPES = {
-    ActionType.PLAN,
     ActionType.FAILURE,
 }
 

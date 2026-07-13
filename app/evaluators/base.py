@@ -33,6 +33,22 @@ logger = logging.getLogger(__name__)
 class BaseEvaluator(ABC):
     """所有评估器的抽象基类，提供 LLM 调用、轨迹解析和评分等通用能力。"""
 
+    # ── 工具函数：判断 TOOL_CALL 事件的 tool_name ────────────
+    @staticmethod
+    def _is_tool(step: "TrajectoryStep", tool_name: str) -> bool:
+        """判断轨迹步骤是否为指定 tool_name 的 TOOL_CALL。"""
+        return step.action_type == ActionType.TOOL_CALL and step.action_detail.get("tool_name") == tool_name
+
+    @staticmethod
+    def _is_any_tool(step: "TrajectoryStep", *tool_names: str) -> bool:
+        """判断轨迹步骤是否为指定 tool_names 之一。"""
+        return step.action_type == ActionType.TOOL_CALL and step.action_detail.get("tool_name") in tool_names
+
+    @staticmethod
+    def _tool_input(step: "TrajectoryStep") -> dict:
+        """安全获取 TOOL_CALL 的 input 子字段。"""
+        return step.action_detail.get("input") or {}
+
     def __init__(self, llm: Optional[BaseChatModel] = None):
         """初始化评估器，可选传入自定义 LLM 实例。
 
@@ -192,27 +208,20 @@ class BaseEvaluator(ABC):
         return "\n".join(lines)
 
     def _extract_plans(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """从轨迹中提取规划步骤。
-
-        会跳过"幽灵计划"——即仅包含 {goal, context} 而没有实际计划内容的条目，
-        这些是任务创建时的附带产物，并非真正的规划。
-        """
+        """从轨迹中提取规划步骤。"""
         plans = []
         for step in trajectory:
-            if step.action_type == "plan":
-                detail = step.action_detail
+            if self._is_tool(step, "plan"):
+                detail = self._tool_input(step)
                 if isinstance(detail, dict):
-                    # 真正的计划至少包含 steps、milestones、plan、content 之一
-                    has_structure = any(
-                        detail.get(k) for k in ("steps", "milestones", "plan", "content")
-                    )
+                    has_structure = any(detail.get(k) for k in ("steps", "milestones", "plan", "content"))
                     if not has_structure and set(detail.keys()).issubset({"goal", "context"}):
-                        continue  # 幽灵计划，跳过
+                        continue
                 plans.append(detail)
         return plans
 
     def _extract_tool_calls(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """从轨迹中提取工具调用步骤。"""
+        """从轨迹中提取实际 CRUD 工具调用步骤（排除域工具调用）。"""
         return [
             {
                 "step": step.step_number,
@@ -222,32 +231,31 @@ class BaseEvaluator(ABC):
             }
             for step in trajectory
             if step.action_type == "tool_call"
+            and (step.action_detail.get("tool_name") or "").startswith("crud_")
         ]
 
     def _extract_replans(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
         """从轨迹中提取重规划事件。"""
+        inp = self._tool_input
         return [
-            {
-                "step": step.step_number,
-                "reason": step.action_detail.get("reason"),
-                "new_plan": step.action_detail.get("new_plan"),
-            }
+            {"step": step.step_number, "reason": inp(step).get("reason"), "new_plan": inp(step).get("new_plan")}
             for step in trajectory
-            if step.action_type == ActionType.REPLAN
+            if self._is_tool(step, "replan")
         ]
 
     def _extract_plan_updates(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
         """从轨迹中提取计划更新事件。"""
+        inp = self._tool_input
         return [
             {
                 "step": step.step_number,
-                "milestone_status": step.action_detail.get("milestone_status", {}),
-                "next_action": step.action_detail.get("next_action", ""),
-                "reason": step.action_detail.get("reason", ""),
-                "remaining_steps": step.action_detail.get("remaining_steps", []),
+                "milestone_status": inp(step).get("milestone_status", {}),
+                "next_action": inp(step).get("next_action", ""),
+                "reason": inp(step).get("reason", ""),
+                "remaining_steps": inp(step).get("remaining_steps", []),
             }
             for step in trajectory
-            if step.action_type == ActionType.PLAN_UPDATE
+            if self._is_tool(step, "plan_update")
         ]
 
     def _extract_tool_results(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
@@ -267,19 +275,20 @@ class BaseEvaluator(ABC):
 
     def _extract_memory_events(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
         """从轨迹中提取记忆读写事件。"""
+        inp = self._tool_input
         return [
             {
                 "step": step.step_number,
-                "type": step.action_type,
-                "key": step.action_detail.get("key"),
-                "value": step.action_detail.get("value"),
-                "source": step.action_detail.get("source", ""),
-                "context": step.action_detail.get("context", ""),
-                "hit": step.action_detail.get("hit", True),
-                "memory_type": step.action_detail.get("memory_type", ""),
+                "type": step.action_detail.get("tool_name"),
+                "key": inp(step).get("key"),
+                "value": inp(step).get("value"),
+                "source": inp(step).get("source", ""),
+                "context": inp(step).get("context", ""),
+                "hit": inp(step).get("hit", True),
+                "memory_type": inp(step).get("memory_type", ""),
             }
             for step in trajectory
-            if step.action_type in (ActionType.MEMORY_WRITE, ActionType.MEMORY_READ)
+            if self._is_any_tool(step, "memory_write", "memory_read")
         ]
 
     def _extract_state_changes(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
@@ -312,32 +321,34 @@ class BaseEvaluator(ABC):
 
     def _extract_retrievals(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
         """从轨迹中提取知识检索事件。"""
+        inp = self._tool_input
         return [
             {
                 "step": step.step_number,
-                "query": step.action_detail.get("query", ""),
-                "source": step.action_detail.get("source", ""),
-                "result_count": step.action_detail.get("result_count", 0),
+                "query": inp(step).get("query", ""),
+                "source": inp(step).get("source", ""),
+                "result_count": inp(step).get("result_count", 0),
                 "duration_ms": step.action_detail.get("duration_ms"),
-                "retrieved_docs": step.action_detail.get("retrieved_docs", []),
+                "retrieved_docs": step.observation,
             }
             for step in trajectory
-            if step.action_type == ActionType.RETRIEVAL
+            if self._is_tool(step, "retrieval")
         ]
 
     def _extract_evidence(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """从轨迹中提取证据池事件。"""
+        """从轨迹中提取证据池事件（evidence 和 final_answer）。"""
+        inp = self._tool_input
         return [
             {
                 "step": step.step_number,
-                "evidence_type": step.action_detail.get("evidence_type", ""),
-                "context": step.action_detail.get("context", ""),
-                "sources": step.action_detail.get("sources", {}),
-                "final_prompt_messages": step.action_detail.get("final_prompt_messages", []),
-                "total_message_count": step.action_detail.get("total_message_count", 0),
+                "evidence_type": inp(step).get("evidence_type", ""),
+                "context": inp(step).get("context", ""),
+                "sources": inp(step).get("sources", {}),
+                "final_prompt_messages": inp(step).get("final_prompt_messages", []),
+                "total_message_count": inp(step).get("total_message_count", 0),
             }
             for step in trajectory
-            if step.action_type == ActionType.EVIDENCE
+            if self._is_any_tool(step, "evidence", "final_answer")
         ]
 
     def _calculate_weighted_score(self, scores: Dict[str, float], weights: Dict[str, float]) -> float:

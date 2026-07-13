@@ -163,7 +163,7 @@ class TacticalEvaluator(BaseEvaluator):
         )
 
     def _extract_actions(self, trajectory: List[TrajectoryStep]) -> List[Dict[str, Any]]:
-        """提取行动步骤（排除计划步骤）。"""
+        """提取行动步骤（排除 plan 域工具调用）。"""
         return [
             {
                 "step": step.step_number,
@@ -172,7 +172,7 @@ class TacticalEvaluator(BaseEvaluator):
                 "observation": step.observation,
             }
             for step in trajectory
-            if step.action_type != "plan"
+            if not (step.action_type == "tool_call" and step.action_detail.get("tool_name") == "plan")
         ]
 
     def _determine_current_state(self, trajectory: List[TrajectoryStep]) -> str:
@@ -180,36 +180,39 @@ class TacticalEvaluator(BaseEvaluator):
         if not trajectory:
             return "Initial state"
 
-        # 查看最近的步骤以确定状态
         recent_steps = trajectory[-3:] if len(trajectory) >= 3 else trajectory
         state_parts = []
 
+        def _tn(step):
+            return step.action_detail.get("tool_name", "")
+
+        def _inp(step):
+            return step.action_detail.get("input") or {}
+
         for step in recent_steps:
             if step.action_type == "tool_call":
-                tool_name = step.action_detail.get("tool_name", "unknown")
-                state_parts.append(f"Used tool: {tool_name}")
+                state_parts.append(f"Used tool: {_tn(step)}")
             elif step.action_type == "tool_result":
-                success = step.action_detail.get("success", True)
-                tool_name = step.action_detail.get("tool_name", "unknown")
-                state_parts.append(f"Tool result: {tool_name} ({'OK' if success else 'FAIL'})")
+                succ = step.action_detail.get("success", True)
+                state_parts.append(f"Tool result: {_tn(step)} ({'OK' if succ else 'FAIL'})")
             elif step.action_type == "think":
                 state_parts.append(f"Thinking: {step.action_detail.get('thought', '')[:100]}")
-            elif step.action_type == "replan":
-                state_parts.append("Triggered replan")
-            elif step.action_type == "plan_update":
-                state_parts.append(f"Plan update: {step.action_detail.get('next_action', '')}")
             elif step.action_type == "failure":
                 state_parts.append(f"Failure: {step.action_detail.get('error_type', '')}")
-            elif step.action_type == "memory_write":
-                state_parts.append(f"Memory write: {step.action_detail.get('key', '')}")
-            elif step.action_type == "memory_read":
-                state_parts.append(f"Memory read: {step.action_detail.get('key', '')}")
-            elif step.action_type == "retrieval":
-                state_parts.append(f"Retrieved {step.action_detail.get('result_count', 0)} docs")
-            elif step.action_type == "evidence":
-                state_parts.append(f"Evidence pool: {step.action_detail.get('evidence_type', '')}")
             elif step.action_type == "state_change":
                 state_parts.append(f"State changed: {step.action_detail.get('trigger', '')}")
+            elif step.action_type == "tool_call" and _tn(step) in ("replan",):
+                state_parts.append("Triggered replan")
+            elif step.action_type == "tool_call" and _tn(step) in ("plan_update",):
+                state_parts.append(f"Plan update: {_inp(step).get('next_action', '')}")
+            elif step.action_type == "tool_call" and _tn(step) in ("memory_write",):
+                state_parts.append(f"Memory write: {_inp(step).get('key', '')}")
+            elif step.action_type == "tool_call" and _tn(step) in ("memory_read",):
+                state_parts.append(f"Memory read: {_inp(step).get('key', '')}")
+            elif step.action_type == "tool_call" and _tn(step) in ("retrieval",):
+                state_parts.append(f"Retrieved {_inp(step).get('result_count', 0)} docs")
+            elif step.action_type == "tool_call" and _tn(step) in ("evidence",):
+                state_parts.append(f"Evidence pool: {_inp(step).get('evidence_type', '')}")
 
         return " -> ".join(state_parts) if state_parts else "In progress"
 
@@ -220,13 +223,17 @@ class TacticalEvaluator(BaseEvaluator):
             step_num = action["step"]
             action_type = action["type"]
             detail = action["detail"]
+            obs = action.get("observation")
+
+            def _tn(): return detail.get("tool_name", "")
+            def _inp(): return detail.get("input") or {}
 
             if action_type == "tool_call":
-                tool = detail.get("tool_name", "unknown")
-                inp = detail.get("input", {})
+                tool = _tn()
+                inp = _inp()
                 lines.append(f"Step {step_num}: Call tool '{tool}' with input: {inp}")
             elif action_type == "tool_result":
-                tool = detail.get("tool_name", "unknown")
+                tool = _tn()
                 success = detail.get("success", True)
                 error = detail.get("error_type")
                 status = "SUCCESS" if success else f"FAILED ({error})"
@@ -234,46 +241,38 @@ class TacticalEvaluator(BaseEvaluator):
             elif action_type == "think":
                 thought = detail.get("thought", "")[:200]
                 lines.append(f"Step {step_num}: Think - {thought}")
-            elif action_type == "plan_update":
-                next_action = detail.get("next_action", "")
-                reason = detail.get("reason", "")
-                lines.append(f"Step {step_num}: Plan update -> {next_action} ({reason})")
             elif action_type == "failure":
                 error_type = detail.get("error_type", "Unknown")
                 error_msg = detail.get("error_message", "")[:150]
                 lines.append(f"Step {step_num}: FAILURE [{error_type}] - {error_msg}")
-            elif action_type == "memory_write":
-                key = detail.get("key", "")
-                lines.append(f"Step {step_num}: Memory WRITE '{key}'")
-            elif action_type == "memory_read":
-                key = detail.get("key", "")
-                hit = detail.get("hit", True)
-                lines.append(f"Step {step_num}: Memory READ '{key}' ({'HIT' if hit else 'MISS'})")
-            elif action_type == "replan":
-                reason = detail.get("reason", "")[:150]
-                lines.append(f"Step {step_num}: REPLAN - {reason}")
-            elif action_type == "retrieval":
-                query = detail.get("query", "")[:100]
-                count = detail.get("result_count", 0)
-                source = detail.get("source", "")
-                lines.append(f"Step {step_num}: RETRIEVAL [{source}] query='{query}' -> {count} docs")
-            elif action_type == "evidence":
-                etype = detail.get("evidence_type", "")
-                sources = detail.get("sources", {})
-                docs_count = sources.get("retrieved_docs_count", 0)
-                tools_count = sources.get("tool_results_count", 0)
-                mem_count = sources.get("memory_results_count", 0)
-                lines.append(
-                    f"Step {step_num}: EVIDENCE [{etype}] docs={docs_count} tools={tools_count} memory={mem_count}"
-                )
             elif action_type == "state_change":
                 trigger = detail.get("trigger", "")
                 lines.append(f"Step {step_num}: State changed by '{trigger}'")
-            else:
-                lines.append(f"Step {step_num}: {action_type} - {detail}")
 
-            if action.get("observation"):
-                lines.append(f"  Result: {action['observation'][:200]}")
+            # ── 域工具调用（按 tool_name 区分） ──
+            elif action_type == "tool_call" and _tn() == "plan_update":
+                inp = _inp()
+                lines.append(f"Step {step_num}: Plan update -> {inp.get('next_action', '')} ({inp.get('reason', '')})")
+            elif action_type == "tool_call" and _tn() == "memory_write":
+                inp = _inp()
+                lines.append(f"Step {step_num}: Memory WRITE '{inp.get('key', '')}'")
+            elif action_type == "tool_call" and _tn() == "memory_read":
+                inp = _inp()
+                hit = inp.get("hit", True)
+                lines.append(f"Step {step_num}: Memory READ '{inp.get('key', '')}' ({'HIT' if hit else 'MISS'})")
+            elif action_type == "tool_call" and _tn() == "replan":
+                inp = _inp()
+                lines.append(f"Step {step_num}: REPLAN - {inp.get('reason', '')[:150]}")
+            elif action_type == "tool_call" and _tn() == "retrieval":
+                inp = _inp()
+                lines.append(f"Step {step_num}: RETRIEVAL [{inp.get('source', '')}] query='{str(inp.get('query', ''))[:100]}' -> {inp.get('result_count', 0)} docs")
+            elif action_type == "tool_call" and _tn() == "evidence":
+                inp = _inp()
+                srcs = inp.get("sources", {})
+                lines.append(f"Step {step_num}: EVIDENCE [{inp.get('evidence_type', '')}] docs={srcs.get('retrieved_docs_count', 0)} tools={srcs.get('tool_results_count', 0)} memory={srcs.get('memory_results_count', 0)}")
+
+            if obs:
+                lines.append(f"  Result: {str(obs)[:200]}")
 
         return "\n".join(lines) if lines else "No actions recorded"
 

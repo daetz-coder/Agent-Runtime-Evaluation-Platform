@@ -111,23 +111,31 @@ class RetrievalEvaluator(BaseEvaluator):
         Returns:
             包含详细评估结果的 RetrievalScore
         """
-        # 提取检索结果
+        # 提取检索结果（统一后的 TOOL_CALL + tool_name="retrieval"，结果在 observation）
         retrievals = [
             s
             for s in trajectory
-            if s.action_type in ("retrieval", "tool_call") and s.action_detail.get("retrieved_docs")
+            if s.action_type == "tool_call"
+            and s.action_detail.get("tool_name") == "retrieval"
+            and s.observation
         ]
         retrieval_docs = []
         for s in retrievals:
-            docs = s.action_detail.get("retrieved_docs", [])
+            docs = s.observation if isinstance(s.observation, list) else []
             retrieval_docs.extend(docs)
 
-        # 提取最终回答（最后一个 respond/think 步骤）
+        # 提取最终回答（TOOL_CALL + tool_name="final_answer" 的 observation）
         final_answer = ""
         for s in reversed(trajectory):
-            if s.action_type in ("think", "respond") and s.action_detail.get("thought"):
-                final_answer = s.action_detail.get("thought", "")[:1000]
+            if s.action_type == "tool_call" and s.action_detail.get("tool_name") == "final_answer":
+                final_answer = str(s.observation or "")[:1000]
                 break
+        # Fallback: 从 think 步骤 observation 提取
+        if not final_answer:
+            for s in reversed(trajectory):
+                if s.action_type == "think" and s.observation:
+                    final_answer = str(s.observation)[:1000]
+                    break
         # Fallback: 从 observation 提取
         if not final_answer:
             for s in reversed(trajectory):
