@@ -499,7 +499,7 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
 
     # 中间 flush — 确保搜索阶段的轨迹步骤已保存到数据库
     # （防止 finish() 未执行导致轨迹丢失）
-    await collector._async_flush()
+    await collector._flush()
 
     # 记录 PLAN_UPDATE（基于检索结果的真正规划）
     has_kb_results = len(ctx.wiki_results) > 0
@@ -584,7 +584,7 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     collector.record_state_change(state_before, state_after, trigger="respond", node_name="respond")
 
     # 中间 flush — 确保回复阶段的轨迹步骤已保存
-    await collector._async_flush()
+    await collector._flush()
 
     return {**state, "ai_response": collected, "stage": "respond"}
 
@@ -865,6 +865,22 @@ def _extraction_from_result(result: dict, thread_id: str) -> dict | None:
 # ── 运行入口 ────────────────────────────────────────────────
 
 
+async def _graph_has_pending_interrupt(graph, config: RunnableConfig) -> bool:
+    """LangGraph interrupt 后 ainvoke 会正常返回；用 checkpoint 判断是否暂停在 HITL。"""
+    try:
+        snapshot = await graph.aget_state(config)
+        if not snapshot:
+            return False
+        if snapshot.interrupts:
+            return True
+        for task in snapshot.tasks or ():
+            if getattr(task, "interrupts", None):
+                return True
+    except Exception as exc:
+        logger.debug("Failed to read graph interrupt state: %s", exc)
+    return False
+
+
 async def run_chat_stream(
     user_message: str,
     chat_history: list[BaseMessage],
@@ -876,7 +892,7 @@ async def run_chat_stream(
     thread_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
     collector = get_collector()
-    await collector.start_async(user_message, {"thread_id": thread_id, "mode": "stream"})
+    await collector.start(user_message, {"thread_id": thread_id, "mode": "stream"})
 
     config: RunnableConfig = {
         "configurable": {
@@ -903,10 +919,11 @@ async def run_chat_stream(
     async def _run_graph():
         try:
             result = await graph.ainvoke(initial_state, config)
+            hitl_pending = await _graph_has_pending_interrupt(graph, config)
             extraction = _extraction_from_result(result, thread_id)
             if extraction:
                 await queue.put({"type": "extraction", "data": extraction})
-            await queue.put({"type": "_done", "result": result})
+            await queue.put({"type": "_done", "result": result, "hitl_pending": hitl_pending})
         except Exception as e:
             await queue.put({"type": "error", "message": str(e)})
         finally:
@@ -921,18 +938,18 @@ async def run_chat_stream(
             if event is None:
                 break
             if event.get("type") == "_done":
-                flow_completed = True
+                flow_completed = not event.get("hitl_pending", False)
                 break
             yield event
     finally:
         print(f"[EvalDiag] run_chat_stream finally block entered, task_id={_task_id} flow_completed={flow_completed}")
         if flow_completed:
             # 正常完成 → flush + 触发评估
-            await collector.finish_async(auto_run=False)
-            print(f"[EvalDiag] finish_async returned task_id={_task_id}")
+            await collector.finish(auto_run=False)
+            print(f"[EvalDiag] finish returned task_id={_task_id}")
         else:
             # HITL 中断或异常 → 只 flush，不触发评估
-            await collector._async_flush()
+            await collector._flush()
             print(f"[Wiki Agent] HITL interrupt, task {_task_id} paused, waiting for resume")
         if not task.done():
             task.cancel()
@@ -982,7 +999,7 @@ async def run_chat_invoke(
     graph = await get_wiki_graph()
     thread_id = str(uuid.uuid4())
     collector = get_collector()
-    await collector.start_async(user_message, {"thread_id": thread_id, "mode": "invoke"})
+    await collector.start(user_message, {"thread_id": thread_id, "mode": "invoke"})
 
     config: RunnableConfig = {
         "configurable": {
@@ -1005,9 +1022,12 @@ async def run_chat_invoke(
     try:
         result = await graph.ainvoke(initial_state, config)
     except Exception:
-        await collector.finish_async(auto_run=False)
+        await collector.finish(auto_run=False)
         raise
-    await collector.finish_async(auto_run=False)
+    if await _graph_has_pending_interrupt(graph, config):
+        await collector._flush()
+    else:
+        await collector.finish(auto_run=False)
     return {
         "content": result.get("ai_response", ""),
         "wiki_text": result.get("wiki_text"),
@@ -1050,7 +1070,7 @@ async def resume_and_execute(
                 collector.attach(existing_task_id)
                 print(f"[Wiki Agent] HITL resume: attached via DB lookup {existing_task_id}")
             else:
-                await collector.start_async(f"resume:{thread_id}", {"thread_id": thread_id, "mode": "resume"})
+                await collector.start(f"resume:{thread_id}", {"thread_id": thread_id, "mode": "resume"})
                 print(f"[Wiki Agent] HITL resume: created new task {collector.task_id}")
 
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
@@ -1058,9 +1078,9 @@ async def resume_and_execute(
     try:
         result = await graph.ainvoke(Command(resume=confirm), config)
     except Exception:
-        await collector.finish_async(auto_run=False)
+        await collector.finish(auto_run=False)
         raise
-    await collector.finish_async(auto_run=False)
+    await collector.finish(auto_run=False)
 
     action_result = result.get("action_result")
     decision = result.get("decision", {})
