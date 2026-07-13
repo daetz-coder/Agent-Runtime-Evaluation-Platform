@@ -293,26 +293,33 @@ async def _run_evaluations(
     repetitions: int = 5,
 ) -> Dict[str, List[float]]:
     """对每个样本运行 repetitions 次评估，返回分数列表。"""
-    from app.evaluators.base import BaseEvaluator
+    from app.evaluators.base import BaseEvaluator as _BE
+    from app.evaluators.planning_evaluator import PlanningEvaluator
     from app.evaluators.trajectory_compressor import TrajectoryCompressor
+    from app.models.schemas import TrajectoryStep
 
     compressor = TrajectoryCompressor()
-    # 直接用 base evaluator 的 LLM 能力，不跑完整评估器链
-    ev = BaseEvaluator()
+    llm = PlanningEvaluator().llm  # 用具体评估器获取 LLM
+    parse_json = _BE._parse_json_from_llm  # static method
+
+    # 将 dict 轨迹转为 TrajectoryStep 对象
+    def _to_steps(raw: List[dict]) -> List[TrajectoryStep]:
+        return [TrajectoryStep(**s) for s in raw]
 
     results: Dict[str, List[float]] = {}
 
     for idx, sample in enumerate(samples):
         scores = []
-        traj_text = compressor.compress(sample.trajectory)
+        steps = _to_steps(sample.trajectory)
+        traj_text = compressor.compress(steps)
         label = f"sample_{idx + 1}"
 
         for rep in range(repetitions):
             prompt = prompt_fn(sample.goal, traj_text)
             try:
-                resp = await ev.llm.ainvoke(prompt)
+                resp = await llm.ainvoke(prompt)
                 content = resp.content if hasattr(resp, "content") else str(resp)
-                parsed = ev._parse_json_from_llm(content)
+                parsed = parse_json(content)
                 score = float(parsed.get("overall", 0)) if parsed else 0
             except Exception as e:
                 print(f"  [{label}] rep {rep + 1} failed: {e}")
