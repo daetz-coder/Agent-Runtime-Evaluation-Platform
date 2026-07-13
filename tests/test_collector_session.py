@@ -15,7 +15,7 @@ async def test_collector_sessions_isolated_by_asyncio_task():
     collector._enabled = False  # local-only, no HTTP
 
     async def run_session(label: str) -> str:
-        task_id = collector.start(f"goal-{label}", {"label": label})
+        task_id = await collector.start(f"goal-{label}", {"label": label})
         await asyncio.sleep(0.05)
         return task_id
 

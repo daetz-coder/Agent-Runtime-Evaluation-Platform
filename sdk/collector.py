@@ -48,7 +48,7 @@ sdk.collector — 轻量级轨迹收集器（TrajectoryCollector）
     collector = get_collector()
 
     # 1. 开始任务
-    task_id = collector.start("实现用户登录功能")
+    task_id = await collector.start("实现用户登录功能")
 
     # 2. 记录轨迹
     collector.record_retrieval("JWT 认证", results, duration_ms=120)
@@ -56,7 +56,7 @@ sdk.collector — 轻量级轨迹收集器（TrajectoryCollector）
     collector.record_think("分析测试结果")
 
     # 3. 结束任务 + 触发评估
-    collector.finish(auto_run=True)
+    await collector.finish(auto_run=True)
 
 """
 
@@ -66,7 +66,6 @@ import json
 import logging
 import os
 import threading
-import time
 import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -261,10 +260,10 @@ class TrajectoryCollector:
     职责
     ════════════════════════════════════════════════════════════════
 
-    1. 创建评估任务（start / start_async）
+    1. 创建评估任务（start）
     2. 记录 Agent 操作轨迹（record / record_*）
-    3. 批量上传轨迹数据（_flush / _flush_steps）
-    4. 结束任务并触发评估（finish / finish_async）
+    3. 批量上传轨迹数据（_flush）
+    4. 结束任务并触发评估（finish）
 
     ════════════════════════════════════════════════════════════════
     并发模型
@@ -272,14 +271,14 @@ class TrajectoryCollector:
 
     - 全局单例：通过 get_collector() 获取，所有请求共享同一实例
     - 会话隔离：通过 ContextVar 实现，每个 async 任务有独立的 session
-    - 线程安全：buffer_lock 保护 steps 列表，flush_lock 防止并发 flush
+    - 线程安全：buffer_lock 保护 steps 列表（record_* 为纯内存缓冲，无 I/O）
 
     ════════════════════════════════════════════════════════════════
     传输模式
     ════════════════════════════════════════════════════════════════
 
-    统一使用 HTTP 模式：通过 REST API 推送轨迹数据到评估平台。
-    异步方法（start_async/finish_async）在线程池中执行 HTTP 请求，不阻塞事件循环。
+    统一使用 async HTTP：通过 httpx.AsyncClient 推送轨迹数据到评估平台。
+    所有 HTTP 请求均通过 _http_with_retry 异步执行，不阻塞事件循环。
 
     """
 
@@ -308,16 +307,13 @@ class TrajectoryCollector:
             self._initialized = True
 
             self._buffer_lock = threading.Lock()
-            self._flush_lock = threading.Lock()
 
             self._enabled = _env_bool("EVAL_ENABLED", True)
             self._api_base = _env_str("EVAL_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
             self._api_key = _env_str("EVAL_API_KEY", "")
             self._batch_size = _env_int("EVAL_BATCH_SIZE", 10)
 
-            import httpx
-
-        self._client: Optional[httpx.Client] = None
+            pass
 
     def _session(self) -> _CollectorSession:
         """获取当前请求的 session（不存在则创建）。"""
@@ -328,7 +324,7 @@ class TrajectoryCollector:
         return session
 
     def _new_session(self) -> _CollectorSession:
-        """创建全新的 session（start/start_async 时调用，替换旧 session）。"""
+        """创建全新的 session（start 时调用，替换旧 session）。"""
         session = _CollectorSession()
         _collector_session.set(session)
         return session
@@ -349,13 +345,7 @@ class TrajectoryCollector:
             _collector_session.set(_CollectorSession())
 
     def close(self) -> None:
-        """关闭 HTTP 客户端，释放资源。"""
-        if self._client is not None:
-            try:
-                self._client.close()
-            except Exception:
-                pass
-            self._client = None
+        """关闭 HTTP 客户端，释放资源。（现在所有 HTTP 均为 async，无需操作。）"""
 
     @classmethod
     def _reset_singleton(cls) -> None:
@@ -367,8 +357,11 @@ class TrajectoryCollector:
 
     # ── 任务生命周期 ──
 
-    def start(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
-        """创建评估任务，返回 task_id。"""
+    async def start(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """创建评估任务，返回 task_id。
+
+        通过 async HTTP 在远端评估平台创建任务，记录初始 PLAN 步骤。
+        """
         session = self._new_session()
         session.task_id = str(uuid.uuid4())
         session.remote_task_created = False
@@ -378,12 +371,11 @@ class TrajectoryCollector:
         session.eval_triggered = False
 
         if not self._enabled:
-            print(f"[EvalDiag] start() SKIPPED — collector disabled")
             return session.task_id
 
         try:
-            print(f"[EvalDiag] start() task_id={session.task_id} api_base={self._api_base} goal={goal[:80]}")
-            r = self._http_with_retry(
+            print(f"[EvalDiag] start task_id={session.task_id} api_base={self._api_base} goal={goal[:80]}")
+            r = await self._http_with_retry(
                 "POST",
                 f"{self._api_base}/api/v1/tasks/",
                 json={"id": session.task_id, "goal": goal, "context": _short(context or {})},
@@ -393,15 +385,15 @@ class TrajectoryCollector:
             if r is not None:
                 session.task_id = r.json()["id"]
                 session.remote_task_created = True
-                print(f"[EvalDiag] start() remote task created task_id={session.task_id}")
+                print(f"[EvalDiag] start remote task created task_id={session.task_id}")
             else:
                 logger.warning(
-                    "[EvalDiag] start() FAILED — platform at %s unreachable. "
+                    "[EvalDiag] start FAILED — platform at %s unreachable. "
                     "Trajectory will be buffered locally only.",
                     self._api_base,
                 )
         except Exception as exc:
-            logger.warning("Task creation failed: %s", exc)
+            print(f"[EvalDiag] start EXCEPTION: {exc}")
 
         self.record(
             ActionType.PLAN,
@@ -409,71 +401,40 @@ class TrajectoryCollector:
         )
         return session.task_id
 
-    async def start_async(self, goal: str, context: Optional[Dict[str, Any]] = None) -> str:
-        """异步创建评估任务（直接使用 async HTTP，无需线程）。"""
-        session = self._new_session()
-        session.task_id = str(uuid.uuid4())
-        session.remote_task_created = False
-        session.step_counter = 0
-        session.steps = []
-        session.seen_events.clear()
-        session.eval_triggered = False
-
-        if not self._enabled:
-            return session.task_id
-
-        try:
-            print(f"[EvalDiag] start_async task_id={session.task_id} api_base={self._api_base}")
-            r = await self._async_http_with_retry(
-                "POST",
-                f"{self._api_base}/api/v1/tasks/",
-                json={"id": session.task_id, "goal": goal, "context": _short(context or {})},
-                timeout=30.0,
-                idempotent=True,
-            )
-            if r is not None:
-                session.task_id = r.json()["id"]
-                session.remote_task_created = True
-                print(f"[EvalDiag] start_async remote task created task_id={session.task_id}")
-                # 不改变任务状态 — 保持 PENDING，直到用户触发评估
-            else:
-                print(f"[EvalDiag] start_async FAILED — platform at {self._api_base} unreachable")
-        except Exception as exc:
-            print(f"[EvalDiag] start_async EXCEPTION: {exc}")
-
-        return session.task_id
-
-    def finish(self, *, auto_run: bool = False) -> Optional[str]:
+    async def finish(self, *, auto_run: bool = False) -> Optional[str]:
         """结束任务，flush 轨迹，可选触发评估。"""
         session = self._session()
         if not session.task_id:
             return None
-        steps_before = len(session.steps)
-        print(f"[EvalDiag] finish() start task_id={session.task_id} steps_in_buffer={steps_before}")
-        self.record(ActionType.THINK, {"thought": "Run finished"})
-        self._flush(block=True)
-        print(f"[EvalDiag] finish() after flush task_id={session.task_id} steps_remaining={len(session.steps)}")
 
-        # Only mark completed if all steps were flushed successfully.
-        # After _flush, remaining steps indicate a failed upload.
+        steps_before = len(session.steps)
+        print(f"[EvalDiag] finish start task_id={session.task_id} steps_in_buffer={steps_before}")
+
+        # 记录 THINK 步骤 + 异步 flush 剩余步骤
+        self.record(ActionType.THINK, {"thought": "Run finished"})
+        await self._flush()
+
+        steps_remaining = len(session.steps)
+        print(f"[EvalDiag] finish after flush task_id={session.task_id} steps_remaining={steps_remaining}")
+
         with self._buffer_lock:
             flush_succeeded = len(session.steps) == 0
             unflushed = len(session.steps)
 
         eval_triggered = False
         if session.remote_task_created and flush_succeeded:
-            self.update_task(status="completed")
+            await self._update_task(status="completed")
         elif session.remote_task_created and not flush_succeeded:
             logger.warning(
                 "Task %s has %d un-flushed steps; marking as 'failed' instead of 'completed'",
                 session.task_id,
                 unflushed,
             )
-            self.update_task(status="failed")
+            await self._update_task(status="failed")
 
-        if auto_run and session.remote_task_created and not session.eval_triggered:
+        if auto_run and flush_succeeded and session.remote_task_created and not session.eval_triggered:
             try:
-                r = self._http_with_retry(
+                r = await self._http_with_retry(
                     "POST",
                     f"{self._api_base}/api/v1/evaluations/",
                     json={"task_id": session.task_id},
@@ -487,13 +448,19 @@ class TrajectoryCollector:
                     logger.warning("Failed to trigger evaluation for task %s", session.task_id)
             except Exception as exc:
                 logger.warning("Evaluation trigger failed: %s", exc)
+        elif auto_run and not flush_succeeded:
+            logger.warning(
+                "Skipping auto_run for task %s: %d steps failed to flush",
+                session.task_id,
+                unflushed,
+            )
 
         try:
             from app.core.eval_diagnostics import log_collector_finish
 
             log_collector_finish(
                 session.task_id,
-                steps_buffered=steps_before + 1,  # +1 for Run finished think step
+                steps_buffered=steps_before + 1,
                 flush_succeeded=flush_succeeded,
                 unflushed=unflushed,
                 auto_run=auto_run,
@@ -504,57 +471,8 @@ class TrajectoryCollector:
 
         return session.task_id
 
-    async def finish_async(self, *, auto_run: bool = False) -> Optional[str]:
-        """异步结束任务（直接使用 async HTTP，无需线程）。"""
-        session = self._session()
-        if not session.task_id:
-            return None
-
-        steps_before = len(session.steps)
-        print(f"[EvalDiag] finish_async start task_id={session.task_id} steps_in_buffer={steps_before}")
-
-        # 记录 THINK 步骤
-        self.record(ActionType.THINK, {"thought": "Run finished"})
-
-        # 异步 flush 剩余步骤
-        await self._async_flush()
-
-        steps_remaining = len(session.steps)
-        print(f"[EvalDiag] finish_async after flush task_id={session.task_id} steps_remaining={steps_remaining}")
-
-        with self._buffer_lock:
-            flush_succeeded = len(session.steps) == 0
-            unflushed = len(session.steps)
-
-        # 不在 finish_async 中标记任务完成 — 任务状态由评估流程控制
-        # 评估完成时会把任务标为 completed；未评估的任务保持 running
-        if not flush_succeeded:
-            print(f"[EvalDiag] finish_async WARNING: {unflushed} unflushed steps")
-
-        # 触发评估（仅当 flush 成功且 auto_run 为 True）
-        if auto_run and flush_succeeded and session.remote_task_created and not session.eval_triggered:
-            try:
-                r = await self._async_http_with_retry(
-                    "POST",
-                    f"{self._api_base}/api/v1/evaluations/",
-                    json={"task_id": session.task_id},
-                    timeout=30.0,
-                    idempotent=True,
-                )
-                if r is not None:
-                    session.eval_triggered = True
-                    print(f"[EvalDiag] finish_async evaluation triggered task_id={session.task_id}")
-                else:
-                    print(f"[EvalDiag] finish_async evaluation trigger FAILED task_id={session.task_id}")
-            except Exception as exc:
-                print(f"[EvalDiag] finish_async evaluation EXCEPTION: {exc}")
-        elif auto_run and not flush_succeeded:
-            print(f"[EvalDiag] finish_async SKIPPED evaluation — flush failed, {unflushed} steps unflushed")
-
-        return session.task_id
-
-    async def _async_flush(self) -> None:
-        """异步 flush：将缓冲区中的步骤通过 async HTTP 上传。"""
+    async def _flush(self) -> None:
+        """将缓冲区中的步骤通过 async HTTP 上传。"""
         session = self._session()
         with self._buffer_lock:
             if not session.steps:
@@ -567,8 +485,8 @@ class TrajectoryCollector:
         if not remote or not task_id or not steps_to_send:
             return
 
-        print(f"[EvalDiag] _async_flush POST task_id={task_id} steps={len(steps_to_send)}")
-        r = await self._async_http_with_retry(
+        print(f"[EvalDiag] _flush POST task_id={task_id} steps={len(steps_to_send)}")
+        r = await self._http_with_retry(
             "POST",
             f"{self._api_base}/api/v1/tasks/{task_id}/trajectory",
             json=steps_to_send,
@@ -580,15 +498,15 @@ class TrajectoryCollector:
             with self._buffer_lock:
                 if session.task_id == task_id:
                     session.steps = steps_to_send + session.steps
-            print(f"[EvalDiag] _async_flush FAILED — steps re-buffered")
+            print(f"[EvalDiag] _flush FAILED — steps re-buffered")
 
-    async def _async_update_task(self, *, status: str) -> bool:
-        """异步更新任务状态。"""
+    async def _update_task(self, *, status: str) -> bool:
+        """更新远端任务状态（PUT /tasks/{id}）。"""
         session = self._session()
         if not session.task_id or not session.remote_task_created:
             return False
         try:
-            r = await self._async_http_with_retry(
+            r = await self._http_with_retry(
                 "PUT",
                 f"{self._api_base}/api/v1/tasks/{session.task_id}",
                 json={"status": status},
@@ -605,43 +523,6 @@ class TrajectoryCollector:
         session.task_id = task_id
         session.remote_task_created = True
         # 不重置 eval_triggered — 避免 HITL resume 时重复触发评估
-
-    def update_task(
-        self,
-        *,
-        goal: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        status: Optional[str] = None,
-    ) -> bool:
-        """更新已创建的任务（PUT /tasks/{id}）。
-
-        可更新 goal、context、status。返回是否成功。
-        """
-        session = self._session()
-        if not session.task_id or not session.remote_task_created:
-            return False
-
-        payload: Dict[str, Any] = {}
-        if goal is not None:
-            payload["goal"] = goal
-        if context is not None:
-            payload["context"] = _short(context)
-        if status is not None:
-            payload["status"] = status
-
-        if not payload:
-            return False
-
-        try:
-            r = self._http_with_retry(
-                "PUT",
-                f"{self._api_base}/api/v1/tasks/{session.task_id}",
-                json=payload,
-            )
-            return r is not None
-        except Exception as exc:
-            logger.warning("Task update failed: %s", exc)
-            return False
 
     # ── 格式校验（Pydantic Schema） ──
 
@@ -728,8 +609,7 @@ class TrajectoryCollector:
             }
             session.steps.append(step)
 
-            # 不再用 daemon 线程 flush（会丢步）。
-            # 步骤累积在缓冲区中，由调用方（graph 节点 / finish_async）通过 _async_flush 统一上传。
+            # 步骤累积在缓冲区中，由调用方（graph 节点 / finish）通过 _flush 统一上传。
 
             return step
 
@@ -1025,7 +905,7 @@ class TrajectoryCollector:
 
     # ── 内部方法 ──
 
-    def _http_with_retry(
+    async def _http_with_retry(
         self,
         method: str,
         url: str,
@@ -1034,44 +914,7 @@ class TrajectoryCollector:
         timeout: float = 10.0,
         idempotent: bool = False,
     ) -> Any:
-        """同步 HTTP 请求（带重试）。用于 record() 中的自动 flush。"""
-        import httpx
-
-        last_exc: Optional[Exception] = None
-        for attempt in range(self._MAX_RETRIES):
-            try:
-                headers = {}
-                if self._api_key:
-                    headers["Authorization"] = f"Bearer {self._api_key}"
-                r = self._http().request(method, url, json=json, timeout=timeout, headers=headers)
-                r.raise_for_status()
-                return r
-            except httpx.TimeoutException as exc:
-                last_exc = exc
-            except httpx.HTTPStatusError as exc:
-                last_exc = exc
-                if idempotent and exc.response.status_code in (200, 201, 409):
-                    return exc.response
-            except Exception as exc:
-                last_exc = exc
-
-            if attempt < self._MAX_RETRIES - 1:
-                delay = self._RETRY_BASE_DELAY * (2**attempt)
-                time.sleep(delay)
-
-        logger.warning("HTTP %s %s failed after %d retries: %s", method, url, self._MAX_RETRIES, last_exc)
-        return None
-
-    async def _async_http_with_retry(
-        self,
-        method: str,
-        url: str,
-        *,
-        json: Any = None,
-        timeout: float = 10.0,
-        idempotent: bool = False,
-    ) -> Any:
-        """异步 HTTP 请求（带重试）。用于 start_async / finish_async / _async_flush_steps。"""
+        """HTTP 请求（async，带指数退避重试）。"""
         import asyncio
         import httpx
 
@@ -1098,85 +941,9 @@ class TrajectoryCollector:
                 delay = self._RETRY_BASE_DELAY * (2**attempt)
                 await asyncio.sleep(delay)
 
-        logger.warning("Async HTTP %s %s failed after %d retries: %s", method, url, self._MAX_RETRIES, last_exc)
+        logger.warning("HTTP %s %s failed after %d retries: %s", method, url, self._MAX_RETRIES, last_exc)
         return None
 
-    def _flush_steps(
-        self,
-        task_id: Optional[str],
-        remote_created: bool,
-        steps_to_send: List[Dict[str, Any]],
-        failed_steps: Optional[List[Dict[str, Any]]] = None,
-    ) -> None:
-        """Upload trajectory steps (may run in a background thread).
-
-        On failure, steps are appended to *failed_steps* (if provided)
-        so the caller can re-buffer them in the correct ContextVar session.
-        This avoids the ``threading.Thread`` ContextVar isolation bug where
-        a new thread cannot see the parent's session.
-        """
-        if not steps_to_send or not remote_created or not task_id:
-            print(f"[EvalDiag] _flush_steps SKIPPED task_id={task_id} steps={len(steps_to_send)} remote={remote_created}")
-            return
-
-        print(f"[EvalDiag] _flush_steps POST task_id={task_id} steps={len(steps_to_send)}")
-        r = self._http_with_retry(
-            "POST",
-            f"{self._api_base}/api/v1/tasks/{task_id}/trajectory",
-            json=steps_to_send,
-            timeout=30.0,
-            idempotent=True,
-        )
-        if r is None:
-            logger.warning(
-                "[EvalDiag] trajectory flush HTTP failed task_id=%s steps=%d url=%s/api/v1/tasks/%s/trajectory",
-                task_id,
-                len(steps_to_send),
-                self._api_base,
-                task_id,
-            )
-            if failed_steps is not None:
-                failed_steps.extend(steps_to_send)
-
-    def _flush(self, block: bool = False) -> None:
-        """将缓冲区中的步骤上传到评估平台。
-
-        参数:
-            block: 是否阻塞等待 flush_lock（True 用于 finish()，False 用于批量 flush）
-        """
-        if not self._flush_lock.acquire(blocking=block):
-            return
-        try:
-            session = self._session()
-            with self._buffer_lock:
-                if not session.steps:
-                    return
-                steps_to_send = list(session.steps)
-                session.steps = []
-                task_id = session.task_id
-                remote = session.remote_task_created
-
-            if not remote or not task_id:
-                with self._buffer_lock:
-                    session.steps = steps_to_send + session.steps
-                return
-
-            failed: List[Dict[str, Any]] = []
-            self._flush_steps(task_id, remote, steps_to_send, failed_steps=failed)
-            if failed:
-                with self._buffer_lock:
-                    session.steps = failed + session.steps
-        finally:
-            self._flush_lock.release()
-
-    def _http(self):
-        if self._client is None:
-            with self._instance_lock:
-                if self._client is None:
-                    import httpx
-
-                    self._client = httpx.Client(timeout=10.0)
-        return self._client
 
 
 # ── 全局单例 ──
