@@ -15,8 +15,6 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from app.wiki_agent.agent.tools import search_tools
 from app.wiki_agent.agent.tools.query_rewriter import rewrite_query
 from app.wiki_agent.session import store as session_store
-from sdk.collector import get_collector
-
 # 预算常量（字符数，约 1 token ≈ 2.5 中文字符）
 MAX_HISTORY_CHARS = 800
 MAX_WIKI_CHARS = 1200
@@ -66,15 +64,10 @@ async def retrieve_context(
     print(f"[Timing] rewrite_query: {(t1-t0)*1000:.0f}ms (complexity: {complexity.value})")
 
     # TRIVIAL: 跳过 RAG
-    collector = get_collector()
     if complexity == QueryComplexity.TRIVIAL:
         user_facts = await session_store.get_user_memory()
         session_facts = await session_store.get_session_key_facts(session_id) if session_id else []
         history_summary = _summarize_history(chat_history, HISTORY_RECENT_COUNT)
-        # 记录 MEMORY_READ
-        collector.record_memory_read("user_memory", value=len(user_facts), context="trivial query", hit=bool(user_facts))
-        if session_id:
-            collector.record_memory_read("session_memory", value=len(session_facts), context="trivial query", hit=bool(session_facts))
         return RetrievedContext(
             wiki_results=[],
             user_facts=user_facts,
@@ -133,11 +126,6 @@ async def retrieve_context(
         session_facts = await session_store.get_session_key_facts(session_id)
     t5 = loop.time()
     print(f"[Timing] memory_load: {(t5-t4)*1000:.0f}ms")
-
-    # 记录 MEMORY_READ
-    collector.record_memory_read("user_memory", value=len(user_facts), context="retrieve_context", hit=bool(user_facts))
-    if session_id:
-        collector.record_memory_read("session_memory", value=len(session_facts), context="retrieve_context", hit=bool(session_facts))
 
     # ⑤ Working Memory — 最近对话历史
     history_summary = _summarize_history(chat_history, HISTORY_RECENT_COUNT)

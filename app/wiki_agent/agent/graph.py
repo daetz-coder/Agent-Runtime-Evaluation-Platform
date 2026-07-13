@@ -28,6 +28,21 @@ from app.wiki_agent.agent.llm_factory import create_chat_llm
 from app.wiki_agent.agent.tools import crud_tools
 from app.wiki_agent.config import settings
 from sdk.collector import ActionType, get_collector
+from sdk.schemas import (
+    PlanDetail,
+    PlanUpdateDetail,
+    ReplanDetail,
+    ToolCallDetail,
+    ToolResultDetail,
+    ToolDecisionDetail,
+    MemoryWriteDetail,
+    MemoryReadDetail,
+    RetrievedDoc,
+    RetrievalDetail,
+    EvidenceDetail,
+    EvidenceSource,
+    FailureDetail,
+)
 from app.wiki_agent.session import store as session_store
 
 logger = logging.getLogger(__name__)
@@ -389,16 +404,17 @@ async def _generate_plan(user_message: str) -> dict:
 
 
 async def search(state: WikiState, config: RunnableConfig) -> WikiState:
-    """统一检索四路记忆（KB + user_memory + session_memory + history）"""
+    """统一检索四路记忆（KB + user_memory + session_memory + history）
+
+    粒度说明：
+    - 通用事件（NODE_EXECUTE, STATE_CHANGE, FAILURE）：由 instrument_langgraph 自动记录
+    - 域特定事件（PLAN, RETRIEVAL, MEMORY, EVIDENCE）：通过 _events 由 wrapper 统一排出
+    """
     print("[Wiki Agent] 检索上下文...")
-    collector = get_collector()
-    state_before = {k: str(v)[:100] for k, v in state.items() if v}
-    collector.record_node_execute("search", input_data=state_before)
 
     # LLM 生成初始计划（Plan-and-Execute 架构）
     user_msg = state["user_message"]
     plan = await _generate_plan(user_msg)
-    # PlanDetail schema 要求 steps: List[str]，milestones: List[str]
     plan_steps = plan.get("steps", [])
     steps_str = [
         s.get("description", s) if isinstance(s, dict) else str(s)
@@ -408,14 +424,7 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         s.get("milestone", "") if isinstance(s, dict) else ""
         for s in plan_steps
     ]
-    collector.record(
-        "plan",
-        {
-            "goal": user_msg[:200],
-            "steps": steps_str,
-            "milestones": milestones_str,
-        },
-    )
+
     user_message = state["user_message"]
     configurable = _get_configurable(config)
     chat_history: list[BaseMessage] = configurable.get("chat_history") or []
@@ -427,10 +436,7 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
     ctx = await retrieve_context(user_message, chat_history, session_id)
     t1 = asyncio.get_running_loop().time()
     print(f"[Timing] retrieve_context: {(t1-t0)*1000:.0f}ms")
-
     duration_ms = round((t1 - started) * 1000, 2)
-
-    collector.record_retrieval(user_message, ctx.wiki_results, duration_ms=duration_ms)
 
     # wiki_text 向后兼容
     wiki_text = None
@@ -453,7 +459,6 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
                 all_session_facts = await session_store.merge_session_key_facts(session_id, session_facts_raw)
                 ctx.session_facts = all_session_facts
                 print(f"[Session Memory] 新增 {len(session_facts_raw)} 条，累积 {len(all_session_facts)} 条")
-
             if user_facts_raw:
                 all_user_facts = await session_store.merge_user_memory(user_facts_raw)
                 ctx.user_facts = all_user_facts
@@ -462,20 +467,6 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
             print(f"[Memory] 异步存储失败: {e}")
 
     asyncio.create_task(_store_memories())
-
-    if ctx.session_facts or ctx.user_facts:
-        collector.record_memory_write(
-            "key_facts",
-            [f.get("content", "") for f in (ctx.session_facts + ctx.user_facts) if isinstance(f, dict)],
-            source="llm_extraction",
-            memory_type="fact",
-        )
-
-    # 记录 MEMORY_READ（读取记忆）
-    if ctx.user_facts:
-        collector.record_memory_read("user_memory", value=len(ctx.user_facts), context="search node", hit=True)
-    if ctx.session_facts:
-        collector.record_memory_read("session_memory", value=len(ctx.session_facts), context="search node", hit=True)
 
     # 日志
     context_block = build_context_block(ctx)
@@ -486,48 +477,110 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
         f"history: {len(ctx.history_summary)} chars → {len(context_block)} chars"
     )
 
-    # 记录 EVIDENCE（组装证据池）
-    collector.record_evidence(
-        evidence_type="rag_context",
-        sources={
-            "retrieved_docs": ctx.wiki_results,
-            "memory_results": ctx.user_facts + ctx.session_facts,
-            "chat_history_count": len(chat_history),
-        },
-        context=f"Query: {user_message[:100]}",
-    )
+    # ── 构建轨迹事件（ActionType + Schema.model_dump 保证类型安全） ──
+    events: list[dict] = []
 
-    # 中间 flush — 确保搜索阶段的轨迹步骤已保存到数据库
-    # （防止 finish() 未执行导致轨迹丢失）
-    await collector._async_flush()
+    # 1. PLAN
+    events.append({
+        "action_type": ActionType.PLAN,
+        "action_detail": PlanDetail(
+            goal=user_msg[:200],
+            steps=steps_str,
+            milestones=milestones_str,
+        ).model_dump(),
+    })
 
-    # 记录 PLAN_UPDATE（基于检索结果的真正规划）
+    # 2. RETRIEVAL
+    docs = [
+        RetrievedDoc(
+            title=doc.get("title", ""),
+            path=doc.get("path", ""),
+            snippet=doc.get("snippet", ""),
+            score=doc.get("score"),
+        ).model_dump()
+        for doc in ctx.wiki_results[:3]
+    ]
+    events.append({
+        "action_type": ActionType.RETRIEVAL,
+        "action_detail": RetrievalDetail(
+            query=user_message,
+            source="hybrid_search",
+            result_count=len(ctx.wiki_results),
+            duration_ms=duration_ms,
+            retrieved_docs=docs,
+        ).model_dump(),
+    })
+
+    # 3. MEMORY_WRITE
+    if ctx.session_facts or ctx.user_facts:
+        events.append({
+            "action_type": ActionType.MEMORY_WRITE,
+            "action_detail": MemoryWriteDetail(
+                key="key_facts",
+                value=[f.get("content", "") for f in (ctx.session_facts + ctx.user_facts) if isinstance(f, dict)],
+                source="llm_extraction",
+                memory_type="fact",
+            ).model_dump(),
+        })
+
+    # 4. MEMORY_READ
+    if ctx.user_facts:
+        events.append({
+            "action_type": ActionType.MEMORY_READ,
+            "action_detail": MemoryReadDetail(
+                key="user_memory",
+                value=len(ctx.user_facts),
+                context="search node",
+                hit=True,
+            ).model_dump(),
+        })
+    if ctx.session_facts:
+        events.append({
+            "action_type": ActionType.MEMORY_READ,
+            "action_detail": MemoryReadDetail(
+                key="session_memory",
+                value=len(ctx.session_facts),
+                context="search node",
+                hit=True,
+            ).model_dump(),
+        })
+
+    # 5. EVIDENCE
+    events.append({
+        "action_type": ActionType.EVIDENCE,
+        "action_detail": EvidenceDetail(
+            evidence_type="rag_context",
+            context=f"Query: {user_message[:100]}",
+            sources=EvidenceSource(
+                retrieved_docs_count=len(ctx.wiki_results),
+                tool_results_count=0,
+                memory_results_count=len(ctx.user_facts) + len(ctx.session_facts),
+                chat_history_count=len(chat_history),
+            ),
+        ).model_dump(),
+    })
+
+    # 6. PLAN_UPDATE（基于检索结果的真正规划）
     has_kb_results = len(ctx.wiki_results) > 0
     has_memory = len(ctx.user_facts) > 0 or len(ctx.session_facts) > 0
-    plan_steps = []
+    remaining = []
     if has_kb_results:
-        plan_steps.append(f"引用知识库 {len(ctx.wiki_results)} 条结果回答")
+        remaining.append(f"引用知识库 {len(ctx.wiki_results)} 条结果回答")
     if has_memory:
-        plan_steps.append("结合用户偏好和会话上下文")
-    plan_steps.append("生成结构化回复")
+        remaining.append("结合用户偏好和会话上下文")
+    remaining.append("生成结构化回复")
     if len(user_message) > 20:
-        plan_steps.append("分析是否需要保存为知识条目")
+        remaining.append("分析是否需要保存为知识条目")
 
-    collector.record_plan_update(
-        milestone_status={
-            "search": "done",
-            "respond": "pending",
-            "decide": "pending",
-        },
-        next_action="respond: 基于检索结果生成回复",
-        reason=f"检索到 {len(ctx.wiki_results)} 条知识库结果，{'有' if has_memory else '无'}记忆数据",
-        remaining_steps=plan_steps,
-    )
-
-    # 记录 NODE_COMPLETE + STATE_CHANGE
-    state_after = {"wiki_results_count": len(ctx.wiki_results), "user_facts_count": len(ctx.user_facts), "session_facts_count": len(ctx.session_facts)}
-    collector.record_node_execute("search_complete", output_data=state_after)
-    collector.record_state_change(state_before, state_after, trigger="search", node_name="search")
+    events.append({
+        "action_type": ActionType.PLAN_UPDATE,
+        "action_detail": PlanUpdateDetail(
+            milestone_status={"search": "done", "respond": "pending", "decide": "pending"},
+            next_action="respond: 基于检索结果生成回复",
+            reason=f"检索到 {len(ctx.wiki_results)} 条知识库结果，{'有' if has_memory else '无'}记忆数据",
+            remaining_steps=remaining,
+        ).model_dump(),
+    })
 
     return {
         **state,
@@ -540,16 +593,14 @@ async def search(state: WikiState, config: RunnableConfig) -> WikiState:
             "history_summary": ctx.history_summary,
         },
         "stage": "search",
-        "eval_task_id": collector.task_id,  # 保存 task_id 供 HITL resume 复用
+        "eval_task_id": get_collector().task_id,  # 只读 task_id（供 HITL resume 复用）
+        "_events": events,
     }
 
 
 async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
     """流式或非流式生成回复"""
     print("[Wiki Agent] 生成回复...")
-    collector = get_collector()
-    state_before = {"ai_response": "", "stage": state.get("stage", "")}
-    collector.record_node_execute("respond", input_data=state_before)
     t0 = asyncio.get_running_loop().time()
     configurable = _get_configurable(config)
     queue: asyncio.Queue | None = configurable.get("event_queue")
@@ -575,25 +626,30 @@ async def respond(state: WikiState, config: RunnableConfig) -> WikiState:
         if queue is not None:
             await _emit(queue, {"type": "content", "text": text})
 
-    if session_id:
-        collector.record(ActionType.EVIDENCE, {"evidence_type": "final_answer", "final_response": collected[:4000], "session_id": session_id})
+    events: list[dict] = []
+    if session_id and collected:
+        events.append({
+            "action_type": ActionType.EVIDENCE,
+            "action_detail": EvidenceDetail(
+                evidence_type="final_answer",
+                sources=EvidenceSource(
+                    retrieved_docs_count=len(state.get("wiki_results", [])),
+                    tool_results_count=0,
+                    memory_results_count=0,
+                    chat_history_count=len(chat_history),
+                ),
+                final_response=collected[:4000],
+                session_id=session_id,
+                total_message_count=len(messages),
+            ).model_dump(),
+        })
 
-    # 记录 NODE_COMPLETE + STATE_CHANGE
-    state_after = {"ai_response_len": len(collected), "stage": "respond"}
-    collector.record_node_execute("respond_complete", output_data=state_after)
-    collector.record_state_change(state_before, state_after, trigger="respond", node_name="respond")
-
-    # 中间 flush — 确保回复阶段的轨迹步骤已保存
-    await collector._async_flush()
-
-    return {**state, "ai_response": collected, "stage": "respond"}
+    return {**state, "ai_response": collected, "stage": "respond", "_events": events}
 
 
 async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
     """分析对话，决定知识库操作"""
     print("[Wiki Agent] 分析对话...")
-    collector = get_collector()
-    collector.record_node_execute("decide", input_data={"user_message": state["user_message"][:100]})
     configurable = _get_configurable(config)
     queue: asyncio.Queue | None = configurable.get("event_queue")
 
@@ -601,6 +657,7 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
     ai_response = state.get("ai_response", "")
 
     if not ai_response or len(ai_response) < 50:
+        # 无 _events — wrapper 仍会记录 NODE_EXECUTE + STATE_CHANGE
         return {
             **state,
             "decision": {"action": "none", "reason": "回复太短"},
@@ -625,53 +682,56 @@ async def decide(state: WikiState, config: RunnableConfig) -> WikiState:
         stem = decision_dict["path"].replace(".md", "").split("/")[-1]
         decision_dict["title"] = stem
 
-    # 记录 TOOL_DECISION（decide 节点决定执行什么操作）
+    events: list[dict] = []
+
     action = decision_dict.get("action", "none")
     if action != "none":
-        collector.record(
-            "tool_decision",
-            {"node_name": "decide", "tool_name": f"crud_{action}", "input": {"title": decision_dict.get("title"), "path": decision_dict.get("path")}},
-        )
-        # 记录 PLAN_UPDATE（决定下一步操作 = 计划更新）
-        collector.record_plan_update(
-            milestone_status={"search": "done", "respond": "done", "decide": "done"},
-            next_action=f"execute {action}",
-            reason=decision_dict.get("reason", ""),
-        )
+        events.append({
+            "action_type": ActionType.TOOL_DECISION,
+            "action_detail": ToolDecisionDetail(
+                node_name="decide",
+                tool_name=f"crud_{action}",
+                input={"title": decision_dict.get("title"), "path": decision_dict.get("path")},
+            ).model_dump(),
+        })
+        events.append({
+            "action_type": ActionType.PLAN_UPDATE,
+            "action_detail": PlanUpdateDetail(
+                milestone_status={"search": "done", "respond": "done", "decide": "done"},
+                next_action=f"execute {action}",
+                reason=decision_dict.get("reason", ""),
+            ).model_dump(),
+        })
 
-    # 记录 STATE_CHANGE
-    collector.record_node_execute("decide_complete", output_data={"action": action})
-    collector.record_state_change(
-        {"stage": "respond"},
-        {"stage": "decide", "action": action},
-        trigger="decide", node_name="decide",
-    )
-
-    return {**state, "decision": decision_dict, "stage": "decide"}
+    return {**state, "decision": decision_dict, "stage": "decide", "_events": events}
 
 
 async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
     """Human-in-the-Loop：等待用户确认后执行 CRUD"""
-    collector = get_collector()
-    collector.record_node_execute("execute", input_data={"decision": state.get("decision")})
     user_confirmed = interrupt({})
+
+    events: list[dict] = []
 
     if not user_confirmed:
         print("[Wiki Agent] 用户取消操作")
-        # 记录 REPLAN（用户取消 = 改变计划）
-        collector.record_replan(
-            reason="用户取消了知识库操作",
-            new_plan="跳过 CRUD，返回对话结果",
-            trigger="user_cancel",
-        )
+        events.append({
+            "action_type": ActionType.REPLAN,
+            "action_detail": ReplanDetail(
+                reason="用户取消了知识库操作",
+                new_plan="跳过 CRUD，返回对话结果",
+                trigger="user_cancel",
+            ).model_dump(),
+        })
         return {
             **state,
             "action_result": {"status": "cancelled", "message": "用户取消"},
             "stage": "execute",
+            "_events": events,
         }
 
     decision = state.get("decision")
     if not decision or decision.get("action") == "none":
+        # 无 _events — wrapper 仍会记录 NODE_EXECUTE + STATE_CHANGE
         return {**state, "action_result": None, "stage": "execute"}
 
     action = decision.get("action")
@@ -680,6 +740,31 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
     import time as _time
     result = None
     tool_start = _time.monotonic()
+
+    def _build_tool_events(tool_name: str, inp: dict, out: Any,
+                           dur: float, success: bool, err_type: str | None = None) -> list[dict]:
+        """统一生成 TOOL_CALL + TOOL_RESULT 事件对（使用 ActionType + Schema）"""
+        return [
+            {
+                "action_type": ActionType.TOOL_CALL,
+                "action_detail": ToolCallDetail(
+                    tool_name=tool_name,
+                    input={k: str(v)[:200] for k, v in inp.items()},
+                    duration_ms=dur,
+                ).model_dump(),
+                "observation": str(out)[:2000] if out else None,
+            },
+            {
+                "action_type": ActionType.TOOL_RESULT,
+                "action_detail": ToolResultDetail(
+                    tool_name=tool_name,
+                    success=success,
+                    duration_ms=dur,
+                    error_type=err_type,
+                ).model_dump(),
+                "observation": str(out)[:2000] if out else None,
+            },
+        ]
 
     try:
         if action == "create":
@@ -701,66 +786,57 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
             result = await asyncio.to_thread(crud_tools.delete_knowledge, decision.get("path", ""))
 
         duration_ms = (_time.monotonic() - tool_start) * 1000
-
-        # 记录 TOOL_CALL + TOOL_RESULT
-        collector.record_tool_call(
-            tool_name=f"crud_{action}",
-            tool_input={"title": decision.get("title"), "path": decision.get("path")},
-            tool_output=str(result)[:2000] if result else None,
-            duration_ms=duration_ms,
-        )
-        collector.record_tool_result(
-            tool_name=f"crud_{action}",
-            tool_output=str(result)[:2000] if result else None,
-            duration_ms=duration_ms,
-            success=result.get("status") == "ok" if result else False,
-        )
+        success = result.get("status") == "ok" if result else False
+        events.extend(_build_tool_events(
+            f"crud_{action}",
+            {"title": decision.get("title"), "path": decision.get("path")},
+            result,
+            duration_ms,
+            success,
+        ))
 
     except Exception as e:
         duration_ms = (_time.monotonic() - tool_start) * 1000
-        # 记录 FAILURE
-        collector.record_failure(
-            error_type=type(e).__name__,
-            error_message=str(e),
-            context=f"CRUD operation '{action}' failed",
-            recoverable=True,
-            node_name="execute",
-        )
-        # 记录失败的 TOOL_CALL + TOOL_RESULT
-        collector.record_tool_call(
-            tool_name=f"crud_{action}",
-            tool_input={"title": decision.get("title"), "path": decision.get("path")},
-            tool_output=str(e)[:2000],
-            duration_ms=duration_ms,
-        )
-        collector.record_tool_result(
-            tool_name=f"crud_{action}",
-            tool_output=str(e)[:2000],
-            duration_ms=duration_ms,
+
+        # 失败事件：FAILURE + TOOL_CALL + TOOL_RESULT
+        events.append({
+            "action_type": ActionType.FAILURE,
+            "action_detail": FailureDetail(
+                error_type=type(e).__name__,
+                error_message=str(e),
+                context=f"CRUD operation '{action}' failed",
+                recoverable=True,
+                node_name="execute",
+            ).model_dump(),
+        })
+        events.extend(_build_tool_events(
+            f"crud_{action}",
+            {"title": decision.get("title"), "path": decision.get("path")},
+            str(e),
+            duration_ms,
             success=False,
-            error_type=type(e).__name__,
-        )
+            err_type=type(e).__name__,
+        ))
 
         # ── REPLAN：失败后尝试替代方案 ──
         replan_reason = f"{action} 失败: {str(e)[:100]}"
         alternative_action = None
 
-        # 策略 1: create 失败（已存在）→ 尝试 update
         if action == "create" and "已存在" in str(e):
             alternative_action = "update"
             replan_reason += " → 尝试 update 替代"
-
-        # 策略 2: update 失败（不存在）→ 尝试 create
         elif action == "update" and "不存在" in str(e):
             alternative_action = "create"
             replan_reason += " → 尝试 create 替代"
 
-        # 记录 REPLAN
-        collector.record_replan(
-            reason=replan_reason,
-            new_plan=f"尝试 {alternative_action}" if alternative_action else "返回错误",
-            trigger=f"crud_{action}_failure",
-        )
+        events.append({
+            "action_type": ActionType.REPLAN,
+            "action_detail": ReplanDetail(
+                reason=replan_reason,
+                new_plan=f"尝试 {alternative_action}" if alternative_action else "返回错误",
+                trigger=f"crud_{action}_failure",
+            ).model_dump(),
+        })
 
         # 尝试替代方案
         if alternative_action:
@@ -783,34 +859,31 @@ async def execute(state: WikiState, config: RunnableConfig) -> WikiState:
                         tags=decision.get("tags") or [],
                     )
                 retry_ms = (_time.monotonic() - retry_start) * 1000
-
-                # 记录替代方案的 TOOL_CALL + TOOL_RESULT
-                collector.record_tool_call(
-                    tool_name=f"crud_{alternative_action}_retry",
-                    tool_input={"title": decision.get("title"), "path": decision.get("path")},
-                    tool_output=str(result)[:2000] if result else None,
-                    duration_ms=retry_ms,
-                )
-                collector.record_tool_result(
-                    tool_name=f"crud_{alternative_action}_retry",
-                    tool_output=str(result)[:2000] if result else None,
-                    duration_ms=retry_ms,
-                    success=result.get("status") == "ok" if result else False,
-                )
+                retry_success = result.get("status") == "ok" if result else False
+                events.extend(_build_tool_events(
+                    f"crud_{alternative_action}_retry",
+                    {"title": decision.get("title"), "path": decision.get("path")},
+                    result,
+                    retry_ms,
+                    retry_success,
+                ))
             except Exception as retry_e:
                 result = {"status": "error", "message": f"替代方案也失败: {retry_e}"}
-                collector.record_failure(
-                    error_type=type(retry_e).__name__,
-                    error_message=str(retry_e),
-                    context=f"Retry {alternative_action} also failed",
-                    recoverable=False,
-                    node_name="execute",
-                )
+                events.append({
+                    "action_type": ActionType.FAILURE,
+                    "action_detail": FailureDetail(
+                        error_type=type(retry_e).__name__,
+                        error_message=str(retry_e),
+                        context=f"Retry {alternative_action} also failed",
+                        recoverable=False,
+                        node_name="execute",
+                    ).model_dump(),
+                })
         else:
             result = {"status": "error", "message": str(e)}
 
     print(f"[Wiki Agent] 执行结果: {result}")
-    return {**state, "action_result": result, "stage": "execute"}
+    return {**state, "action_result": result, "stage": "execute", "_events": events}
 
 
 def should_decide(state: WikiState) -> Literal["decide", "end"]:
@@ -829,7 +902,9 @@ def should_execute(state: WikiState) -> Literal["execute", "end"]:
 
 def create_wiki_graph(checkpointer):
     """创建 wiki agent graph"""
-    graph = StateGraph(WikiState)
+    from sdk.adapters.langgraph import instrument_langgraph
+
+    graph = instrument_langgraph(StateGraph(WikiState))
     graph.add_node("search", search)
     graph.add_node("respond", respond)
     graph.add_node("decide", decide)

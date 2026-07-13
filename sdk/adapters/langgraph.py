@@ -153,6 +153,19 @@ class InstrumentedStateGraph:
                 result = _call_node(node_func, state, config)
                 duration_ms = (time.time() - start_time) * 1000
 
+                # ── 排出节点返回的 _events（域特定事件：retrieval, memory, plan 等） ──
+                if isinstance(result, dict):
+                    events = result.pop("_events", None)
+                    if events:
+                        for event in events:
+                            at = event.get("action_type")
+                            ad = event.get("action_detail", {})
+                            obs = event.get("observation")
+                            if at:
+                                self._collector.record(at, ad, obs)
+                        # 中间 flush 防止事件堆积丢失
+                        self._collector._flush(block=False)
+
                 state_after = self._extract_result_summary(result)
                 state_after["duration_ms"] = round(duration_ms, 1)
 
@@ -203,6 +216,19 @@ class InstrumentedStateGraph:
             try:
                 result = await _call_node_async(node_func, state, config)
                 duration_ms = (time.time() - start_time) * 1000
+
+                # ── 排出节点返回的 _events（域特定事件：retrieval, memory, plan 等） ──
+                if isinstance(result, dict):
+                    events = result.pop("_events", None)
+                    if events:
+                        for event in events:
+                            at = event.get("action_type")
+                            ad = event.get("action_detail", {})
+                            obs = event.get("observation")
+                            if at:
+                                self._collector.record(at, ad, obs)
+                        # 中间 flush 防止事件堆积丢失
+                        await self._collector._async_flush()
 
                 state_after = self._extract_result_summary(result)
                 state_after["duration_ms"] = round(duration_ms, 1)
