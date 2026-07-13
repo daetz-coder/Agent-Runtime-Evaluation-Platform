@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # 方式 1: LLM Proxy —一行代码接入
 # ══════════════════════════════════════════════════════════════
 
-def demo_proxy():
+async def demo_proxy():
     """原来的代码 → 只改一行"""
     from sdk import create_proxy_llm, get_collector
 
@@ -34,10 +34,10 @@ def demo_proxy():
 
     # 后续使用完全相同
     collector = get_collector()
-    collector.start(goal="测试 LLM Proxy 接入")
+    await collector.start(goal="测试 LLM Proxy 接入")
 
     # LLM 调用会自动记录到收集器
-    collector.finish()
+    await collector.finish()
     print("  [OK] LLM Proxy: 一行代码接入，轨迹已收集")
 
 
@@ -45,7 +45,7 @@ def demo_proxy():
 # 方式 2: LangChain Callback —一行代码接入
 # ══════════════════════════════════════════════════════════════
 
-def demo_callback():
+async def demo_callback():
     """原有的 callbacks=[] → 加上 handler"""
     from sdk import create_callback_handler, get_collector
 
@@ -62,8 +62,8 @@ def demo_callback():
     )
 
     collector = get_collector()
-    collector.start(goal="测试 Callback 接入")
-    collector.finish()
+    await collector.start(goal="测试 Callback 接入")
+    await collector.finish()
     print("  [OK] Callback: 一行代码接入，轨迹已收集")
 
 
@@ -103,13 +103,15 @@ def demo_langgraph():
 # ══════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    import asyncio
+
     print("=" * 60)
     print("  Agent Eval SDK — 零侵入接入演示")
     print("=" * 60)
     print()
 
-    demo_proxy()
-    demo_callback()
+    asyncio.run(demo_proxy())
+    asyncio.run(demo_callback())
     demo_langgraph()
 
     print()

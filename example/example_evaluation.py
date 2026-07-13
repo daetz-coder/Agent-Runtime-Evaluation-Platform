@@ -141,7 +141,7 @@ def print_results(evaluation: dict) -> None:
     print("\n" + "=" * 60)
 
 
-def main() -> None:
+async def main() -> None:
     print("Agent Evaluation Platform — SDK 评估示例")
     print("=" * 60)
 
@@ -162,7 +162,7 @@ def main() -> None:
     }
 
     print("\n步骤 1: collector.start() — 创建任务并记录 plan")
-    task_id = collector.start(goal, context)
+    task_id = await collector.start(goal, context)
     print(f"  task_id = {task_id}")
 
     print("\n步骤 2: collector.record() — 记录 Agent 运行轨迹")
@@ -170,7 +170,7 @@ def main() -> None:
     print("  已记录 8 个后续步骤")
 
     print("\n步骤 3: collector.finish(auto_run=True) — 上报轨迹并触发评估")
-    collector.finish(auto_run=True)
+    await collector.finish(auto_run=True)
 
     print("\n步骤 4: 等待评估完成...")
     result = _wait_for_evaluation(task_id)
@@ -183,8 +183,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import asyncio
+
     try:
-        main()
+        asyncio.run(main())
     except httpx.ConnectError:
         print("\n连接失败！请确保后端正在运行:")
         print("  python -m app.main")

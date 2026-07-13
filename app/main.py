@@ -141,13 +141,17 @@ AI Agent 全维度评估平台，通过 SDK 轨迹采集覆盖规划、决策、
 
 ### SDK 埋点模式
 ```python
+import asyncio
 from sdk import get_collector
 
-collector = get_collector()
-task_id = collector.start("分析项目依赖")
-collector.record_plan(steps=[...])
-collector.record_tool_call(name="bash", input="pip list --outdated", output="...")
-collector.finish()
+async def main():
+    collector = get_collector()
+    task_id = await collector.start("分析项目依赖")
+    collector.record_plan(steps=[...])
+    collector.record_tool_call(name="bash", input="pip list --outdated", output="...")
+    await collector.finish()
+
+asyncio.run(main())
 ```
 → SDK 将轨迹上报至平台 → 异步完成评估
 

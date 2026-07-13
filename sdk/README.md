@@ -21,19 +21,19 @@ pip install httpx langchain-core langgraph
 ### 方式 1：LangGraph 自动采集（推荐）
 
 ```python
+import asyncio
 from sdk import instrument_langgraph, create_proxy_llm, get_collector
 
-# 包裹 LLM（自动记录 LLM 调用、工具决策）
-llm = create_proxy_llm(ChatOpenAI(model="gpt-4"))
+async def main():
+    llm = create_proxy_llm(ChatOpenAI(model="gpt-4"))
+    graph = instrument_langgraph(build_graph())
 
-# 包裹 Graph（自动记录节点执行、状态变化、工具调用、失败）
-graph = instrument_langgraph(build_graph())
+    collector = get_collector()
+    await collector.start("用户目标", {"key_facts": ["项目用JWT"]})
+    result = await graph.ainvoke(state, config)
+    await collector.finish(auto_run=True)  # flush + 触发评估
 
-# 生命周期
-collector = get_collector()
-collector.start("用户目标", {"key_facts": ["项目用JWT"]})
-result = await graph.ainvoke(state, config)
-collector.finish(auto_run=True)  # flush + 触发评估
+asyncio.run(main())
 ```
 
 ### 方式 2：LangChain Callback
@@ -45,23 +45,29 @@ handler = create_callback_handler()
 llm = ChatOpenAI(callbacks=[handler])
 ```
 
+Callback 钩子为同步接口，`record_*()` 在回调内同步写入内存缓冲；任务生命周期仍须在 async 上下文中 `await collector.start()` / `await collector.finish()`。
+
 ### 方式 3：手动记录（非 LangChain 框架）
 
 ```python
+import asyncio
 from sdk import get_collector, ActionType
 
-collector = get_collector()
-collector.start("修复登录 bug")
+async def main():
+    collector = get_collector()
+    await collector.start("修复登录 bug")
 
-collector.record_think("分析 JWT 过期问题")
-collector.record_tool_call("search_code", {"query": "JWT expiry"})
-collector.record_tool_result("search_code", {"files": ["auth.py"]})
-collector.record_replan(reason="JWT 库版本不兼容", new_plan="升级到 v2.0")
-collector.record_memory_write("jwt_version", "2.0", source="discovery")
-collector.record_retrieval("JWT 配置", [{"title": "auth.md", "snippet": "..."}])
-collector.record_failure("ImportError", "jwt v1 not found", recoverable=True)
+    collector.record_think("分析 JWT 过期问题")
+    collector.record_tool_call("search_code", {"query": "JWT expiry"})
+    collector.record_tool_result("search_code", {"files": ["auth.py"]})
+    collector.record_replan(reason="JWT 库版本不兼容", new_plan="升级到 v2.0")
+    collector.record_memory_write("jwt_version", "2.0", source="discovery")
+    collector.record_retrieval("JWT 配置", [{"title": "auth.md", "snippet": "..."}])
+    collector.record_failure("ImportError", "jwt v1 not found", recoverable=True)
 
-collector.finish(auto_run=True)
+    await collector.finish(auto_run=True)
+
+asyncio.run(main())
 ```
 
 ## 配置
@@ -73,7 +79,16 @@ collector.finish(auto_run=True)
 | `EVAL_ENABLED` | `true` | 总开关 |
 | `EVAL_API_BASE_URL` | `http://127.0.0.1:8000` | 评估平台地址 |
 | `EVAL_API_KEY` | `""` | API 认证密钥 |
-| `EVAL_BATCH_SIZE` | `10` | 批量上传阈值 |
+| `EVAL_BATCH_SIZE` | `10` | 批量上传阈值（缓冲满后由 `finish` / `_flush` 上传） |
+
+## API 分层
+
+| 类型 | 方法 | 说明 |
+|------|------|------|
+| **async**（含网络 I/O） | `start()`、`finish()`、`_flush()` | 须在 async 函数中 `await` |
+| **sync**（纯内存） | `record()`、`record_*()`、`attach()`、`reset()` | LangChain 同步回调 / 图节点内直接调用 |
+
+独立脚本请用 `asyncio.run(main())` 包裹生命周期调用；不可直接 `collector.start()`（会返回 coroutine 而不执行）。
 
 ## 14 种 Action Type
 
@@ -97,31 +112,37 @@ collector.finish(auto_run=True)
 ## 任务管理
 
 ```python
-collector = get_collector()
+import asyncio
+from sdk import get_collector
 
-# 创建任务
-task_id = collector.start("目标")
+async def main():
+    collector = get_collector()
 
-# 中途更新上下文（如追加 key_facts）
-collector.update_task(context={"key_facts": ["事实1", "事实2"]})
+    # 创建任务（context 在 start 时传入）
+    task_id = await collector.start("目标", context={"key_facts": ["事实1"]})
 
-# 更新状态
-collector.update_task(status="running")
+    # 中途持久化缓冲步骤（可选）
+    await collector._flush()
 
-# 结束 + 触发评估
-collector.finish(auto_run=True)
+    # HITL resume：复用已有 task
+    collector.attach(task_id)
 
-# 重置（多次评估场景）
-collector.reset()
+    # 结束；flush 失败时不会 auto_run
+    await collector.finish(auto_run=True)
 
-# 释放资源
-collector.close()
+    # 重置（多次评估场景）
+    collector.reset()
+
+asyncio.run(main())
 ```
+
+`finish()` 会在 flush 成功时将 task 标为 `completed`，失败时标为 `failed`。`auto_run=True` 仅在 flush 全部成功时触发评估。
 
 ## 容错机制
 
 - **离线模式**：平台不可达时轨迹缓冲在内存，不阻塞 Agent 运行
 - **指数退避重试**：HTTP 请求失败自动重试 3 次（0.5s → 1s → 2s）
 - **失败回退缓冲**：flush 失败时步骤回退到本地缓冲，下次 flush 重试
+- **auto_run 守卫**：flush 未成功时不触发评估，避免空轨迹全 0 分
 - **错误日志**：所有失败记录到 `sdk.collector` logger，不再静默吞异常
 - **有界去重**：`_seen_events` 上限 5000 条，避免长任务内存泄漏
