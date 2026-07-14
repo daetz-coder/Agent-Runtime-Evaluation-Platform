@@ -14,7 +14,6 @@ import yaml
 
 from app.wiki_agent.config import settings
 from app.wiki_agent.wiki.schemas import (
-    CategoryInfo,
     EntryIndexItem,
     GraphLink,
     GraphNode,
@@ -444,61 +443,6 @@ def get_link_graph() -> WikiGraph:
     return WikiGraph(nodes=nodes, links=links)
 
 
-# ── 分类体系 ────────────────────────────────────────────────
-
-
-def get_categories() -> list[CategoryInfo]:
-    """从所有页面的 frontmatter category 字段构建分类树"""
-    cat_map: dict[str, dict] = {}  # full_path -> {name, count, children_paths}
-
-    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
-        if ".git" in md_file.parts:
-            continue
-        try:
-            content = md_file.read_text(encoding="utf-8")
-            meta, _ = _parse_frontmatter(content)
-            category = meta.get("category", "")
-            if not category:
-                # 从路径推断分类
-                rel = _rel_path(md_file)
-                parts = rel.replace("\\", "/").split("/")
-                category = parts[0] if len(parts) > 1 else "未分类"
-        except Exception:
-            continue
-
-        # 支持层级分类如 "技术/编程语言"
-        parts = category.split("/")
-        current_path = ""
-        for i, part in enumerate(parts):
-            parent_path = current_path
-            current_path = f"{current_path}/{part}" if current_path else part
-            if current_path not in cat_map:
-                cat_map[current_path] = {"name": part, "count": 0, "children": set()}
-            cat_map[current_path]["count"] += 1
-            if parent_path and parent_path in cat_map:
-                cat_map[parent_path]["children"].add(current_path)
-
-    # 构建顶层分类列表
-    def build_tree(path: str) -> CategoryInfo:
-        info = cat_map[path]
-        children = [build_tree(c) for c in sorted(info["children"])]
-        return CategoryInfo(
-            name=info["name"],
-            path=path,
-            count=info["count"],
-            children=children,
-        )
-
-    # 找出顶层分类（没有父分类的）
-    all_paths = set(cat_map.keys())
-    child_paths = set()
-    for info in cat_map.values():
-        child_paths.update(info["children"])
-    top_paths = all_paths - child_paths
-
-    return [build_tree(p) for p in sorted(top_paths)]
-
-
 # ── 词条索引 ────────────────────────────────────────────────
 
 
@@ -550,33 +494,3 @@ def get_entry_index() -> dict[str, list[EntryIndexItem]]:
         index[letter].sort(key=lambda x: x.title)
 
     return dict(sorted(index.items()))
-
-
-def get_entries_by_category(category: str) -> list[WikiSearchResult]:
-    """获取指定分类下的所有词条"""
-    results: list[WikiSearchResult] = []
-
-    for md_file in KNOWLEDGE_DIR.rglob("*.md"):
-        if ".git" in md_file.parts:
-            continue
-        try:
-            content = md_file.read_text(encoding="utf-8")
-            meta, body = _parse_frontmatter(content)
-            page_cat = meta.get("category", "")
-            # 从路径推断分类（如果没有 frontmatter category）
-            if not page_cat:
-                rel = _rel_path(md_file)
-                parts = rel.replace("\\", "/").split("/")
-                page_cat = parts[0] if len(parts) > 1 else "未分类"
-        except Exception:
-            continue
-
-        if page_cat == category or page_cat.startswith(category + "/"):
-            rel = _rel_path(md_file)
-            title = meta.get("title", md_file.stem)
-            summary = meta.get("summary", "")
-            snippet = summary or body[:100].replace("\n", " ").strip()
-            results.append(WikiSearchResult(path=rel, title=title, snippet=snippet, score=0))
-
-    results.sort(key=lambda r: r.title)
-    return results

@@ -121,7 +121,6 @@ async def run_evaluation(
     Run evaluation for a task (truly async).
 
     - **task_id**: UUID of the task to evaluate
-    - **include_details**: Include detailed feedback (default: true)
 
     Returns immediately with the evaluation ID (status=in_progress).
     When use_stream=false (default), evaluation runs in background — poll GET /evaluations/{id}.
@@ -151,16 +150,6 @@ async def run_evaluation(
         )
 
     return evaluation
-
-
-@router.get("/settings")
-async def get_eval_settings():
-    """Return evaluation public config (no secrets)."""
-    return {
-        "default_provider": settings.DEFAULT_LLM_PROVIDER,
-        "auth_enabled": settings.AUTH_ENABLED,
-        "webhook_configured": bool(settings.EVAL_WEBHOOK_URL),
-    }
 
 
 @router.get("/diff", response_model=TrajectoryDiffResponse)

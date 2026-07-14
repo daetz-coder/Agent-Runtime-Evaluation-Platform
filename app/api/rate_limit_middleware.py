@@ -27,9 +27,7 @@ _LIMITED_PATHS = {
 }
 
 # Paths that should never be rate-limited regardless of method
-_SKIP_PATHS = {
-    "/api/v1/evaluations/settings",
-}
+_SKIP_PATHS: set[str] = set()
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

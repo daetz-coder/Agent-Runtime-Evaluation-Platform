@@ -154,15 +154,6 @@ class TagInfo(BaseModel):
     pages: list[str] = Field(default_factory=list)
 
 
-class CategoryInfo(BaseModel):
-    """分类信息"""
-
-    name: str
-    path: str
-    count: int
-    children: list[CategoryInfo] = Field(default_factory=list)
-
-
 class EntryIndexItem(BaseModel):
     """词条索引项"""
 

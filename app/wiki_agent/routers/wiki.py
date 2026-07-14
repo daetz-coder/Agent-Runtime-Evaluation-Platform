@@ -12,7 +12,6 @@ from app.wiki_agent.agent.tools.sync_manager import sync_manager
 from app.wiki_agent.config import settings
 from app.wiki_agent.wiki import git_service, service
 from app.wiki_agent.wiki.schemas import (
-    CategoryInfo,
     TagInfo,
     WikiBacklink,
     WikiCommit,
@@ -176,21 +175,6 @@ def get_tags():
 def get_graph():
     """获取知识图谱数据（节点 + 链接）"""
     return service.get_link_graph()
-
-
-# ── 分类体系 ────────────────────────────────────────────────
-
-
-@router.get("/categories", response_model=list[CategoryInfo])
-def get_categories():
-    """获取分类树"""
-    return service.get_categories()
-
-
-@router.get("/category/{category:path}/entries", response_model=list[WikiSearchResult])
-def get_entries_by_category(category: str):
-    """获取指定分类下的所有词条"""
-    return service.get_entries_by_category(category)
 
 
 # ── 词条索引 ────────────────────────────────────────────────
