@@ -354,44 +354,27 @@ class BaseEvaluator(ABC):
         max_retries: int = 3,
         prompt: Optional[Any] = None,
     ) -> Any:
-        """调用结构化输出链，三级降级策略。
+        """调用结构化输出链，两级降级策略。
 
         降级顺序：
-            1. with_structured_output（API 级 function calling，GPT-4/Claude 支持）
-            2. PydanticOutputParser（prompt 注入 JSON Schema，DeepSeek 等模型可用）
-            3. 手动 JSON 解析（最后兜底）
+            1. PydanticOutputParser（prompt 注入 JSON Schema）
+            2. 手动 JSON 解析（最后兜底）
+
+        DeepSeek / 智谱等默认模型对 with_structured_output 支持不佳，不再走该路径。
 
         参数:
-            chain: LangChain runnable（prompt | structured_llm）
+            chain: LangChain runnable（prompt | llm）
             inputs: prompt 输入
             schema_class: 期望的 Pydantic 输出 Schema
             max_retries: 每级策略的最大重试次数
-            prompt: 原始 ChatPromptTemplate（用于 PydanticOutputParser 降级）
+            prompt: 原始 ChatPromptTemplate（用于 PydanticOutputParser）
         """
-        # ── 策略 1：with_structured_output ──
-        result = await self._try_structured_output(chain, inputs, schema_class, max_retries)
-        if result is not None:
-            return result
-
-        # ── 策略 2：PydanticOutputParser ──
         if prompt is not None:
             result = await self._try_pydantic_parser(prompt, inputs, schema_class, max_retries)
             if result is not None:
                 return result
 
-        # ── 策略 3：手动 JSON 解析 ──
         return await self._try_manual_parse(chain, inputs, schema_class)
-
-    async def _try_structured_output(
-        self, chain, inputs: Dict[str, Any], schema_class: type, max_retries: int
-    ) -> Optional[Any]:
-        """策略 1：with_structured_output（API 级 function calling）。
-
-        DeepSeek / 智谱等国产模型对 with_structured_output 支持不佳，
-        统一跳过，直接走 PydanticOutputParser 路径。
-        """
-        logger.info("Skipping with_structured_output, using PydanticOutputParser directly")
-        return None
 
     async def _try_pydantic_parser(
         self, prompt, inputs: Dict[str, Any], schema_class: type, max_retries: int

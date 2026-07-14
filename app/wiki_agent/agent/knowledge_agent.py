@@ -152,7 +152,6 @@ DECIDE_PROMPT = _RAW_PROMPT.rstrip() + "\n\n{format_instructions}\n"
 # ── LLM 实例 ────────────────────────────────────────────────────────────────
 
 _llm: ChatOpenAI | None = None
-_structured_llm: ChatOpenAI | None = None
 
 
 def _get_llm() -> ChatOpenAI:
@@ -160,15 +159,6 @@ def _get_llm() -> ChatOpenAI:
     if _llm is None:
         _llm = create_chat_llm(temperature=0.3)
     return _llm
-
-
-def _get_structured_llm():
-    """获取支持 with_structured_output 的 LLM（如果可用）。
-
-    注意：DeepSeek / 智谱等国产模型对 with_structured_output 支持不佳，
-    统一走 PydanticOutputParser 路径（prompt 中注入 schema + 文本解析）。
-    """
-    return None
 
 
 # ── 文本预处理 ──────────────────────────────────────────────────────────────
@@ -211,8 +201,7 @@ async def decide_action(
 ) -> KnowledgeDecision:
     """分析对话，决定是否需要对知识库进行操作。
 
-    优先使用 with_structured_output（API 层 schema 约束），
-    不可用时回退到 PydanticOutputParser（文本解析 + 重试）。
+    使用 PydanticOutputParser（prompt 注入 schema + 文本解析）。
     """
     if existing_context is None:
         ctx = await retrieve_context(
@@ -220,93 +209,12 @@ async def decide_action(
         )
         existing_context = build_context_block(ctx) or "（无已有上下文）"
 
-    # ── 路径 1：with_structured_output（推荐） ──
-    structured_llm = _get_structured_llm()
-    if structured_llm is not None:
-        return await _decide_with_structured_output(
-            user_message, ai_response, existing_context, structured_llm, max_retries
-        )
-
-    # ── 路径 2：PydanticOutputParser（回退） ──
     return await _decide_with_parser(
         user_message, ai_response, existing_context, max_retries
     )
 
 
-# ── 路径 1：with_structured_output ──────────────────────────────────────────
-
-
-async def _decide_with_structured_output(
-    user_message: str,
-    ai_response: str,
-    existing_context: str,
-    structured_llm,
-    max_retries: int,
-) -> KnowledgeDecision:
-    """使用 with_structured_output 决策（API 层 schema 约束 + 自动重试）。"""
-    prompt = ChatPromptTemplate.from_template(DECIDE_PROMPT)
-    chain = prompt | structured_llm
-
-    inputs = {
-        "user_message": user_message,
-        "ai_response": ai_response,
-        "existing_context": existing_context,
-        "format_instructions": _FORMAT_INSTRUCTIONS,
-    }
-
-    last_error = None
-    for attempt in range(max_retries + 1):
-        try:
-            retry_inputs = dict(inputs)
-            if attempt > 0 and last_error:
-                retry_inputs["existing_context"] = (
-                    f"{existing_context}\n\n⚠️ 上一次输出校验失败: {last_error}\n"
-                    f"请确保 action='{_guess_action(user_message)}' 时必填字段不为空。"
-                )
-
-            result = await chain.ainvoke(retry_inputs)
-
-            # include_raw=True 返回 {"raw": msg, "parsed": obj|None, "parsing_error": err|None}
-            if isinstance(result, dict) and "parsed" in result:
-                parsed = result["parsed"]
-                if parsed is not None and isinstance(parsed, KnowledgeDecision):
-                    print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次成功: action={parsed.action}")
-                    return parsed
-                # parsed 为 None — 尝试从 raw 中手动提取 JSON 并通过 Pydantic 验证
-                raw_msg = result.get("raw")
-                raw_text = raw_msg.content if hasattr(raw_msg, "content") else str(raw_msg)
-                try:
-                    data = _extract_json(raw_text)
-                    decision = KnowledgeDecision.model_validate(data)
-                    print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次从 raw 手动解析成功: action={decision.action}")
-                    return decision
-                except Exception as inner_e:
-                    last_error = f"parsed=None, raw 手动解析也失败: {inner_e}"
-                    logger.warning("structured_output attempt %d/%d: %s", attempt + 1, max_retries + 1, last_error)
-                    continue
-
-            # 兼容不带 include_raw 的情况
-            if isinstance(result, KnowledgeDecision):
-                print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次成功: action={result.action}")
-                return result
-
-            if isinstance(result, dict):
-                decision = KnowledgeDecision.model_validate(result)
-                print(f"[Knowledge Agent] structured_output 第 {attempt + 1} 次成功: action={decision.action}")
-                return decision
-
-            last_error = f"Expected KnowledgeDecision, got {type(result).__name__}"
-
-        except Exception as e:
-            last_error = str(e)
-            logger.warning("structured_output attempt %d/%d failed: %s", attempt + 1, max_retries + 1, last_error)
-
-    # 全部失败 → 回退到 parser
-    logger.warning("structured_output failed after %d retries, falling back to parser", max_retries + 1)
-    return await _decide_with_parser(user_message, ai_response, existing_context, max_retries)
-
-
-# ── 路径 2：PydanticOutputParser ────────────────────────────────────────────
+# ── PydanticOutputParser ────────────────────────────────────────────────────
 
 
 async def _decide_with_parser(
@@ -361,15 +269,3 @@ async def _decide_with_parser(
 
 
 # ── 辅助 ────────────────────────────────────────────────────────────────────
-
-
-def _guess_action(user_message: str) -> str:
-    """从用户消息猜测最可能的 action（用于错误反馈）。"""
-    msg = user_message.lower()
-    if any(w in msg for w in ["创建", "新建", "添加", "记录", "保存"]):
-        return "create"
-    if any(w in msg for w in ["更新", "修改", "补充", "完善"]):
-        return "update"
-    if any(w in msg for w in ["删除", "移除"]):
-        return "delete"
-    return "none"
