@@ -31,7 +31,7 @@
         <div class="messages-inner">
           <!-- 空状态 -->
           <div v-if="currentMessages.length === 0" class="chat-empty">
-            <div class="empty-icon">🤖</div>
+            <div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48"><path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z" fill="#1a1a1a"/></svg></div>
             <h2>Wiki Agent</h2>
             <p>你的个人知识库助手</p>
             <p class="empty-hint">对话中的知识会自动识别，你可以选择保存到知识库</p>
@@ -63,7 +63,7 @@
 
             <!-- AI 消息 -->
             <div v-else-if="msg.role === 'assistant'" class="msg-container assistant">
-              <div class="msg-avatar">🤖</div>
+              <div class="msg-avatar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18"><path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z" fill="#1a1a1a"/></svg></div>
               <div class="msg-body">
                 <!-- 状态提示 -->
                 <div v-if="msg.status" class="status-hint">
@@ -81,6 +81,12 @@
                   <div class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
                 </div>
                 <!-- 评估任务链接 -->
+                <div v-if="msg.evaluationTaskId" class="evaluation-link-card">
+                  <span>📊 运行轨迹已提交评估</span>
+                  <button class="eval-link-btn" @click="goToEvaluationTask(msg.evaluationTaskId)">
+                    查看评估任务 →
+                  </button>
+                </div>
                 <!-- 加载中（还没有内容时） -->
                 <div v-if="!msg.content && !msg.status" class="msg-bubble assistant-bubble">
                   <div class="typing-dots">
@@ -218,8 +224,11 @@
 
 <script setup>
 import { ref, reactive, computed, nextTick, onMounted, watch } from "vue";
-import { streamAuthHeaders } from "@/utils/auth";
+import { useRouter } from "vue-router";
+import { streamAuthHeaders } from "../../utils/auth";
 import { marked } from 'marked'
+
+const router = useRouter();
 const emit = defineEmits(["knowledgeUpdated", "navigateTo"]);
 
 const input = ref("");
@@ -384,6 +393,7 @@ async function sendMessage(text) {
     status: null,
     extraction: null,
     extractionResult: null,
+    evaluationTaskId: null,
     streaming: true,
   });
   session.messages.push(aiMsg);
@@ -398,11 +408,6 @@ async function sendMessage(text) {
         message: text,
       }),
     });
-
-    if (!res.ok) {
-      aiMsg.content = `请求失败: HTTP ${res.status}`;
-      return;
-    }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -440,7 +445,13 @@ async function sendMessage(text) {
             aiMsg.status = null;
             aiMsg.extractionStatus = null; // 待确认状态
             scrollToBottom();
+          } else if (data.type === "evaluation_task") {
+            aiMsg.evaluationTaskId = data.task_id;
+            scrollToBottom();
           } else if (data.type === "done") {
+            if (data.evaluation_task_id) {
+              aiMsg.evaluationTaskId = data.evaluation_task_id;
+            }
             aiMsg.streaming = false;
           } else if (data.type === "error") {
             aiMsg.content = `错误: ${data.message}`;
@@ -456,11 +467,6 @@ async function sendMessage(text) {
   } finally {
     aiMsg.streaming = false;
     loading.value = false;
-    // If the stream ended without producing any visible content, clear the
-    // typing indicator by showing a fallback message.
-    if (!aiMsg.content && !aiMsg.wikiResults && !aiMsg.extraction) {
-      aiMsg.content = "抱歉，未能获取到回复内容。";
-    }
     scrollToBottom();
   }
 }
@@ -505,6 +511,10 @@ async function confirmExtraction(msg) {
   }
 }
 
+function goToEvaluationTask(taskId) {
+  router.push(`/tasks/${taskId}`);
+}
+
 async function rejectExtraction(msg) {
   if (!msg.extraction || !msg.extraction.thread_id) return;
 
@@ -540,6 +550,24 @@ async function scrollToBottom(options = {}) {
   }
 }
 
+// Wiki-link extension: [[Page Name]] → clickable link
+const wikiLinkExt = {
+  name: 'wikiLink',
+  level: 'inline',
+  start(src) { return src.indexOf('[['); },
+  tokenizer(src) {
+    const match = src.match(/^\[\[([^\]]+)\]\]/);
+    if (match) {
+      return { type: 'wikiLink', raw: match[0], text: match[1].trim() };
+    }
+  },
+  renderer(token) {
+    const path = token.text.replace(/\.md$/i, '');
+    return `<a class="wiki-link" onclick="window.__wikiNavigate('${path.replace(/'/g, "\\'")}')" title="${token.text}">${token.text}</a>`;
+  },
+};
+marked.use({ extensions: [wikiLinkExt] });
+
 function renderMarkdown(text) {
   if (!text) return "";
   try {
@@ -550,6 +578,10 @@ function renderMarkdown(text) {
     return marked.parse(text);
   } catch {
     let html = text
+      .replace(/\[\[([^\]]+)\]\]/g, (_, p) => {
+        const path = p.trim().replace(/\.md$/i, '');
+        return `<a class="wiki-link" onclick="window.__wikiNavigate('${path.replace(/'/g, "\\'")}')" title="${p.trim()}">${p.trim()}</a>`;
+      })
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
       .replace(/^### (.+)$/gm, "<h3>$1</h3>")
@@ -959,6 +991,23 @@ onMounted(async () => {
   text-decoration: underline;
 }
 
+.markdown-body :deep(.wiki-link) {
+  display: inline-block;
+  background: #e8f0fe;
+  color: #1a73e8;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.markdown-body :deep(.wiki-link:hover) {
+  background: #d0e3f7;
+  text-decoration: underline;
+}
+
 /* ── 状态提示 ── */
 .status-hint {
   font-size: 12px;
@@ -998,6 +1047,35 @@ onMounted(async () => {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.6;
+}
+
+/* ── 评估任务链接 ── */
+.evaluation-link-card {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f0f9ff;
+  border: 1px solid #b3d8ff;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #409eff;
+}
+
+.eval-link-btn {
+  border: none;
+  background: #409eff;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.eval-link-btn:hover {
+  background: #66b1ff;
 }
 
 /* ── 知识提取卡片 ── */

@@ -3,7 +3,7 @@
 </template>
 
 <script setup lang="ts">
-import WikiAgentApp from '@/wiki/WikiAgentApp.vue'
+import WikiAgentApp from '@wiki/WikiAgentApp.vue'
 </script>
 
 <style scoped>

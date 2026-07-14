@@ -21,10 +21,16 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Single source of truth for Wiki UI (also used by standalone wiki_agent frontend)
+      '@wiki': path.resolve(__dirname, '../app/wiki_agent/frontend/src/wiki'),
     },
   },
-    server: {
+  server: {
     port: 3000,
+    fs: {
+      // Allow importing Wiki UI from app/wiki_agent/frontend outside this package root
+      allow: [path.resolve(__dirname, '..')],
+    },
     proxy: {
       '/api': {
         target: apiTarget,

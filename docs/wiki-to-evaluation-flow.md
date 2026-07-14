@@ -96,7 +96,7 @@ flowchart TB
 
 | 组件 | 路径 | 职责 |
 |------|------|------|
-| ChatView | `frontend/src/wiki/components/ChatView.vue` | 消费对话 SSE，展示流式回复与评估链接 |
+| ChatView | `app/wiki_agent/frontend/src/wiki/components/ChatView.vue` | 消费对话 SSE，展示流式回复与评估链接 |
 | chat router | `app/wiki_agent/routers/chat.py` | 会话管理、SSE 封装、`evaluation_task` 事件 |
 | LangGraph | `app/wiki_agent/agent/graph.py` | search→respond→decide→execute 编排 |
 | Collector | `sdk/collector.py` | 轨迹缓冲、HTTP 上报 task/trajectory |
