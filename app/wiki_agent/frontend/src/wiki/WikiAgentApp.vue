@@ -195,7 +195,10 @@ const showTemplate = ref(false);
 const selectedTemplate = ref(null);
 
 function openVectorAdmin() {
-  window.open("/vector-admin", "_blank");
+  // Platform embeds wiki at /wiki-agent and owns Vue /vector-admin;
+  // standalone wiki FE proxies static HTML at /wiki-admin.
+  const onPlatform = window.location.pathname.includes("wiki-agent");
+  window.open(onPlatform ? "/vector-admin" : "/wiki-admin", "_blank");
 }
 
 async function loadCategories() {

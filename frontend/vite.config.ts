@@ -40,6 +40,10 @@ export default defineConfig({
         target: apiTarget,
         changeOrigin: true,
       },
+      '/wiki-admin': {
+        target: apiTarget,
+        changeOrigin: true,
+      },
     },
   },
   css: {

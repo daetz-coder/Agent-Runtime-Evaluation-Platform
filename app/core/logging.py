@@ -100,7 +100,6 @@ def setup_logging() -> None:
     # Suppress noisy third-party loggers
     for name in (
         "uvicorn.access",
-        "docker",
         "httpcore",
         "httpx",
         "sqlalchemy.engine",
