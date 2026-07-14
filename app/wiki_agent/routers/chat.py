@@ -11,7 +11,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
 from app.wiki_agent.agent.graph import resume_and_execute, run_chat_invoke, run_chat_stream
-from app.wiki_agent.agent.tools import crud_tools
 from app.wiki_agent.config import settings
 from app.wiki_agent.session import store as session_store
 
@@ -21,15 +20,6 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 class ChatRequest(BaseModel):
     session_id: str = "default"
     message: str
-
-
-class SaveKnowledgeRequest(BaseModel):
-    action: str  # "create" | "update" | "delete"
-    title: str = ""
-    category: str = ""
-    content: str = ""
-    target_path: str | None = None
-    tags: list[str] = []
 
 
 class ConfirmRequest(BaseModel):
@@ -178,49 +168,6 @@ async def chat_message(req: ChatRequest):
         }
     except Exception as e:
         raise HTTPException(500, f"LLM 调用失败: {e}")
-
-
-@router.post("/save-knowledge")
-async def save_knowledge(req: SaveKnowledgeRequest):
-    """手动保存知识到知识库"""
-    try:
-        if req.action == "create":
-            result = crud_tools.create_knowledge(
-                title=req.title,
-                content=req.content,
-                category=req.category,
-                tags=req.tags,
-                source="chat-extraction",
-            )
-        elif req.action == "update":
-            if not req.target_path:
-                raise HTTPException(400, "更新操作需要 target_path")
-            result = crud_tools.update_knowledge(
-                path=req.target_path,
-                title=req.title if req.title else None,
-                content=req.content,
-                tags=req.tags if req.tags else None,
-            )
-        elif req.action == "delete":
-            if not req.target_path:
-                raise HTTPException(400, "删除操作需要 target_path")
-            result = crud_tools.delete_knowledge(req.target_path)
-        else:
-            raise HTTPException(400, f"不支持的操作: {req.action}")
-
-        if result.get("status") == "error":
-            error_msg = result.get("message", "未知错误")
-            if "已存在" in error_msg:
-                raise HTTPException(409, error_msg)
-            if "不存在" in error_msg:
-                raise HTTPException(404, error_msg)
-            raise HTTPException(500, error_msg)
-
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"操作失败: {str(e)}")
 
 
 @router.post("/confirm")
