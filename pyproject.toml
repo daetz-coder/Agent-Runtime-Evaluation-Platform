@@ -36,7 +36,6 @@ dependencies = [
     "pypdf>=5.0.0",
     "python-docx>=1.1.0",
     "pymilvus[milvus_lite]>=2.4.0",
-    "milvus-lite>=2.4.0",
     "sentence-transformers>=3.0.0",
     "gitpython>=3.1.0",
     "jieba>=0.42.1",
@@ -49,11 +48,10 @@ dependencies = [
     "asyncpg>=0.29.0",
     "alembic>=1.13.1",
 
-    # Redis (for caching and message queue)
+    # Redis (caching)
     "redis>=5.0.1",
 
     # Utilities
-    "python-dotenv>=1.0.0",
     "sse-starlette>=2.0.0",
     "httpx>=0.26.0",
     "python-multipart>=0.0.6",

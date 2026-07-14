@@ -19,7 +19,6 @@ langchain-text-splitters>=0.3.0
 pypdf>=5.0.0
 python-docx>=1.1.0
 pymilvus[milvus_lite]>=2.4.0
-milvus-lite>=2.4.0
 sentence-transformers>=3.0.0
 gitpython>=3.1.0
 jieba>=0.42.1
@@ -32,20 +31,13 @@ aiosqlite>=0.19.0
 asyncpg>=0.29.0
 alembic>=1.13.1
 
-# Redis
+# Redis (caching)
 redis>=5.0.1
 
-# Sandbox
-docker>=7.0.0
-
 # Utilities
-python-dotenv>=1.0.0
 sse-starlette>=2.0.0
 httpx>=0.26.0
 python-multipart>=0.0.6
-
-# Task Queue
-celery[redis]>=5.3.0
 
 # Metrics
 prometheus-client>=0.20.0
