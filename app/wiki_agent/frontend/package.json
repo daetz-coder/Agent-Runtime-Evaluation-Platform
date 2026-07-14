@@ -12,14 +12,12 @@
     "vue": "^3.4.21",
     "vue-router": "^4.3.0",
     "element-plus": "^2.6.1",
-    "@element-plus/icons-vue": "^2.3.1",
     "echarts": "^5.5.0",
     "vue-echarts": "^6.6.9",
     "marked": "^15.0.12"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
-    "sass": "^1.71.1",
     "typescript": "^5.3.3",
     "vue-tsc": "^2.0.6",
     "vite": "^5.1.4",

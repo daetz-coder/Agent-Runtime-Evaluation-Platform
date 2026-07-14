@@ -30,12 +30,9 @@ export default defineConfig({
         target: apiTarget,
         changeOrigin: true,
       },
-    },
-  },
-  css: {
-    preprocessorOptions: {
-      scss: {
-        silenceDeprecations: ['legacy-js-api'],
+      '/wiki-admin': {
+        target: apiTarget,
+        changeOrigin: true,
       },
     },
   },
