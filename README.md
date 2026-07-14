@@ -125,7 +125,7 @@ AI 决定修改知识库时暂停等待用户确认。[更多 Wiki Agent 截图 
 | **增量评估** | Trajectory Diff 检测变化维度，只重算受影响项 |
 | **Replay 调试器** | 回放每步 LLM 原始 Prompt / Response / Model / Latency |
 | **全链路 Async** | FastAPI + SQLAlchemy + Redis 全异步 |
-| **优雅降级** | Redis / Celery 不可用时自动降级，核心功能不受影响 |
+| **优雅降级** | Redis 不可用时自动降级，核心功能不受影响 |
 
 ---
 
@@ -192,6 +192,7 @@ docs/                       # 文档
 | 文档 | 内容 |
 |------|------|
 | [架构文档](docs/architecture.md) | 系统架构、组件说明、数据流 |
+| [Wiki→评估完整数据流](docs/wiki-to-evaluation-flow.md) | 对话、轨迹、队列、评估端到端 Mermaid 图 |
 | [API 文档](docs/api.md) | REST 端点、SSE 事件类型 |
 | [SDK 文档](sdk/README.md) | 轨迹采集 SDK API |
 | [开发者指南](docs/developer_guide.md) | 本地开发、调试工具 |

@@ -101,7 +101,7 @@ class EvaluationService:
         eval_id: str,
         task_id: str,
     ) -> None:
-        """Mark a stuck IN_PROGRESS evaluation as failed (background/Celery cleanup)."""
+        """Mark a stuck IN_PROGRESS evaluation as failed (background-task cleanup)."""
         task = await self._get_task_model(task_id)
         if not task:
             return

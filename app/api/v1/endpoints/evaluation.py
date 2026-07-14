@@ -144,23 +144,11 @@ async def run_evaluation(
     await db.commit()
 
     if not request.use_stream and created_new:
-        # Prefer Celery task queue; fall back to BackgroundTasks
-        try:
-            from app.celery_app import run_evaluation_task
-
-            run_evaluation_task.delay(
-                request.task_id,
-                evaluation.id,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Celery dispatch failed (%s), falling back to BackgroundTasks", exc
-            )
-            background_tasks.add_task(
-                _run_evaluation_background,
-                request.task_id,
-                evaluation.id,
-            )
+        background_tasks.add_task(
+            _run_evaluation_background,
+            request.task_id,
+            evaluation.id,
+        )
 
     return evaluation
 
@@ -304,19 +292,11 @@ async def batch_evaluation(
             results.append({"task_id": task_id, "status": "failed"})
             continue
         if created_new:
-            try:
-                from app.celery_app import run_evaluation_task
-
-                run_evaluation_task.delay(task_id, evaluation.id)
-            except Exception as exc:
-                logger.warning(
-                    "Celery dispatch failed (%s), falling back to BackgroundTasks", exc
-                )
-                background_tasks.add_task(
-                    _run_evaluation_background,
-                    task_id,
-                    evaluation.id,
-                )
+            background_tasks.add_task(
+                _run_evaluation_background,
+                task_id,
+                evaluation.id,
+            )
         results.append(
             {
                 "task_id": task_id,
