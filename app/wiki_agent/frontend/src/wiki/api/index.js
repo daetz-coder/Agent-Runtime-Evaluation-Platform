@@ -77,20 +77,6 @@ export const wikiApi = {
     return request(`${BASE}/tags`);
   },
 
-  // Graph
-  getGraph() {
-    return request(`${BASE}/graph`);
-  },
-
-  // Categories
-  getCategories() {
-    return request(`${BASE}/categories`);
-  },
-
-  getEntriesByCategory(category) {
-    return request(`${BASE}/category/${encodeURIComponent(category)}/entries`);
-  },
-
   // Entry Index
   getEntryIndex() {
     return request(`${BASE}/index`);
@@ -114,14 +100,6 @@ export const wikiApi = {
   // 导入
   importMarkdown(data) {
     return request(`${BASE}/import`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  },
-
-  // 保存从对话中提取的知识
-  saveKnowledge(data) {
-    return request(`/api/chat/save-knowledge`, {
       method: "POST",
       body: JSON.stringify(data),
     });

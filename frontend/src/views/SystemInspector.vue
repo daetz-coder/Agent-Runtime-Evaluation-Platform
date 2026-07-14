@@ -25,13 +25,6 @@
                 </el-tag>
                 <span v-if="!sessionDetails[row.id].key_facts?.length" class="text-muted">无</span>
 
-                <div v-if="sessionDetails[row.id].active_eval_task_id" class="eval-link">
-                  活跃评估任务:
-                  <router-link :to="`/tasks/${sessionDetails[row.id].active_eval_task_id}`">
-                    {{ sessionDetails[row.id].active_eval_task_id.slice(0, 8) }}...
-                  </router-link>
-                </div>
-
                 <h4>Messages ({{ sessionDetails[row.id].messages?.length || 0 }})</h4>
                 <div v-for="msg in sessionDetails[row.id].messages" :key="msg.id" class="msg-item">
                   <el-tag :type="msg.role === 'user' ? 'primary' : 'success'" size="small">
@@ -51,14 +44,6 @@
           <el-table-column label="Key Facts" width="120" align="center">
             <template #default="{ row }">
               <el-badge :value="row.key_facts?.length || 0" type="info" />
-            </template>
-          </el-table-column>
-          <el-table-column label="活跃任务" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag v-if="row.active_eval_task_id" size="small" type="warning">
-                {{ row.active_eval_task_id.slice(0, 8) }}
-              </el-tag>
-              <span v-else class="text-muted">-</span>
             </template>
           </el-table-column>
           <el-table-column prop="created_at" label="创建时间" width="170" />

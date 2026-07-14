@@ -180,11 +180,6 @@ export const evaluationApi = {
       ...config,
     })
   },
-
-  // ── Incremental Evaluation ──
-  runIncremental(data: { base_evaluation_id: string; head_task_id: string; force_dimensions?: string[] }) {
-    return api.post('/evaluations/incremental', data)
-  },
 }
 
 // Report API
@@ -195,10 +190,6 @@ export const reportApi = {
 
   getTaskHistory(taskId: string, config?: ApiRequestConfig) {
     return api.get(`/reports/tasks/${taskId}/history`, config)
-  },
-
-  getDimensionStats(dimension: string) {
-    return api.get(`/reports/dimensions/${dimension}`)
   },
 
   getTrends() {
@@ -218,19 +209,6 @@ export const reportApi = {
 export const systemApi = {
   getHealth() {
     return api.get('/system/health')
-  },
-
-  // Prompt templates
-  listPrompts() {
-    return api.get('/settings/prompts')
-  },
-
-  getPrompt(version: string) {
-    return api.get(`/settings/prompts/${version}`)
-  },
-
-  updatePrompt(version: string, content: string, description?: string) {
-    return api.put(`/settings/prompts/${version}`, { content, description: description || '' })
   },
 }
 

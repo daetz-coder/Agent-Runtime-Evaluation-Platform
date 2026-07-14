@@ -218,7 +218,6 @@
 
 <script setup>
 import { ref, reactive, computed, nextTick, onMounted, watch } from "vue";
-import { wikiApi } from "../api/index.js";
 import { streamAuthHeaders } from "@/utils/auth";
 import { marked } from 'marked'
 const emit = defineEmits(["knowledgeUpdated", "navigateTo"]);

@@ -225,7 +225,6 @@
 <script setup>
 import { ref, reactive, computed, nextTick, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import { wikiApi } from "../api/index.js";
 import { streamAuthHeaders } from "@/api";
 import { marked } from 'marked'
 
