@@ -2,6 +2,8 @@
 
 > 从用户提问 → Agent 处理 → 轨迹采集 → 评估平台，完整的数据流动链路。
 
+**完整详图（含 Mermaid 架构图 / 时序图 / ID 流转）**：请参阅 [wiki-to-evaluation-flow.md](./wiki-to-evaluation-flow.md)
+
 ---
 
 ## 一、架构总览
