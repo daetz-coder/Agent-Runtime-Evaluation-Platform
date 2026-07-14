@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -158,7 +158,6 @@ async def get_eval_settings():
     """Return evaluation public config (no secrets)."""
     return {
         "default_provider": settings.DEFAULT_LLM_PROVIDER,
-        "parallel_enabled": settings.EVAL_PARALLEL,
         "auth_enabled": settings.AUTH_ENABLED,
         "webhook_configured": bool(settings.EVAL_WEBHOOK_URL),
     }
@@ -235,76 +234,6 @@ async def get_evaluation(
         raise HTTPException(status_code=404, detail="Evaluation not found")
 
     return evaluation
-
-
-@router.post("/quick", response_model=EvaluationResponse)
-async def quick_evaluation(
-    task_id: str = Body(..., embed=True),
-    context: Optional[Dict[str, Any]] = Body(None, embed=True),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Quick evaluation endpoint (synchronous).
-
-    - **task_id**: UUID of the task to evaluate
-    - **context**: Optional additional context
-
-    Note: This runs synchronously and may take some time.
-    Use the async endpoint for better performance.
-    """
-    service = EvaluationService(db)
-
-    task = await service.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    evaluation = await service.run_evaluation(task_id=task_id, context=context)
-
-    if not evaluation:
-        raise HTTPException(status_code=500, detail="Evaluation failed")
-
-    return evaluation
-
-
-@router.post("/batch")
-async def batch_evaluation(
-    background_tasks: BackgroundTasks,
-    task_ids: Annotated[List[str], Body(embed=True)],
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Batch evaluation for multiple tasks (async).
-
-    - **task_ids**: List of task IDs
-    """
-    if len(task_ids) > 50:
-        raise HTTPException(status_code=400, detail="Batch size cannot exceed 50 task IDs")
-
-    service = EvaluationService(db)
-    results = []
-    for task_id in task_ids:
-        task = await service.get_task(task_id)
-        if not task:
-            results.append({"task_id": task_id, "status": "not_found"})
-            continue
-        evaluation, created_new = await service.create_evaluation(task_id)
-        if not evaluation:
-            results.append({"task_id": task_id, "status": "failed"})
-            continue
-        if created_new:
-            background_tasks.add_task(
-                _run_evaluation_background,
-                task_id,
-                evaluation.id,
-            )
-        results.append(
-            {
-                "task_id": task_id,
-                "evaluation_id": evaluation.id,
-                "status": "accepted",
-            }
-        )
-    return {"batch_size": len(task_ids), "results": results}
 
 
 @router.post("/stream")

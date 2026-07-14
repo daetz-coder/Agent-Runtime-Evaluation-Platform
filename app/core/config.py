@@ -110,13 +110,10 @@ class Settings(BaseSettings):
 
     # Evaluation Adapter
     EVAL_ENABLED: bool = True
-    EVAL_AUTO_COLLECT: bool = True
     EVAL_API_BASE_URL: str = "http://127.0.0.1:8000"
-    EVAL_INPROCESS: bool = True
     EVAL_API_KEY: str = ""
     EVAL_BATCH_SIZE: int = 10
     EVAL_WEBHOOK_URL: str = ""
-    EVAL_PARALLEL: bool = True
 
     # Evaluation weights (shared between full and incremental eval)
     EVAL_DIMENSION_WEIGHTS: dict = {

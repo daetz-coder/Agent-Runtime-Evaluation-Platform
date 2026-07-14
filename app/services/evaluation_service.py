@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.tracing import get_tracer
 from app.db.models import AgentTask, AgentTrajectory, Evaluation, EvaluationStatus, TaskStatus
 from app.evaluators.scoring import dimension_score, score_values, weighted_overall
-from app.graphs.evaluation_graph import EvaluationState, create_evaluation_graph
+from app.graphs.evaluation_graph import evaluate_parallel
 from app.models.schemas import (
     EvaluationListItem,
     EvaluationResponse,
@@ -399,54 +399,24 @@ class EvaluationService:
         await cache_delete(f"task:{task_id}")
 
         try:
-            # Prepare state for graph
-            state: EvaluationState = {
-                "task_id": task_id,
-                "goal": task.goal,
-                "trajectory": trajectory,
-                "context": context or task.context,
-                "planning_score": None,
-                "tactical_score": None,
-                "tool_use_score": None,
-                "memory_score": None,
-                "replan_score": None,
-                "retrieval_score": None,
-                "overall_evaluation": None,
-                "error": None,
-            }
+            from app.models.schemas import TrajectoryStep as TS
 
-            # Run evaluation graph (parallel if configured)
-            use_parallel = getattr(settings, "EVAL_PARALLEL", True)
+            steps = [
+                TS(
+                    step_number=s["step_number"],
+                    action_type=s["action_type"],
+                    action_detail=s.get("action_detail", {}),
+                    observation=s.get("observation"),
+                    timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                )
+                for s in trajectory
+            ]
             with tracer.start_as_current_span("evaluation") as eval_span:
-                eval_span.set_attribute("parallel", use_parallel)
-                if use_parallel:
-                    from app.graphs.evaluation_graph import evaluate_parallel
-                    from app.models.schemas import TrajectoryStep as TS
-
-                    steps = [
-                        TS(
-                            step_number=s["step_number"],
-                            action_type=s["action_type"],
-                            action_detail=s.get("action_detail", {}),
-                            observation=s.get("observation"),
-                            timestamp=s.get("timestamp", datetime.now(timezone.utc).isoformat()),
-                        )
-                        for s in trajectory
-                    ]
-                    parallel_result = await evaluate_parallel(task.goal, steps, context or task.context)
-                    overall_eval = self._build_overall_from_parallel(parallel_result)
-                    overall = overall_eval.model_dump()
-                    self._merge_judge_raw_into_overall(overall, parallel_result)
-                    result = {"overall_evaluation": overall, "error": None}
-                else:
-                    graph = create_evaluation_graph()
-                    result = await graph.ainvoke(state)
-                    overall = result.get("overall_evaluation", {})
-
-            # Check for errors
-            if result.get("error"):
-                await self._fail_evaluation(evaluation, task, previous_status, task_id)
-                return None
+                eval_span.set_attribute("parallel", True)
+                parallel_result = await evaluate_parallel(task.goal, steps, context or task.context)
+                overall_eval = self._build_overall_from_parallel(parallel_result)
+                overall = overall_eval.model_dump()
+                self._merge_judge_raw_into_overall(overall, parallel_result)
 
             if not overall:
                 await self._fail_evaluation(evaluation, task, previous_status, task_id)
