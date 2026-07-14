@@ -311,7 +311,7 @@ class WikiState(TypedDict):
 - `collector.record_evidence()` — 记录证据（上下文、回复）
 - `collector.record_node_execute()` — 记录节点执行
 - `collector.record_state_change()` — 记录状态变化
-- `collector.start_async()` / `collector.finish_async()` — 评估任务生命周期
+- `collector.start()` / `collector.finish(auto_run=False)` — 评估任务生命周期（Wiki：flush 后任务保持 pending）
 
 ---
 
@@ -1219,7 +1219,7 @@ Wiki Agent 对话执行
      │
      ▼
 graph.py（直接调用 sdk.collector）
-  ├─ collector.start_async() → 创建评估任务
+  ├─ await collector.start() → 创建评估任务（pending）
   │
   ├─ collector.record_retrieval() → 记录检索事件
   │     └─ query, results, duration_ms
@@ -1230,12 +1230,12 @@ graph.py（直接调用 sdk.collector）
   ├─ collector.record_evidence() → 记录证据
   │     └─ evidence_type, sources
   │
-  └─ collector.finish_async() → flush 轨迹 + 触发评估
+  └─ await collector.finish(auto_run=False) → 仅 flush 轨迹，任务保持 pending
         │
         ▼
   评估平台
         ├─ 采集轨迹数据
-        ├─ 触发 6 个评估器
+        ├─ 任务管理页手动触发 6 维评估
         │
         ▼
   评估结果（6 维评分）
@@ -2097,9 +2097,9 @@ if collector and collector.enabled:
 collector.record_evidence("final_response", sources={"session_id": session_id})
 
 # 在 run_chat_stream 入口
-collector.start_async(task_id=eval_task_id)
+await collector.start(user_message, {"thread_id": thread_id, "mode": "stream"})
 # ... 执行 Graph ...
-collector.finish_async(auto_run=True)
+await collector.finish(auto_run=False)  # 仅 flush；任务保持 pending，不自动评估
 ```
 
 ### 采集架构
@@ -2107,12 +2107,12 @@ collector.finish_async(auto_run=True)
 ```
 graph.py（业务代码 + 评估采集）        SDK TrajectoryCollector
 ─────────────────────────────        ───────────────────────
-collector.start_async()      ────→   创建评估任务
+await collector.start()      ────→   创建评估任务 (pending)
 collector.record_retrieval() ────→   记录检索
 collector.record_memory_write() ──→ 记录事实
 collector.record_evidence()  ────→   记录回复
 collector.record_node_execute() ──→ 记录节点执行
-collector.finish_async()     ────→   flush + 触发评估
+await collector.finish(auto_run=False) ─→ flush；任务仍 pending
 ```
 
 ### 降级策略
@@ -3031,7 +3031,7 @@ os.environ.setdefault("GRPC_ARG_KEEPALIVE_TIMEOUT_MS", "20000")
 5. `app/wiki_agent/agent/graph.py`（评估采集部分）
    - 直接调用 SDK TrajectoryCollector 方法记录轨迹
 
-6. `frontend/src/wiki/components/ChatView.vue`
+6. `app/wiki_agent/frontend/src/wiki/components/ChatView.vue`
    - 修复前端错误处理
    - 添加 HTTP 状态检查
 
@@ -3549,14 +3549,14 @@ create() 的流程：
 | 关注点 | 说明 |
 |--------|------|
 | 读什么 | `graph.py` 中的评估数据采集逻辑——直接调用 SDK TrajectoryCollector |
-| 重点 | `collector.record_retrieval()`、`collector.record_memory_write()`、`collector.record_evidence()`、`collector.start_async()`、`collector.finish_async()` |
+| 重点 | `collector.record_retrieval()`、`collector.record_memory_write()`、`collector.record_evidence()`、`collector.start()`、`collector.finish(auto_run=False)` |
 | 关键认知 | graph.py 在关键节点直接调用 collector 方法，SDK 不可用时自动降级为空操作 |
 
 **读完你应该知道**：
 - `collector.record_retrieval(query, results, ms)` → 记录检索事件
 - `collector.record_evidence("final_response", {...})` → 记录回复
-- `collector.start_async()` → 创建评估任务
-- `collector.finish_async(auto_run=True)` → flush 轨迹，触发评估
+- `await collector.start()` → 创建评估任务（pending）
+- `await collector.finish(auto_run=False)` → 仅 flush 轨迹，任务保持 pending（手动评估）
 - SDK 内置离线模式：平台不可达时本地缓冲，不阻塞 Agent
 
 ---
@@ -3643,7 +3643,7 @@ create() 的流程：
        ▼
   ┌─────────────────────────┐
   │  run_chat_stream()      │
-  │  collector.start_async()│───────────→ 创建评估任务 (task_id)
+  │  await collector.start() │───────────→ 创建评估任务 (task_id)
   └────────┬────────────────┘
            │
            ▼
@@ -3707,8 +3707,8 @@ create() 的流程：
            │
            ▼
   ┌─────────────────────────┐
-  │  collector.finish_async()│───────────→ flush 所有步骤到 DB
-  └─────────────────────────┘             触发评估
+  │  await collector.finish(auto_run=False)│───→ flush 所有步骤到 DB
+  └─────────────────────────┘             任务保持 pending（手动评估）
 
 ═══════════════════════════════════════════════════════════════════════
                                │

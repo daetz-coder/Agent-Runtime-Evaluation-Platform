@@ -287,18 +287,17 @@ Regression detected! Planning: 72->58 (-14). Overall: 75->68 (-7).
 
 ## 三、架构设计决策
 
-### 3.1 双执行模式
+### 3.1 并行评估路径
 
 ```python
-if settings.EVAL_PARALLEL:
-    # 默认：直接 asyncio.gather，并行执行 6 个评估器（~15s）
-    return await evaluate_parallel(goal, trajectory)
-else:
-    # 调试：LangGraph StateGraph，串行执行（~71s），有完整 trace
-    return await evaluation_graph.invoke({"goal": goal, "trajectory": trajectory})
+# 生产路径：asyncio.gather 并行执行 6 个评估器（~15–30s）
+return await evaluate_parallel(goal, trajectory)
+
+# 增量/指定维度
+return await evaluate_partial(goal, trajectory, dimensions=["planning", "retrieval"])
 ```
 
-并行模式是默认的，因为评估器之间没有依赖关系。串行模式用于调试和 trace。
+评估器之间无依赖；已移除 LangGraph 串行 `create_evaluation_graph` / `EVAL_PARALLEL` 双路径。
 
 ### 3.2 幂等性设计
 
