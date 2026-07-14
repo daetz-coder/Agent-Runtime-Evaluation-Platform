@@ -46,12 +46,13 @@ curl -X POST http://localhost:8000/api/v1/tasks/{task-uuid}/trajectory \
     ]
   }'
 
-# 3. 运行评估
-curl -X POST http://localhost:8000/api/v1/evaluations/quick \
+# 3. 创建评估（非流式：BackgroundTasks 后台跑；轮询 GET 取结果）
+curl -X POST http://localhost:8000/api/v1/evaluations/ \
   -H "Content-Type: application/json" \
-  -d '{"task_id": "{task-uuid}"}'
+  -d '{"task_id": "{task-uuid}", "use_stream": false}'
 
-# 返回: {"id": "eval-uuid", "evaluation": {"planning": {...}, "tactical": {...}, ...}}
+# 返回 202: {"id": "eval-uuid", "status": "in_progress", ...}
+# 完成后: GET /api/v1/evaluations/{eval-uuid}
 ```
 
 ---
@@ -335,17 +336,14 @@ curl http://localhost:8000/api/v1/system/metrics
 
 ---
 
-## 13. Celery 任务队列
+## 13. 评估异步执行
 
-评估任务通过 Celery 异步执行（自动重试、并发控制）：
+评估不再依赖 Celery。行为：
 
-```bash
-# 启动 Celery worker（另一个终端）
-celery -A app.celery_app worker -l info -c 4 -Q evaluation
+- **UI 默认**（`use_stream=true`）：`POST /evaluations/` 只建记录，客户端再连 `POST /evaluations/stream` 收 SSE
+- **非流式**（`use_stream=false`）：同一进程内 FastAPI `BackgroundTasks` 调用 `_run_evaluation_background`，客户端轮询 `GET /evaluations/{id}`
 
-# 评估请求自动路由到 Celery（如果可用）
-# 不可用时 fallback 到 FastAPI BackgroundTasks
-```
+Wiki 对话结束为 `finish(auto_run=False)`，任务保持 `pending`，需在任务管理中手动触发评估。
 
 ---
 

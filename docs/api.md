@@ -22,9 +22,8 @@ http://localhost:8000/api/v1
 | `RATE_LIMIT_EVAL_PER_MINUTE` | `10` | 每分钟每客户端最大请求数 |
 
 **限流范围**: 所有前缀为 `/api/v1/evaluations/` 和 `/api/v1/benchmark/` 的 POST 请求。包括但不限于：
-- `POST /evaluations/run`、`POST /evaluations/run/stream`
-- `POST /evaluations/`、`POST /evaluations/quick`、`POST /evaluations/batch`
-- `POST /evaluations/stream`、`POST /evaluations/consensus`、`POST /evaluations/incremental`
+- `POST /evaluations/`、`POST /evaluations/stream`
+- `POST /evaluations/consensus`、`POST /evaluations/incremental`
 - `POST /benchmark/monotonicity/run`
 
 **超限响应** (HTTP 429):
@@ -60,14 +59,11 @@ http://localhost:8000/api/v1
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST /evaluations/` | 创建并运行评估（`use_stream=true` 跳过后台任务） |
+| `POST /evaluations/` | 创建评估（`use_stream=false` 时用 BackgroundTasks 后台跑；`true` 时仅建记录，客户端再调 stream） |
 | `POST /evaluations/stream` | **SSE 流式评估** — 实时推送 6 维进度 |
-| `POST /evaluations/quick` | 同步评估（阻塞，返回完整结果） |
-| `POST /evaluations/batch` | 批量评估 `{"task_ids": [...]}` |
 | `POST /evaluations/consensus` | 多模型共识评估（DeepSeek+GLM+Qwen） |
 | `GET /evaluations/` | 列出评估（支持 `?skip=&limit=&status=`） |
 | `GET /evaluations/dashboard` | 评估仪表板统计 |
-| `GET /evaluations/settings` | 评估配置信息 |
 | `GET /evaluations/{id}` | 获取评估详情（含 6 维分数+反馈+版本信息） |
 | `DELETE /evaluations/{id}` | 删除评估记录 |
 
@@ -105,14 +101,6 @@ http://localhost:8000/api/v1
 |------|------|------|
 | `GET /system/health` | 健康检查（DB 状态） |
 | `GET /system/metrics` | Prometheus 指标端点（`/metrics`） |
-
-### Settings / 配置
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `GET /settings/prompts` | 列出所有 Prompt 版本 |
-| `GET /settings/prompts/{version}` | 获取指定版本的 Prompt 内容 |
-| `PUT /settings/prompts/{version}` | 创建或更新 Prompt 版本 |
 
 ### CLI / Makefile
 
