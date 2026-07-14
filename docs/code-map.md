@@ -33,10 +33,10 @@ chat.py:71  stream_response()
   → 入口：接收用户消息，构建 history
   → 调用 run_chat_stream()
 
-graph.py:935  run_chat_stream()
-  → start_async() 创建评估任务
+graph.py  run_chat_stream()
+  → await start() 创建评估任务（pending）
   → graph.ainvoke() 进入 LangGraph
-  → finish_async() 结束任务
+  → await finish(auto_run=False) 仅 flush 轨迹，保持 pending
 
 graph.py:391  search()
   → _generate_plan() 生成计划
@@ -71,7 +71,7 @@ graph.py:672  execute()
 |---|---|---|
 | `app/services/evaluation_service.py` | 893 | 评估全流程编排 |
 | `app/evaluators/base.py` | 552 | 评估器基类 + 轨迹提取 + LLM 三级降级 |
-| `app/graphs/evaluation_graph.py` | 511 | 6 维并行/串行评估 |
+| `app/graphs/evaluation_graph.py` | -- | evaluate_parallel / evaluate_partial |
 
 ### 建议读（⭐⭐）
 
@@ -88,31 +88,28 @@ graph.py:672  execute()
 ### 阅读路径
 
 ```
-evaluation.py:71  _run_evaluation_background()
-  → 后台触发评估
+evaluation.py  _run_evaluation_background()
+  → use_stream=false 时由 FastAPI BackgroundTasks 触发（无 Celery）
 
-evaluation_service.py:335  run_evaluation()
+evaluation_service.py  run_evaluation()
   → 加载轨迹
-  → 创建 Evaluation 记录
-  → evaluate_parallel() 或 graph.ainvoke()
+  → 创建 / 复用 Evaluation 记录
+  → evaluate_parallel()
 
-evaluation_graph.py:416  evaluate_parallel()
+evaluation_graph.py  evaluate_parallel()
   → asyncio.gather 并发 6 个评估器
   → 每个评估器调 evaluate()
 
-base.py:165  _format_trajectory()
+base.py  _format_trajectory()
   → TrajectoryCompressor.compress() 4 阶段压缩
   → 返回压缩后的文本
 
-base.py:349  _invoke_structured_llm()
-  → 三级降级：
-    ① with_structured_output
-    ② PydanticOutputParser
-    ③ 手动 JSON 解析
+base.py  LLM 调用链
+  → prompt | llm + Pydantic / JSON 解析（无死路径 structured_output 包装）
 
-evaluation_service.py:455  _persist_evaluation_results()
+evaluation_service.py  _persist_evaluation_results()
   → 加权聚合
-  → 写入数据库
+  → 写入数据库；任务标 completed
 ```
 
 ---
@@ -136,14 +133,14 @@ langgraph.py:185  _wrap_node_async()
   → drain _events → collector.record()
   → 自动：NODE_EXECUTE(output)
   → 自动：STATE_CHANGE
-  → auto _async_flush()
+  → auto _flush()
 
 collector.py:678  record()
   → _validate_step() Pydantic 校验
   → 构建 step dict
   → 追加到缓冲区
 
-collector.py:556  _async_flush()
+collector.py:556  _flush()
   → POST /api/v1/tasks/{task_id}/trajectory
   → 失败回退到缓冲区
 ```
@@ -207,7 +204,7 @@ app/
 │   └── eval_schemas.py            评估输出 Schema
 │
 ├── graphs/
-│   └── evaluation_graph.py        评估工作流（串行/并行）
+│   └── evaluation_graph.py        evaluate_parallel / evaluate_partial
 │
 ├── services/
 │   ├── evaluation_service.py      评估业务编排
@@ -221,8 +218,7 @@ app/
 │   ├── evaluation.py              评估触发 + 结果查询 + SSE
 │   ├── reports.py                 报告导出
 │   ├── benchmark.py               基准测试
-│   ├── system.py                  健康检查
-│   └── settings.py                系统设置
+│   └── system.py                  健康检查
 │
 ├── db/
 │   ├── models.py                  ORM 模型（AgentTask / Trajectory / Evaluation）

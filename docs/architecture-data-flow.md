@@ -55,17 +55,17 @@
 │                      SDK 轨迹采集层 (sdk/)                              │
 │                                                                         │
 │  collector.py:TrajectoryCollector     单例，ContextVar 会话隔离         │
-│    ├─ start_async()     → POST /api/v1/tasks/  创建评估任务             │
+│    ├─ start()           → POST /api/v1/tasks/  创建评估任务             │
 │    ├─ record()          → 缓冲轨迹步骤到内存                            │
-│    ├─ _async_flush()    → POST /api/v1/tasks/{id}/trajectory           │
-│    └─ finish_async()    → 结束任务 + 触发评估                           │
+│    ├─ _flush()          → POST /api/v1/tasks/{id}/trajectory           │
+│    └─ finish(auto_run)  → flush；False 保持 pending；True 则完成+评估  │
 │                                                                         │
 │  adapters/langgraph.py:InstrumentedStateGraph                           │
 │    ├─ 自动: NODE_EXECUTE(input/output)                                  │
 │    ├─ 自动: STATE_CHANGE (before/after diff)                            │
 │    ├─ 自动: FAILURE (未捕获异常时)                                      │
 │    ├─ drain _events → collector.record()                                │
-│    └─ 节点级 _async_flush()                                             │
+│    └─ 节点级 _flush()                                                   │
 │                                                                         │
 │  schemas.py: 14 种 Pydantic Schema (统一校验)                           │
 └──────────────────────────┬──────────────────────────────────────────────┘
@@ -142,12 +142,12 @@
       行 58: _ensure_session()                                    最多 HISTORY_MAX_TURNS 轮
 
  ③    agent/graph.py              run_chat_stream()               WikiState 初始化
-      行 935: collector.start_async()                             POST /api/v1/tasks/ → task_id
+      行 935: collector.start()                             POST /api/v1/tasks/ → task_id
       行 967: graph.ainvoke()                                     进入 InstrumentedCompiledGraph
 
- ④    sdk/collector.py            start_async()                   POST /api/v1/tasks/
+ ④    sdk/collector.py            start()                   POST /api/v1/tasks/
       行 412: _new_session()                                      创建 AgentTask(PENDING)
-             _async_http_with_retry()
+             _http_with_retry()
 
  ⑤─── 进入 LangGraph search 节点 ──────────────────────────────────────────────────────
 
@@ -230,7 +230,7 @@
       行 209: drain _events                                          → collector.record() × N
       行 215: record_node_execute()                                  NODE_EXECUTE(complete)
       行 217: record_state_change()                                  STATE_CHANGE
-      行 220: _async_flush()                                         上传到平台
+      行 220: _flush()                                         上传到平台
 
 ㉓    sdk/collector.py             record()                        构建 step dict:
       行 678: _validate_step()                                       {"step_number",
@@ -239,8 +239,8 @@
                                                                       "observation",
                                                                       "timestamp"}
 
-㉔    sdk/collector.py             _async_flush()                   POST /api/v1/tasks/
-      行 556: _async_http_with_retry()                              {task_id}/trajectory
+㉔    sdk/collector.py             _flush()                   POST /api/v1/tasks/
+      行 556: _http_with_retry()                              {task_id}/trajectory
       批量发送缓冲区的全部 steps                                       [step, step, step, ...]
 
 ㉕    api/v1/endpoints/tasks.py    POST /tasks/{id}/trajectory      [TrajectoryStep, ...]
@@ -252,13 +252,13 @@
                                                                       action_type, action_detail,
                                                                       observation, timestamp)
 
-㉗    sdk/collector.py             finish_async()                   POST /api/v1/evaluations/
-      行 507: 最后一次 flush + 状态标记                               {"task_id": "..."}
-      行 535: POST /evaluations/  (auto_run=True 时)
+㉗    sdk/collector.py             finish(auto_run=...)             Wiki: auto_run=False
+      最后一次 flush；仅 auto_run=True 时                               → 任务保持 pending
+      标 completed 并 POST /evaluations/                              手动评估走 Tasks UI
 
 ㉘    api/v1/endpoints/evaluation.py POST /evaluations/             EvaluationRequest
-      行: create_evaluation()                                        {"task_id", "context"}
-      行 71: _run_evaluation_background()                            后台异步执行
+      create_evaluation()                                            {"task_id", use_stream}
+      use_stream=false → BackgroundTasks                             _run_evaluation_background
 ```
 
 ### 阶段 3：评估执行 → 结果入库
@@ -382,7 +382,6 @@ class WikiState(TypedDict, total=False):
 -- agent_tasks: 评估任务元信息
 CREATE TABLE agent_tasks (
     id           VARCHAR(36) PRIMARY KEY,
-    workspace_id VARCHAR(36),
     goal         TEXT NOT NULL,
     context      JSON,
     status       ENUM('pending','running','completed','failed','timeout'),
@@ -471,10 +470,10 @@ C5   graph.py                759    execute 节点 CRUD 结果
 D1   collector.py            678    record() 入口
                                    查看: action_type, action_detail
 
-D2   collector.py            556    _async_flush()
+D2   collector.py            556    _flush()
                                    查看: steps_to_send 列表
 
-D3   collector.py            546    finish_async()
+D3   collector.py            546    finish()
                                    查看: flush_succeeded
 
 E1   tasks.py                116    add_trajectory()
@@ -552,7 +551,7 @@ G1   evaluation_service.py   455    _persist_evaluation_results()
 | `app/evaluators/consensus.py` | 多模型共识评分 |
 | `app/evaluators/scoring.py` | 加权聚合计算 |
 | `app/services/evaluation_service.py` | 评估业务逻辑编排 |
-| `app/graphs/evaluation_graph.py` | 评估工作流（串行/并行） |
+| `app/graphs/evaluation_graph.py` | evaluate_parallel / evaluate_partial（asyncio.gather） |
 | `app/db/models.py` | ORM 模型定义 |
 | `app/api/v1/endpoints/tasks.py` | 任务 CRUD + 轨迹上传 API |
 | `app/api/v1/endpoints/evaluation.py` | 评估触发 + 结果查询 + SSE 推送 |
