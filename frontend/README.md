@@ -12,7 +12,6 @@
 - **Element Plus** - Vue 3 UI 组件库
 - **ECharts** - 数据可视化图表库
 - **Vue Router** - 官方路由管理器
-- **Pinia** - Vue 状态管理库
 - **Axios** - HTTP 客户端
 - **Vite** - 下一代前端构建工具
 

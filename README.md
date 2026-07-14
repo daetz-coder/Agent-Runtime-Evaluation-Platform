@@ -121,7 +121,7 @@ AI 决定修改知识库时暂停等待用户确认。[更多 Wiki Agent 截图 
 | **6 维评估体系** | 20 项子指标，含幻觉检测，适用性自动标记 |
 | **多模型共识** | DeepSeek / GLM-4 / Qwen-Plus 独立评分，跨模型一致性量化 |
 | **4 阶段轨迹压缩** | 重要性过滤 → Think 截断 → 滑动窗口 → 格式化 |
-| **SSE 流式评估** | 实时推送评估进度，支持批量 / 增量 / 回归检测 |
+| **SSE 流式评估** | 实时推送评估进度，支持增量 / 回归检测；非流式走 FastAPI BackgroundTasks |
 | **增量评估** | Trajectory Diff 检测变化维度，只重算受影响项 |
 | **Replay 调试器** | 回放每步 LLM 原始 Prompt / Response / Model / Latency |
 | **全链路 Async** | FastAPI + SQLAlchemy + Redis 全异步 |
@@ -134,7 +134,7 @@ AI 决定修改知识库时暂停等待用户确认。[更多 Wiki Agent 截图 
 | 类别 | 技术 | 用途 |
 |------|------|------|
 | 后端框架 | FastAPI + Uvicorn | REST API + SSE 实时流 |
-| Agent 编排 | LangGraph + LangChain | Agent 状态图、评估工作流 |
+| Agent 编排 | LangGraph + LangChain | Wiki Agent 状态图；评估侧为 `evaluate_parallel`（`asyncio.gather`） |
 | AI 模型 | DeepSeek / GLM / Qwen / OpenAI | LLM 推理 + LLM-as-Judge |
 | 向量检索 | Milvus + BM25 + RRF + Cross-Encoder | 四级混合检索 |
 | 数据库 | SQLAlchemy Async + SQLite / PostgreSQL | 持久化存储 |
@@ -170,15 +170,15 @@ collector.finish(auto_run=True)
 ```
 app/                        # 后端应用
 ├── evaluators/             # 6 个评估器 + 共识评估 + 轨迹压缩
-├── graphs/                 # LangGraph 评估工作流
+├── graphs/                 # evaluate_parallel / evaluate_partial
 ├── services/               # 业务逻辑层
 ├── core/                   # 基础设施（config / cache / logging）
 ├── api/                    # REST API + 中间件
-├── wiki_agent/             # Wiki Agent（RAG / 对话 / 知识库管理）
+├── wiki_agent/             # Wiki Agent（RAG / 对话 / 知识库；frontend 为唯一 Wiki UI）
 ├── models/                 # Pydantic schema 定义
 └── db/                     # SQLAlchemy ORM + Alembic 迁移
 
-frontend/                   # Vue 3 前端
+frontend/                   # Vue 3 平台前端（@wiki 嵌入 Wiki UI）
 sdk/                        # 独立 SDK 包
 scripts/                    # 基准测试脚本
 tests/                      # 测试
