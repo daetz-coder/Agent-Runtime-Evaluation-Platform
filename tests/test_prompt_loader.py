@@ -50,10 +50,9 @@ class TestPromptLoader:
         """应该能加载所有 Wiki Agent Prompt。"""
         wiki_names = [
             "wiki_agent/system_prompt",
-            "wiki_agent/key_facts",
             "wiki_agent/decide",
-            "wiki_agent/auto_tag",
             "wiki_agent/query_rewrite",
+            "wiki_agent/contextualize",
         ]
         for name in wiki_names:
             template = loader.get_prompt(name)
