@@ -35,7 +35,6 @@ class TaskResponse(BaseModel):
     goal: str
     context: Optional[Dict[str, Any]] = None
     status: str
-    workspace_id: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

@@ -43,9 +43,6 @@ class AgentTask(Base):
     __tablename__ = "agent_tasks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    workspace_id: Mapped[Optional[str]] = mapped_column(
-        String(36), nullable=True, index=True
-    )
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(SQLEnum(TaskStatus), default=TaskStatus.PENDING)

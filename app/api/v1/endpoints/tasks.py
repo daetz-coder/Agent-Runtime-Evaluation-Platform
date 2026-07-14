@@ -70,7 +70,6 @@ async def get_tasks_dashboard(
                 "goal": task.goal,
                 "context": task.context,
                 "status": task.status.value,
-                "workspace_id": task.workspace_id,
                 "created_at": task.created_at,
                 "started_at": task.started_at,
                 "completed_at": task.completed_at,
