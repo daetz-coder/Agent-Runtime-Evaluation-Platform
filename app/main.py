@@ -30,7 +30,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
 from app.api.v1.endpoints import benchmark, evaluation, reports, system, tasks
-from app.api.v1.endpoints import settings as settings_endpoints
 from app.core.cache import close_redis, init_redis
 from app.core.config import settings
 from app.db.database import close_db, init_db
@@ -180,7 +179,7 @@ asyncio.run(main())
 | **任务** | `/api/v1/tasks/` | 任务 CRUD、轨迹提交 |
 | **报告** | `/api/v1/reports/` | 评分报告、趋势分析、回归检测 |
 | **系统** | `/api/v1/system/` | 健康检查、配置查看 |
-| **设置** | `/api/v1/settings/` | 系统设置 |
+| **系统** | `/api/v1/system/` | 健康检查与诊断 |
 | **基准** | `/api/v1/benchmark/` | 性能基准测试 |
 
 ---
@@ -228,7 +227,6 @@ asyncio.run(main())
     register_routes(reports.router, "/api/v1/reports", ["reports"])
     register_routes(benchmark.router, "/api/v1/benchmark", ["benchmark"])
     register_routes(system.router, "/api/v1/system", ["system"])
-    register_routes(settings_endpoints.router, "/api/v1", ["settings"])
     register_routes(wiki_router.router, "", ["wiki-agent"])
     register_routes(wiki_chat.router, "", ["wiki-agent"])
     register_routes(wiki_vector_api.api_router, "", ["wiki-agent"])
