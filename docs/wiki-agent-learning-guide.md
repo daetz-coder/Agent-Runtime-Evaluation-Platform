@@ -504,8 +504,8 @@ create() 的流程：
 **读完你应该知道**：
 - `collector.record_retrieval(query, results, ms)` → 记录检索事件
 - `collector.record(EVIDENCE, {...})` → 记录回复
-- `collector.start_async()` → 创建评估任务
-- `collector.finish_async(auto_run=True)` → flush 轨迹，触发评估
+- `collector.start()` → 创建评估任务
+- `await collector.finish(auto_run=False)` → 仅 flush 轨迹，任务保持 pending（手动评估）
 - SDK 内置离线模式：平台不可达时本地缓冲，不阻塞 Agent
 
 ---

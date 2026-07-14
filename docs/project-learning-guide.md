@@ -195,7 +195,7 @@
 | `TrajectoryCollector` | 单例收集器，缓冲+批量上传 |
 | `record()` | 核心记录方法，Pydantic 校验+截断 |
 | `start()` / `finish()` | 任务生命周期 |
-| `start_async()` / `finish_async()` | 异步版本，`asyncio.to_thread` 避免自死锁 |
+| `start()` / `finish()` | 异步版本，`asyncio.to_thread` 避免自死锁 |
 | `record_*()` | 14 个便捷方法 |
 | `get_collector()` | 获取全局单例 |
 
@@ -303,11 +303,11 @@
 **读什么**：Wiki Agent 与 SDK 的桥梁
 
 **关键函数**：
-- `emit_session_start()` → `collector.start_async()`
+- `emit_session_start()` → `collector.start()`
 - `emit_retrieval()` → `collector.record_retrieval()`
 - `emit_key_facts()` → `collector.record_memory_write()`
 - `emit_response()` → `collector.record(EVIDENCE)`
-- `emit_session_end()` → `collector.finish_async()`
+- `emit_session_end()` → `collector.finish()`
 
 ### ⑨ `app/wiki_agent/agent/graph.py`（955 行）⭐⭐⭐
 

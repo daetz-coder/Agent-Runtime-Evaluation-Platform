@@ -45,7 +45,7 @@ app/api/v1/endpoints/ tasks / evaluation / reports / benchmark
 app/api/              auth_middleware.py / rate_limit_middleware.py / workspace.py (多租户+RBAC)
 app/core/             pydantic-settings 配置 + cache.py (Redis 缓存层, 优雅降级)
 app/services/         
-  evaluation_service.py  6 维评估编排 (默认并行, EVAL_PARALLEL=true)
+  evaluation_service.py  6 维评估编排 (evaluate_parallel / evaluate_partial)
   replay_service.py      Replay 调试器 — 每步 LLM 原始 prompt/response
   judge_service.py       Judge 透明度面板 — 原始 judge prompt/response
   diff_service.py        Trajectory Diff — 步骤级对比 (added/removed/changed)
@@ -53,7 +53,7 @@ app/services/
   regression_detection.py 回归检测 — 自动发现分数退化
 app/evaluators/       6 evaluators (planning/tactical/tool_use/memory/replan/retrieval) + LLM 缓存
 app/evaluators/consensus.py  多模型共识 (DeepSeek+GLM+Qwen → mean±std)
-app/graphs/           LangGraph 串行 fallback + evaluate_parallel() asyncio.gather
+app/graphs/           evaluate_parallel() / evaluate_partial() (asyncio.gather)
 app/benchmarks/       
   monotonicity.py     Monotonicity benchmark (6 档质量递减 → 单调性验证)
   run_ci_gate.py      CI 门禁 (golden suite + regression)

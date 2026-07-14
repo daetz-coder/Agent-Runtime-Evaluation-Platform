@@ -117,7 +117,6 @@ alembic revision --autogenerate -m "描述"  # 生成新迁移
 | `ZHIPUAI_API_KEY` | 智谱 GLM-4 API Key | - |
 | `QWEN_API_KEY` | 阿里 DashScope API Key | - |
 | `DEFAULT_LLM_PROVIDER` | 默认 LLM（deepseek/glm/qwen） | deepseek |
-| `EVAL_PARALLEL` | 是否并行评估 | true |
 | `AUTH_ENABLED` | 是否启用 API 认证 | false |
 | `EVAL_WEBHOOK_URL` | 评估完成通知 URL | - |
 | `REDIS_URL` | Redis 连接地址（可选，不可用时自动降级） | redis://localhost:6379/0 |

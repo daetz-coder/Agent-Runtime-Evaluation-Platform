@@ -704,11 +704,11 @@ Wiki Agent 需要将每一步执行轨迹提交给评估引擎，但业务代码
 ```
 graph.py (业务代码)          hooks.py (钩子层)              SDK TrajectoryCollector
 ─────────────────          ───────────────────           ───────────────────────
-emit_session_start() ────→ collector.start_async() ────→ 创建评估任务
+emit_session_start() ────→ collector.start() ────→ 创建评估任务
 emit_retrieval()     ────→ collector.record_retrieval() → 记录检索
 emit_key_facts()     ────→ collector.record_memory_write() → 记录事实
 emit_response()      ────→ collector.record(EVIDENCE)   → 记录回复
-emit_session_end()   ────→ collector.finish_async()     → flush + 触发评估
+emit_session_end()   ────→ collector.finish()     → flush + 触发评估
 ```
 
 ```python
