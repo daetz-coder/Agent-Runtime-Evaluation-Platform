@@ -402,7 +402,11 @@ class TrajectoryCollector:
         return session.task_id
 
     async def finish(self, *, auto_run: bool = False) -> Optional[str]:
-        """结束任务，flush 轨迹，可选触发评估。"""
+        """结束会话：flush 轨迹；可选把任务标为已完成并触发评估。
+
+        - auto_run=False（Wiki 默认）：仅上报轨迹，任务保持 pending，由任务管理手动评估。
+        - auto_run=True：flush 成功后标为 completed，并 POST /evaluations/ 启动评估。
+        """
         session = self._session()
         if not session.task_id:
             return None
@@ -422,15 +426,16 @@ class TrajectoryCollector:
             unflushed = len(session.steps)
 
         eval_triggered = False
-        if session.remote_task_created and flush_succeeded:
-            await self._update_task(status="completed")
-        elif session.remote_task_created and not flush_succeeded:
+        if session.remote_task_created and not flush_succeeded:
             logger.warning(
-                "Task %s has %d un-flushed steps; marking as 'failed' instead of 'completed'",
+                "Task %s has %d un-flushed steps; marking as 'failed'",
                 session.task_id,
                 unflushed,
             )
             await self._update_task(status="failed")
+        elif session.remote_task_created and flush_succeeded and auto_run:
+            # 显式 auto_run 时标记对话侧完成；纯上报轨迹则保持 pending 待人工评估
+            await self._update_task(status="completed")
 
         if auto_run and flush_succeeded and session.remote_task_created and not session.eval_triggered:
             try:

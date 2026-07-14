@@ -944,11 +944,11 @@ async def run_chat_stream(
     finally:
         print(f"[EvalDiag] run_chat_stream finally block entered, task_id={_task_id} flow_completed={flow_completed}")
         if flow_completed:
-            # 正常完成 → flush + 触发评估
+            # 正常完成 → 仅 flush 轨迹，任务保持 pending，不自动评估
             await collector.finish(auto_run=False)
             print(f"[EvalDiag] finish returned task_id={_task_id}")
         else:
-            # HITL 中断或异常 → 只 flush，不触发评估
+            # HITL 中断或异常 → 只 flush，不结束会话
             await collector._flush()
             print(f"[Wiki Agent] HITL interrupt, task {_task_id} paused, waiting for resume")
         if not task.done():
