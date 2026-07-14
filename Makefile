@@ -49,9 +49,3 @@ run: ## Start backend server
 
 run-dev: ## Start backend with auto-reload
 	uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-docker-build: ## Build Docker images
-	docker compose build
-
-docker-up: ## Start all services with Docker Compose
-	docker compose up --build
