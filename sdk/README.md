@@ -136,13 +136,20 @@ async def main():
 asyncio.run(main())
 ```
 
-`finish()` 会在 flush 成功时将 task 标为 `completed`，失败时标为 `failed`。`auto_run=True` 仅在 flush 全部成功时触发评估。
+`finish()` 语义：
+
+| `auto_run` | flush 成功后 | 是否触发评估 |
+|------------|--------------|--------------|
+| `False`（Wiki 默认） | 仅上报轨迹，任务保持 `pending`，由任务管理手动评估 | 否 |
+| `True` | 将 task 标为 `completed`，并 `POST /evaluations/` | 是（须 flush 全部成功） |
+
+flush 失败时均标为 `failed`，且不会 auto_run。
 
 ## 容错机制
 
 - **离线模式**：平台不可达时轨迹缓冲在内存，不阻塞 Agent 运行
 - **指数退避重试**：HTTP 请求失败自动重试 3 次（0.5s → 1s → 2s）
 - **失败回退缓冲**：flush 失败时步骤回退到本地缓冲，下次 flush 重试
-- **auto_run 守卫**：flush 未成功时不触发评估，避免空轨迹全 0 分
+- **auto_run 守卫**：`auto_run=False` 或 flush 未成功时不触发评估；避免 Wiki 对话后空跑或空轨迹全 0 分
 - **错误日志**：所有失败记录到 `sdk.collector` logger，不再静默吞异常
 - **有界去重**：`_seen_events` 上限 5000 条，避免长任务内存泄漏

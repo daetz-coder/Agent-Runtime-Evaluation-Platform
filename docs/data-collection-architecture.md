@@ -78,12 +78,12 @@ Agent 代码
   ├─ collector.record_think("分析结果")                 # sdk/collector.py:699
   │    └─ record(THINK, {thought})                     # 追加到内存缓冲
   │
-  └─ collector.finish(auto_run=True)                   # sdk/collector.py:448
+  └─ await collector.finish(auto_run=...)              # sdk/collector.py
        ├─ record(THINK, "Run finished")
-       ├─ _flush(block=True)                           # 批量上传
+       ├─ await _flush()                               # 批量上传
        │    └─ POST /api/v1/tasks/{id}/trajectory      # 发送所有缓冲步骤
-       ├─ PUT /api/v1/tasks/{id}  status=completed     # 标记任务完成
-       └─ POST /api/v1/evaluations/                    # 触发评估
+       ├─ auto_run=True → PUT status=completed + POST /evaluations/
+       └─ auto_run=False（Wiki 默认）→ 仅 flush，任务保持 pending
 ```
 
 **关键代码** (`sdk/collector.py:561-629`)：
@@ -237,23 +237,23 @@ _collector_session: ContextVar[Optional[_CollectorSession]] = ContextVar(...)
 - 每个对话需要独立的 task_id 和 steps 缓冲区
 - ContextVar 在 asyncio 中自动隔离，无需手动传递
 
-#### 异步方法（不阻塞事件循环）
+#### 异步 API（`start` / `finish` / `_flush`）
 
 ```python
-async def start_async(self, goal, context):
-    """在线程池中执行 HTTP 请求，不阻塞事件循环。"""
-    return await asyncio.to_thread(self.start, goal, context)
+async def start(self, goal, context=None) -> str:
+    """创建远程 task，返回 task_id。"""
+    ...
 
-async def finish_async(self, *, auto_run=False):
-    """在线程池中执行 HTTP 请求，不阻塞事件循环。"""
-    return await asyncio.to_thread(self.finish, auto_run=auto_run)
+async def finish(self, *, auto_run=False) -> Optional[str]:
+    """flush 轨迹；auto_run=False 保持 pending；True 则 completed + 触发评估。"""
+    ...
+
+async def _flush(self) -> None:
+    """将缓冲区步骤经 async HTTP 上传。"""
+    ...
 ```
 
-**为什么用 `asyncio.to_thread`？**
-- Wiki Agent 运行在同一 FastAPI 进程中
-- 如果直接在事件循环中发 HTTP 请求，会阻塞其他请求处理
-- `to_thread` 将 HTTP 请求放到独立线程，事件循环继续运行
-
+Wiki 对话结束调用 `await collector.finish(auto_run=False)`：只上报轨迹，**不**自动评估。
 ---
 
 ### 4.2 Hooks 层 — Wiki Agent 与 SDK 的桥梁
@@ -275,7 +275,7 @@ async def emit_session_start(goal, session_id, context):
     if collector is None or not collector.enabled:
         return                              # SDK 不可用 → 静默跳过
     try:
-        await collector.start_async(goal, context)  # 创建评估任务
+        await collector.start(goal, context)  # 创建评估任务
     except Exception as e:
         logger.warning("emit_session_start error: %s", e)  # 失败不阻塞
 
@@ -295,10 +295,12 @@ async def emit_session_end(session_id):
     if collector is None or not collector.enabled:
         return
     try:
-        await collector.finish_async(auto_run=True)  # flush + 触发评估
+        await collector.finish(auto_run=False)  # 仅 flush；Wiki 任务保持 pending
     except Exception as e:
         logger.warning("emit_session_end error: %s", e)
 ```
+
+> 注：当前 Wiki 在 `graph.py` 中直接调用 `collector.start()` / `finish(auto_run=False)`；下列 hooks 片段为历史桥接示例。
 
 **为什么 hooks.py 要存在？**
 1. **解耦**：graph.py 不直接依赖 SDK，只依赖 hooks.py
@@ -460,7 +462,6 @@ CREATE TABLE agent_tasks (
     goal TEXT NOT NULL,                    -- 任务目标
     context JSON,                          -- 任务上下文
     status TEXT DEFAULT 'pending',         -- pending/running/completed/failed
-    workspace_id TEXT,
     created_at TIMESTAMP,
     started_at TIMESTAMP,
     completed_at TIMESTAMP
@@ -504,7 +505,6 @@ CREATE TABLE evaluations (
     prompt_version TEXT,
     model_name TEXT,
     model_provider TEXT,
-    workspace_id TEXT,
     created_at TIMESTAMP,
     completed_at TIMESTAMP
 );

@@ -56,8 +56,8 @@ flowchart TB
         MILVUS[(Milvus<br/>知识库向量)]
     end
 
-    subgraph Optional["可选异步"]
-        CELERY[Celery Worker<br/>run_evaluation_task]
+    subgraph Optional["非流式后台"]
+        BG[FastAPI BackgroundTasks<br/>_run_evaluation_background]
     end
 
     CV -->|SSE| CHAT
@@ -86,8 +86,8 @@ flowchart TB
     ES --> DB
     ES --> EVGraph
     EVGraph --> JUDGE
-    EVAL_CREATE -.->|use_stream=false| CELERY
-    CELERY --> ES
+    EVAL_CREATE -.->|use_stream=false| BG
+    BG --> ES
     ES --> REDIS
     EVAL_STREAM --> REDIS
 ```
@@ -141,18 +141,18 @@ sequenceDiagram
     Graph-->>Chat: queue 事件 (content/wiki_results/extraction)
     Chat-->>CV: SSE data: {...}
 
-    Note over Graph,Col: ③ 对话结束 — 轨迹落库
+    Note over Graph,Col: ③ 对话结束 — 轨迹落库，任务保持 pending
     Graph->>Col: finish(auto_run=False) 或 _flush() (HITL)
     Col->>API: POST /tasks/{id}/trajectory
     API->>DB: INSERT agent_trajectories
-    Col->>API: PUT /tasks/{id} status=completed
+    Note over Col,DB: auto_run=False 不改 status，仍为 pending
 
     Chat->>Col: get_collector().task_id
     Chat-->>CV: SSE evaluation_task {task_id}
     Chat-->>CV: SSE done
     Chat->>Sess: 保存 assistant 消息
 
-    U->>TV: 点击「评估」或跳转 /tasks/{task_id}
+    U->>TV: 任务管理中显示「待处理」→ 点击「评估」
     TV->>API: POST /evaluations/ {task_id, use_stream:true}
     API->>DB: INSERT evaluations (in_progress)
     API-->>TV: evaluation_id
@@ -330,14 +330,14 @@ flowchart TD
 
     subgraph HTTP["async HTTP (httpx.AsyncClient)"]
         POST_T["POST /api/v1/tasks/{id}/trajectory"]
-        PUT_S["PUT /api/v1/tasks/{id} status"]
+        PUT_S["PUT /api/v1/tasks/{id} status<br/>(仅 auto_run=True→completed / flush 失败→failed)"]
         POST_E["POST /api/v1/evaluations/ (仅 auto_run=true 且 flush 成功)"]
     end
 
     HTTP --> DB
 
     subgraph DB["SQLite agent_eval.db"]
-        T1["agent_tasks"]
+        T1["agent_tasks（Wiki 默认保持 pending）"]
         T2["agent_trajectories"]
         T3["evaluations"]
     end
@@ -410,7 +410,7 @@ flowchart TD
     TRIGGER["触发评估<br/>Tasks 页 / API"] --> MODE{use_stream?}
 
     MODE -->|true — UI 默认| STREAM
-    MODE -->|false| CELERY
+    MODE -->|false| BG
 
     subgraph STREAM["SSE 评估路径"]
         S1["POST /evaluations/<br/>create_evaluation → IN_PROGRESS"]
@@ -425,14 +425,13 @@ flowchart TD
         S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9
     end
 
-    subgraph CELERY["后台评估路径"]
-        C1["POST /evaluations/"]
-        C2["run_evaluation_task.delay"]
+    subgraph BG["非流式后台路径"]
+        C1["POST /evaluations/ use_stream=false"]
+        C2["BackgroundTasks._run_evaluation_background"]
         C3["EvaluationService.run_evaluation"]
-        C4["evaluation_graph 6 维"]
+        C4["evaluate_parallel 6 维"]
         C5["UPDATE evaluations COMPLETED"]
-        C6["Webhook 可选"]
-        C1 --> C2 --> C3 --> C4 --> C5 --> C6
+        C1 --> C2 --> C3 --> C4 --> C5
     end
 
     S8 --> RESULT[(evaluations 表)]
@@ -496,13 +495,14 @@ sequenceDiagram
     G->>G: Command(resume=true)
     G->>G: execute CRUD tool
     G->>C: record(tool_call/tool_result)
-    G->>C: finish() → trajectory + status=completed
+    G->>C: finish(auto_run=False) → 追加轨迹，任务仍 pending
     C->>DB: 追加 execute 阶段 steps
 ```
 
 **要点：**
 
-- interrupt 时 **不** 调用 `finish()`，只 `_flush()`，避免过早标记 task 完成。
+- interrupt 时 **不** 调用 `finish()`，只 `_flush()`，避免在 HITL 未结束时结束会话。
+- 对话/resume 正常结束调用 `finish(auto_run=False)`：只 flush 轨迹，**不**标 completed、**不**自动评估；任务管理显示「待处理」。
 - `search` 节点将 `eval_task_id` 写入 state，供 `resume_and_execute` 中 `collector.attach()` 复用同一 task。
 - `attach()` **不** 重置 `eval_triggered`，避免重复触发评估。
 
@@ -552,12 +552,13 @@ flowchart TB
 
 ## 十、关键设计要点
 
-1. **Wiki 对话默认不 auto_run 评估**：`finish(auto_run=False)`，用户在 Tasks 页或 Wiki 链接触发评估。
+1. **Wiki 对话默认不 auto_run 评估**：`finish(auto_run=False)` 只上报轨迹，任务保持 `pending`；用户在 Tasks 页手动点「评估」。
 2. **轨迹先于评估**：评估从 DB 读 `agent_trajectories`；空轨迹会导致全 0 分。`auto_run=True` 时仅在 `flush_succeeded` 后触发。
 3. **同进程 HTTP 上报**：Collector 通过 `EVAL_API_BASE_URL`（默认 `http://127.0.0.1:8000`）调用自身 FastAPI。
 4. **ContextVar 会话隔离**：并发 Wiki 对话共享 Collector 单例，但各自独立 `task_id` / buffer。
 5. **两条 SSE 独立**：对话流（token 级）与评估流（维度级）使用不同 Queue 与端点。
 6. **中途 flush**：search / respond 节点结束后 `_flush()`，降低长对话轨迹丢失风险。
+7. **非流式评估**：`use_stream=false` 时用 FastAPI `BackgroundTasks`，已移除 Celery。
 
 ---
 
@@ -565,7 +566,7 @@ flowchart TB
 
 | 阶段 | 文件 | 函数 / 端点 |
 |------|------|-------------|
-| 前端发消息 | `frontend/.../ChatView.vue` | `sendMessage()` → `POST /api/chat/stream` |
+| 前端发消息 | `app/wiki_agent/frontend/.../ChatView.vue` | `sendMessage()` → `POST /api/chat/stream` |
 | 对话 SSE | `app/wiki_agent/routers/chat.py` | `stream_response()` |
 | 图编排 | `app/wiki_agent/agent/graph.py` | `run_chat_stream()`, `resume_and_execute()` |
 | 创建 task | `sdk/collector.py` | `await start()` → `POST /api/v1/tasks/` |

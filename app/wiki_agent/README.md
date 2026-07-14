@@ -235,11 +235,11 @@ wiki-agent 直接使用 SDK `TrajectoryCollector` 采集评估轨迹，无中间
 
 | 调用位置 | 触发时机 | SDK 方法 |
 |------|----------|----------|
-| `run_chat_stream` / `run_chat_invoke` | 对话开始 | `collector.start_async()` |
+| `run_chat_stream` / `run_chat_invoke` | 对话开始 | `await collector.start()` |
 | `search` 节点 | 检索完成 | `collector.record_retrieval()` |
 | `search` 节点 | 提取关键事实 | `collector.record_memory_write()` |
 | `respond` 节点 | 回复生成完成 | `collector.record(EVIDENCE, ...)` |
-| `run_chat_stream` / `run_chat_invoke` | 对话结束 | `collector.finish_async()` |
+| `run_chat_stream` / `run_chat_invoke` | 对话结束 | `await collector.finish(auto_run=False)` → 轨迹落库，任务保持 pending |
 
 ### 运行模式
 
