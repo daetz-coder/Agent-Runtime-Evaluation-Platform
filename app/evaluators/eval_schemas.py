@@ -1,8 +1,7 @@
 """
-评估器 LLM 输出的 Pydantic Schema 定义
+评估器 LLM 输出的 Pydantic Schema 定义。
 
-通过 LangChain 的 with_structured_output 约束 LLM 输出格式，
-替代手动 JSON 解析，确保评估结果结构化且可校验。
+供 PydanticOutputParser / 手工 JSON 解析校验 Judge 输出。
 """
 
 from __future__ import annotations

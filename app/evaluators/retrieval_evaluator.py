@@ -151,8 +151,7 @@ class RetrievalEvaluator(BaseEvaluator):
 
         # 创建提示词 + 结构化输出链
         prompt = ChatPromptTemplate.from_template(RETRIEVAL_EVAL_PROMPT)
-        structured_llm = self.llm.with_structured_output(RetrievalEvaluationResult)
-        chain = prompt | structured_llm
+        chain = prompt | self.llm
 
         try:
             # 获取 LLM 评估结果（结构化输出 + 重试机制）
