@@ -191,67 +191,6 @@ async def cache_hincrby(key: str, field: str, amount: int = 1) -> Optional[int]:
 
 
 # ---------------------------------------------------------------------------
-# Counter operations
-# ---------------------------------------------------------------------------
-
-
-async def cache_incr(key: str, amount: int = 1) -> Optional[int]:
-    """INCRBY — atomically increment a string value."""
-    r = _client()
-    if r is None:
-        return None
-    try:
-        return await r.incrby(_key(key), amount)
-    except Exception:
-        logger.debug("cache_incr(%s) failed", key, exc_info=True)
-        return None
-
-
-# ---------------------------------------------------------------------------
-# List operations
-# ---------------------------------------------------------------------------
-
-
-async def cache_lpush(key: str, *values: Any) -> Optional[int]:
-    """LPUSH — prepend values to a list."""
-    r = _client()
-    if r is None:
-        return None
-    try:
-        serialized = [json.dumps(v, default=str) for v in values]
-        return await r.lpush(_key(key), *serialized)
-    except Exception:
-        logger.debug("cache_lpush(%s) failed", key, exc_info=True)
-        return None
-
-
-async def cache_lrange(key: str, start: int = 0, end: int = -1) -> Optional[List[Any]]:
-    """LRANGE — get elements from a list, JSON-deserialized."""
-    r = _client()
-    if r is None:
-        return None
-    try:
-        raw = await r.lrange(_key(key), start, end)
-        return [json.loads(item) for item in raw]
-    except Exception:
-        logger.debug("cache_lrange(%s) failed", key, exc_info=True)
-        return None
-
-
-async def cache_ltrim(key: str, start: int, end: int) -> bool:
-    """LTRIM — trim a list to the specified range."""
-    r = _client()
-    if r is None:
-        return False
-    try:
-        await r.ltrim(_key(key), start, end)
-        return True
-    except Exception:
-        logger.debug("cache_ltrim(%s) failed", key, exc_info=True)
-        return False
-
-
-# ---------------------------------------------------------------------------
 # Rate limiter (Sorted Set sliding window)
 # ---------------------------------------------------------------------------
 

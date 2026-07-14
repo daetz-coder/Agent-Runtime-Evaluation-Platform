@@ -31,8 +31,6 @@ from sdk.collector import ActionType, get_collector, reset_collector
 BASE_URL = os.environ.get("EVAL_API_BASE_URL", "http://localhost:8000").rstrip("/")
 API_V1 = f"{BASE_URL}/api/v1"
 
-# 独立脚本走 HTTP 上报；Wiki 内嵌同进程场景才用 in-process DB
-os.environ.setdefault("EVAL_INPROCESS", "false")
 os.environ.setdefault("EVAL_API_BASE_URL", BASE_URL)
 
 
