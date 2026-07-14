@@ -69,7 +69,6 @@ class Settings(BaseSettings):
     CACHE_TASK_TTL: int = 60  # 1min
     CACHE_TRAJECTORY_TTL: int = 300  # 5min
     CACHE_DASHBOARD_TTL: int = 30  # 30s
-    CACHE_SESSION_TTL: int = 3600  # 1h
 
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = True
@@ -108,11 +107,7 @@ class Settings(BaseSettings):
     AUTH_ENABLED: bool = False
     API_KEY: str = ""
 
-    # Evaluation Adapter
-    EVAL_ENABLED: bool = True
-    EVAL_API_BASE_URL: str = "http://127.0.0.1:8000"
-    EVAL_API_KEY: str = ""
-    EVAL_BATCH_SIZE: int = 10
+    # Evaluation webhook (platform-side; SDK reads EVAL_* from environment directly)
     EVAL_WEBHOOK_URL: str = ""
 
     # Evaluation weights (shared between full and incremental eval)

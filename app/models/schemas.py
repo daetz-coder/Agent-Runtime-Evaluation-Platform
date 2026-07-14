@@ -91,7 +91,6 @@ class EvaluationRequest(BaseModel):
     """Schema for evaluation request."""
 
     task_id: str
-    include_details: bool = Field(True, description="Include detailed feedback")
     use_stream: bool = Field(
         False,
         description="When true, skip background task; client drives POST /evaluations/stream",

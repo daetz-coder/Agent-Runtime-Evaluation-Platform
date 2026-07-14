@@ -8,7 +8,7 @@ so the application keeps working without a running Redis instance.
 import json
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import redis.asyncio as aioredis
 
@@ -176,18 +176,6 @@ async def cache_hset(key: str, mapping: Dict[str, Any], ttl: int = 0) -> bool:
     except Exception:
         logger.debug("cache_hset(%s) failed", key, exc_info=True)
         return False
-
-
-async def cache_hincrby(key: str, field: str, amount: int = 1) -> Optional[int]:
-    """HINCRBY — atomically increment a hash field."""
-    r = _client()
-    if r is None:
-        return None
-    try:
-        return await r.hincrby(_key(key), field, amount)
-    except Exception:
-        logger.debug("cache_hincrby(%s, %s) failed", key, field, exc_info=True)
-        return None
 
 
 # ---------------------------------------------------------------------------

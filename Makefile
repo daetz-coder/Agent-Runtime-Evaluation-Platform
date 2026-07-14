@@ -2,7 +2,7 @@
 #
 # Common tasks for Agent engineers working on this platform.
 
-.PHONY: help install lint typecheck test test-ci golden check-ci
+.PHONY: help install lint typecheck test golden check-ci
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \

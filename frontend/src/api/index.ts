@@ -144,7 +144,7 @@ export const evaluationApi = {
     return api.get('/evaluations/dashboard')
   },
 
-  run(data: { task_id: string; include_details?: boolean; use_stream?: boolean }) {
+  run(data: { task_id: string; use_stream?: boolean }) {
     return api.post('/evaluations/', data)
   },
 
